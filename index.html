@@ -90,6 +90,19 @@ canvas { display: block; cursor: crosshair; }
 #boss-rush-picker .rush-all-btn:hover { background: rgba(255,68,68,0.15); }
 #boss-rush-picker .rush-close { position: absolute; top: 20px; right: 30px; color: #666; font-family: 'Courier New', monospace; font-size: 12px; cursor: pointer; }
 #boss-rush-picker .rush-close:hover { color: #f44; }
+#pause-menu {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 120;
+  display: none; flex-direction: column; justify-content: center; align-items: center;
+  background: rgba(0,0,0,0.85);
+}
+#pause-menu h1 { color: #0ff; font-family: 'Courier New', monospace; font-size: 36px; letter-spacing: 10px; margin-bottom: 8px; text-shadow: 0 0 30px #0ff; }
+#pause-menu .pause-subtitle { color: #4af; font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 4px; margin-bottom: 30px; }
+#pause-menu .controls-grid { display: grid; grid-template-columns: 100px 1fr; gap: 6px 20px; max-width: 420px; font-family: 'Courier New', monospace; }
+#pause-menu .controls-grid .key { color: #0ff; font-size: 13px; text-align: right; font-weight: bold; }
+#pause-menu .controls-grid .action { color: #8af; font-size: 12px; }
+#pause-menu .controls-section { color: #4af; font-size: 10px; letter-spacing: 3px; grid-column: 1 / -1; margin-top: 14px; margin-bottom: 4px; border-bottom: 1px solid rgba(0,255,255,0.15); padding-bottom: 3px; }
+#pause-menu .controls-section:first-child { margin-top: 0; }
+#pause-menu .resume-hint { color: #666; font-family: 'Courier New', monospace; font-size: 11px; margin-top: 30px; letter-spacing: 2px; }
 #achievement-journal {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 99;
   display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -199,6 +212,7 @@ canvas { display: block; cursor: crosshair; }
     <div id="hud-score">SCORE: 0</div>
     <div id="hud-wave">WAVE: 1</div>
     <div id="hud-kills">KILLS: 0</div>
+    <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
   </div>
   <div class="right">
     <div id="hud-hp">HULL: ████████████████████ 100%</div>
@@ -210,6 +224,28 @@ canvas { display: block; cursor: crosshair; }
 <canvas id="gameCanvas"></canvas>
 
 <div id="debug-panel"></div>
+<div id="pause-menu">
+  <h1>PAUSED</h1>
+  <div class="pause-subtitle">ORBITAL SIEGE — FORWARD COMPATIBLE</div>
+  <div class="controls-grid">
+    <div class="controls-section">FLIGHT</div>
+    <div class="key">W / S</div><div class="action">Prograde / Retrograde thrust</div>
+    <div class="key">A / D</div><div class="action">Radial in / out</div>
+    <div class="key">SHIFT</div><div class="action">Boost thrust</div>
+    <div class="controls-section">WEAPONS</div>
+    <div class="key">CLICK</div><div class="action">Fire torpedoes</div>
+    <div class="key">E</div><div class="action">Lock-on missile</div>
+    <div class="key">Q</div><div class="action">Laser beam (hold)</div>
+    <div class="key">SPACE</div><div class="action">Orbital bomb</div>
+    <div class="key">F</div><div class="action">Scan pulse</div>
+    <div class="controls-section">SYSTEMS</div>
+    <div class="key">V</div><div class="action">Swap ship (between waves)</div>
+    <div class="key">J</div><div class="action">Achievement journal</div>
+    <div class="key">P</div><div class="action">Pause / Resume</div>
+    <div class="key">`</div><div class="action">Debug panel</div>
+  </div>
+  <div class="resume-hint">PRESS P TO RESUME</div>
+</div>
 <div id="boss-rush-picker"></div>
 
 <div id="achievement-journal">
@@ -346,6 +382,7 @@ window.addEventListener('resize', resize); resize();
 // --- Global State ---
 let selectedShipType = 'vanguard';
 let gameRunning = false;
+let gamePaused = false;
 
 // --- Input ---
 const keys = {}; let mouseX = 0, mouseY = 0, mouseDown = false;
@@ -3898,7 +3935,9 @@ function gameLoop(time) {
   const dt = Math.min((time - lastTime)/1000, 0.05);
   lastTime = time;
   if (gameRunning) {
-    try { updateGame(dt); } catch(e) { console.error('updateGame error:', e); }
+    if (!gamePaused) {
+      try { updateGame(dt); } catch(e) { console.error('updateGame error:', e); }
+    }
     try { drawGame(); } catch(e) { console.error('drawGame error:', e); }
   }
   requestAnimationFrame(gameLoop);
@@ -3996,8 +4035,12 @@ function queueShipSwap(key) {
 
 // V key listener
 window.addEventListener('keydown', e => {
-  if (e.key.toLowerCase() === 'v' && gameRunning) {
+  if (e.key.toLowerCase() === 'v' && gameRunning && !gamePaused) {
     toggleShipSwap();
+  }
+  if (e.key.toLowerCase() === 'p' && gameRunning) {
+    gamePaused = !gamePaused;
+    document.getElementById('pause-menu').style.display = gamePaused ? 'flex' : 'none';
   }
 });
 
