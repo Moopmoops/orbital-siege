@@ -2426,6 +2426,56 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
+    // Sun heat glow — visible burning when near the sun
+    if (game && game.star) {
+      const dToStar = dist(this, game.star);
+      const heatZone = game.star.radius + HEAT_RANGE_OUTER;
+      if (dToStar < heatZone) {
+        const heatIntensity = 1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER;
+        const hi = clamp(heatIntensity, 0, 1);
+        // Orange-red glow around the ship that intensifies closer to sun
+        ctx.globalAlpha = hi * 0.6;
+        const heatGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.3, 0, 0, SHIP_SIZE*2.5);
+        heatGrad.addColorStop(0, `rgba(255,${Math.floor(200-hi*150)},${Math.floor(50-hi*40)},0.8)`);
+        heatGrad.addColorStop(0.5, `rgba(255,${Math.floor(100-hi*60)},0,0.4)`);
+        heatGrad.addColorStop(1, 'rgba(200,30,0,0)');
+        ctx.fillStyle = heatGrad;
+        ctx.beginPath(); ctx.arc(0, 0, SHIP_SIZE*2.5, 0, Math.PI*2); ctx.fill();
+        // Flickering sparks/embers
+        if (hi > 0.3) {
+          for (let i = 0; i < 3; i++) {
+            const sa = Math.random()*Math.PI*2;
+            const sr = SHIP_SIZE*(0.5 + Math.random()*1.5);
+            ctx.fillStyle = `rgba(255,${Math.floor(150+Math.random()*105)},0,${0.3+Math.random()*0.4})`;
+            ctx.beginPath(); ctx.arc(Math.cos(sa)*sr, Math.sin(sa)*sr, 1+Math.random()*1.5, 0, Math.PI*2); ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // Atmospheric entry glow near planets
+    if (game && game.planets) {
+      for (const planet of game.planets) {
+        const dToPlanet = dist(this, planet);
+        const atmoZone = planet.radius * 1.8; // atmosphere extends 80% beyond surface
+        if (dToPlanet < atmoZone && dToPlanet > planet.radius * 0.5) {
+          const atmoIntensity = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 0.8), 0, 1);
+          if (atmoIntensity > 0) {
+            // Get a warm version of the planet's color
+            ctx.globalAlpha = atmoIntensity * 0.35;
+            const atmoGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.2, 0, 0, SHIP_SIZE*2);
+            atmoGrad.addColorStop(0, `rgba(255,200,100,0.6)`);
+            atmoGrad.addColorStop(0.6, `rgba(255,150,50,0.3)`);
+            atmoGrad.addColorStop(1, 'rgba(200,100,20,0)');
+            ctx.fillStyle = atmoGrad;
+            ctx.beginPath(); ctx.arc(0, 0, SHIP_SIZE*2, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+        }
+      }
+    }
+
     ctx.restore();
 
     // Laser beam — thick, bright, unmissable
@@ -2735,13 +2785,51 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     }
   }
 
-  // Separation
+  // Type-specific flocking/separation
   for (const other of invaders) {
     if (other === inv) continue;
     const d = dist(inv, other);
-    if (d < 25 && d > 0) {
-      const a = angle(other, inv);
-      inv.vx += Math.cos(a)*60*dt; inv.vy += Math.sin(a)*60*dt;
+    const a = angle(other, inv);
+
+    if (inv.typeName === 'drone') {
+      // Drones: tight swarm — close separation, attracted to same-type neighbors
+      if (d < 15 && d > 0) {
+        inv.vx += Math.cos(a)*40*dt; inv.vy += Math.sin(a)*40*dt;
+      } else if (d > 30 && d < 80 && other.typeName === 'drone') {
+        // Cohesion — pull toward nearby drones
+        inv.vx -= Math.cos(a)*15*dt; inv.vy -= Math.sin(a)*15*dt;
+      }
+    } else if (inv.typeName === 'scout' || inv.typeName === 'phantom') {
+      // Scouts/Phantoms: wide spread — strong repulsion, lone wolves
+      if (d < 60 && d > 0) {
+        inv.vx += Math.cos(a)*80*dt; inv.vy += Math.sin(a)*80*dt;
+      }
+    } else if (inv.typeName === 'brute' || inv.typeName === 'titan') {
+      // Brutes/Titans: tight formation — march in clusters
+      if (d < 20 && d > 0) {
+        inv.vx += Math.cos(a)*50*dt; inv.vy += Math.sin(a)*50*dt;
+      } else if (d > 35 && d < 100 && (other.typeName === 'brute' || other.typeName === 'titan')) {
+        // Cohesion with similar heavy types
+        inv.vx -= Math.cos(a)*20*dt; inv.vy -= Math.sin(a)*20*dt;
+      }
+    } else if (inv.typeName === 'stinger') {
+      // Stingers: medium spacing — maintain firing distance from each other
+      if (d < 40 && d > 0) {
+        inv.vx += Math.cos(a)*70*dt; inv.vy += Math.sin(a)*70*dt;
+      }
+    } else if (inv.typeName === 'hive') {
+      // Hives: attract ALL nearby types — they are the cluster nucleus
+      if (d < 18 && d > 0) {
+        inv.vx += Math.cos(a)*30*dt; inv.vy += Math.sin(a)*30*dt;
+      } else if (d > 50 && d < 120 && other.typeName !== 'hive') {
+        // Pull non-hive types toward hive (hive is the gravity well)
+        other.vx -= Math.cos(a)*10*dt; other.vy -= Math.sin(a)*10*dt;
+      }
+    } else {
+      // Default separation
+      if (d < 25 && d > 0) {
+        inv.vx += Math.cos(a)*60*dt; inv.vy += Math.sin(a)*60*dt;
+      }
     }
   }
 
@@ -3587,6 +3675,22 @@ function drawARH(ctx, inv, cam) {
     }
   }
 
+  // Sun heat glow for ARH
+  if (game && game.star) {
+    const dToStar = dist(inv, game.star);
+    const heatZone = game.star.radius + HEAT_RANGE_OUTER;
+    if (dToStar < heatZone) {
+      const hi = clamp(1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER, 0, 1);
+      ctx.globalAlpha = hi * 0.5;
+      const hg = ctx.createRadialGradient(sx, sy, s*0.3, sx, sy, s*2.5);
+      hg.addColorStop(0, 'rgba(255,150,30,0.7)');
+      hg.addColorStop(1, 'rgba(200,30,0,0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(sx, sy, s*2.5, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
   // HP bar
   if (inv.hp < inv.maxHp) {
     const bw2 = s*2.5, hpf = (inv.maxHp > 0) ? Math.max(0, Math.min(1, inv.hp/inv.maxHp)) : 0;
@@ -3605,13 +3709,12 @@ function drawARH(ctx, inv, cam) {
     ctx.fillStyle = barColor;
     ctx.fillRect(sx-bw2/2, sy-s*inv.growScale-10, bw2*hpf, 3);
 
-    // Boss critical indicator
+    // Boss critical — pulsing HP bar glow instead of text (text is in the header bar)
     if (inv.isBoss && inv.critical) {
-      ctx.fillStyle = '#f44';
-      ctx.font = 'bold 10px Courier New';
-      ctx.textAlign = 'center';
-      ctx.fillText('CRITICAL — PUSH INTO SUN', sx, sy-s*inv.growScale-16);
-      ctx.textAlign = 'left';
+      const pulse = 0.3 + 0.3 * Math.sin(Date.now() * 0.008);
+      ctx.strokeStyle = `rgba(255,100,0,${pulse})`;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(sx-bw2/2 - 2, sy-s*inv.growScale-12, bw2 + 4, 7);
     }
   }
 }
@@ -4664,9 +4767,19 @@ function drawGame() {
     ctx.fillText(`WAVE ${game.wave} CLEARED`, canvas.width/2, canvas.height/2 - 30);
     ctx.font = '14px Courier New'; ctx.fillStyle = '#4af';
     ctx.fillText('Next wave incoming...', canvas.width/2, canvas.height/2 + 10);
-    const types = getWaveTypes(game.wave + 1);
-    ctx.font = '11px Courier New'; ctx.fillStyle = '#8af';
-    ctx.fillText(`New ARH types: ${types.map(t => ARH_TYPES[t].name).join(', ')}`, canvas.width/2, canvas.height/2 + 30);
+    const nextTypes = getWaveTypes(game.wave + 1);
+    const currentTypes = getWaveTypes(game.wave);
+    const newTypes = nextTypes.filter(t => !currentTypes.includes(t));
+    const returningTypes = nextTypes.filter(t => currentTypes.includes(t));
+    ctx.font = '11px Courier New';
+    let typeY = canvas.height/2 + 30;
+    if (newTypes.length > 0) {
+      ctx.fillStyle = '#f84';
+      ctx.fillText(`New: ${newTypes.map(t => ARH_TYPES[t].name).join(', ')}`, canvas.width/2, typeY);
+      typeY += 16;
+    }
+    ctx.fillStyle = '#8af';
+    ctx.fillText(`Active: ${returningTypes.map(t => ARH_TYPES[t].name).join(', ')}`, canvas.width/2, typeY);
     ctx.globalAlpha = 1; ctx.textAlign = 'left';
   }
 
