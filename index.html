@@ -355,7 +355,7 @@ canvas { display: block; cursor: crosshair; }
     <div class="key">P</div><div class="action">Pause / Resume</div>
   </div>
   <div style="margin-top:8px;">
-    <button id="sound-toggle-btn" onclick="soundMuted=!soundMuted; if(soundMuted){stopLaserSound();stopWeaponDrone();} this.textContent=soundMuted?'♪ SOUND: OFF':'♪ SOUND: ON'; this.style.borderColor=soundMuted?'#666':'#0ff'; this.style.color=soundMuted?'#666':'#0ff';" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">♪ SOUND: ON</button>
+    <button id="sound-toggle-btn" onclick="soundMuted=!soundMuted; if(soundMuted){stopLaserSound();stopTorpedoSound();stopWeaponDrone();} this.textContent=soundMuted?'♪ SOUND: OFF':'♪ SOUND: ON'; this.style.borderColor=soundMuted?'#666':'#0ff'; this.style.color=soundMuted?'#666':'#0ff';" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">♪ SOUND: ON</button>
   </div>
   <div style="margin-top:8px;">
     <button id="palette-toggle-btn" onclick="cyclePalette()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">PALETTE: STANDARD</button>
@@ -455,43 +455,160 @@ const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx;
 function initAudio() { if (!audioCtx) audioCtx = new AudioCtx(); }
 
+// --- Torpedo Drone Sound (continuous ambient while torpedoes are firing) ---
+let torpedoAudio = { active: false, oscs: null, masterGain: null, filter: null, lfo: null, lfo2: null };
+function startTorpedoSound() {
+  if (!audioCtx || torpedoAudio.active || soundMuted) return;
+  torpedoAudio.active = true;
+  const now = audioCtx.currentTime;
+
+  torpedoAudio.masterGain = audioCtx.createGain();
+  torpedoAudio.masterGain.gain.setValueAtTime(0.001, now);
+  torpedoAudio.masterGain.gain.linearRampToValueAtTime(0.05, now + 0.25);
+  torpedoAudio.masterGain.connect(audioCtx.destination);
+
+  // Lowpass filter — warm rumble
+  torpedoAudio.filter = audioCtx.createBiquadFilter();
+  torpedoAudio.filter.type = 'lowpass';
+  torpedoAudio.filter.frequency.setValueAtTime(900, now);
+  torpedoAudio.filter.Q.setValueAtTime(2, now);
+  torpedoAudio.filter.connect(torpedoAudio.masterGain);
+
+  // LFO1 — slow filter sweep for organic movement
+  torpedoAudio.lfo = audioCtx.createOscillator();
+  torpedoAudio.lfo.type = 'sine';
+  torpedoAudio.lfo.frequency.setValueAtTime(0.25, now);
+  const lfoGain = audioCtx.createGain();
+  lfoGain.gain.setValueAtTime(300, now);
+  torpedoAudio.lfo.connect(lfoGain);
+  lfoGain.connect(torpedoAudio.filter.frequency);
+  torpedoAudio.lfo.start();
+
+  // LFO2 — amplitude throb for menacing pulse
+  torpedoAudio.lfo2 = audioCtx.createOscillator();
+  torpedoAudio.lfo2.type = 'sine';
+  torpedoAudio.lfo2.frequency.setValueAtTime(3.5, now);
+  const lfo2Gain = audioCtx.createGain();
+  lfo2Gain.gain.setValueAtTime(0.015, now);
+  torpedoAudio.lfo2.connect(lfo2Gain);
+  lfo2Gain.connect(torpedoAudio.masterGain.gain);
+  torpedoAudio.lfo2.start();
+
+  // 4 detuned oscillators — deep rumbling chord (E1, B1, E2, G#2)
+  const freqs = [41.2, 61.7, 82.4, 103.8];
+  const types = ['sine', 'triangle', 'sine', 'triangle'];
+  torpedoAudio.oscs = [];
+  for (let i = 0; i < 4; i++) {
+    const osc = audioCtx.createOscillator();
+    osc.type = types[i];
+    osc.frequency.setValueAtTime(freqs[i], now);
+    // Per-voice drift LFO for organic detuning
+    const driftLfo = audioCtx.createOscillator();
+    driftLfo.type = 'sine';
+    driftLfo.frequency.setValueAtTime(0.08 + i * 0.05, now);
+    const driftGain = audioCtx.createGain();
+    driftGain.gain.setValueAtTime(1.5 + i * 0.5, now);
+    driftLfo.connect(driftGain);
+    driftGain.connect(osc.frequency);
+    driftLfo.start();
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(i === 0 ? 0.45 : i === 1 ? 0.3 : i === 2 ? 0.2 : 0.12, now);
+    osc.connect(g);
+    g.connect(torpedoAudio.filter);
+    osc.start();
+    torpedoAudio.oscs.push({ osc, driftLfo });
+  }
+}
+function stopTorpedoSound() {
+  if (!torpedoAudio.active) return;
+  try {
+    const now = audioCtx.currentTime;
+    torpedoAudio.masterGain.gain.linearRampToValueAtTime(0.001, now + 0.2);
+    setTimeout(() => {
+      try {
+        if (torpedoAudio.oscs) torpedoAudio.oscs.forEach(o => { try { o.osc.stop(); o.driftLfo.stop(); } catch(e){} });
+        if (torpedoAudio.lfo) torpedoAudio.lfo.stop();
+        if (torpedoAudio.lfo2) torpedoAudio.lfo2.stop();
+      } catch(e) {}
+      torpedoAudio.active = false;
+      torpedoAudio.oscs = null;
+      torpedoAudio.masterGain = null;
+    }, 250);
+  } catch(e) {
+    torpedoAudio.active = false;
+  }
+}
+
 // Continuous laser audio
-let laserAudio = { osc: null, gain: null, active: false };
+// --- Laser Drone Sound (continuous ambient while laser is active) ---
+let laserAudio = { active: false, oscs: null, masterGain: null, filter: null, lfo: null };
 function startLaserSound() {
   if (!audioCtx || laserAudio.active || soundMuted) return;
-  laserAudio.gain = audioCtx.createGain();
-  laserAudio.gain.connect(audioCtx.destination);
-  laserAudio.gain.gain.setValueAtTime(0, audioCtx.currentTime);
-  laserAudio.gain.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.1);
-  laserAudio.osc = audioCtx.createOscillator();
-  laserAudio.osc.type = 'sine';
-  laserAudio.osc.frequency.setValueAtTime(400, audioCtx.currentTime);
-  // Slow wobble for character
-  const lfo = audioCtx.createOscillator();
-  lfo.frequency.setValueAtTime(6, audioCtx.currentTime);
-  const lfoGain = audioCtx.createGain();
-  lfoGain.gain.setValueAtTime(30, audioCtx.currentTime);
-  lfo.connect(lfoGain);
-  lfoGain.connect(laserAudio.osc.frequency);
-  lfo.start();
-  laserAudio.lfo = lfo;
-  laserAudio.osc.connect(laserAudio.gain);
-  laserAudio.osc.start();
   laserAudio.active = true;
+  const now = audioCtx.currentTime;
+
+  laserAudio.masterGain = audioCtx.createGain();
+  laserAudio.masterGain.gain.setValueAtTime(0.001, now);
+  laserAudio.masterGain.gain.linearRampToValueAtTime(0.04, now + 0.3);
+  laserAudio.masterGain.connect(audioCtx.destination);
+
+  // Lowpass for warmth
+  laserAudio.filter = audioCtx.createBiquadFilter();
+  laserAudio.filter.type = 'lowpass';
+  laserAudio.filter.frequency.setValueAtTime(1500, now);
+  laserAudio.filter.Q.setValueAtTime(1.5, now);
+  laserAudio.filter.connect(laserAudio.masterGain);
+
+  // LFO for organic movement — modulates filter
+  laserAudio.lfo = audioCtx.createOscillator();
+  laserAudio.lfo.type = 'sine';
+  laserAudio.lfo.frequency.setValueAtTime(0.3, now);
+  const lfoGain = audioCtx.createGain();
+  lfoGain.gain.setValueAtTime(400, now);
+  laserAudio.lfo.connect(lfoGain);
+  lfoGain.connect(laserAudio.filter.frequency);
+  laserAudio.lfo.start();
+
+  // 3 detuned oscillators — eerie chord (A3, E4, A4)
+  const freqs = [220, 329.6, 440];
+  laserAudio.oscs = [];
+  for (let i = 0; i < 3; i++) {
+    const osc = audioCtx.createOscillator();
+    osc.type = i === 0 ? 'sine' : 'triangle';
+    osc.frequency.setValueAtTime(freqs[i], now);
+    // Subtle pitch drift LFO per voice
+    const driftLfo = audioCtx.createOscillator();
+    driftLfo.type = 'sine';
+    driftLfo.frequency.setValueAtTime(0.1 + i * 0.07, now);
+    const driftGain = audioCtx.createGain();
+    driftGain.gain.setValueAtTime(2 + i, now);
+    driftLfo.connect(driftGain);
+    driftGain.connect(osc.frequency);
+    driftLfo.start();
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(i === 0 ? 0.4 : i === 1 ? 0.25 : 0.15, now);
+    osc.connect(g);
+    g.connect(laserAudio.filter);
+    osc.start();
+    laserAudio.oscs.push({ osc, driftLfo });
+  }
 }
 function stopLaserSound() {
   if (!laserAudio.active) return;
   try {
-    laserAudio.gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+    const now = audioCtx.currentTime;
+    laserAudio.masterGain.gain.linearRampToValueAtTime(0.001, now + 0.2);
     setTimeout(() => {
       try {
-        laserAudio.osc.stop();
+        if (laserAudio.oscs) laserAudio.oscs.forEach(o => { try { o.osc.stop(); o.driftLfo.stop(); } catch(e){} });
         if (laserAudio.lfo) laserAudio.lfo.stop();
       } catch(e) {}
       laserAudio.active = false;
-      laserAudio.osc = null;
-      laserAudio.gain = null;
-    }, 150);
+      laserAudio.oscs = null;
+      laserAudio.masterGain = null;
+    }, 250);
   } catch(e) {
     laserAudio.active = false;
   }
@@ -750,6 +867,94 @@ function stopWeaponDrone() {
   weaponDrone.gains = null;
 }
 
+// --- Enemy-type-specific hit sounds ---
+const lastHitSoundTime = {};
+const HIT_SOUND_THROTTLE = 0.06; // min seconds between same-type hit sounds
+function playEnemyHitSound(typeName) {
+  if (!audioCtx || soundMuted) return;
+  const now = audioCtx.currentTime;
+  if (lastHitSoundTime[typeName] && now - lastHitSoundTime[typeName] < HIT_SOUND_THROTTLE) return;
+  lastHitSoundTime[typeName] = now;
+
+  const gain = audioCtx.createGain();
+  gain.connect(audioCtx.destination);
+  const lpf = audioCtx.createBiquadFilter();
+  lpf.type = 'lowpass';
+  lpf.connect(gain);
+
+  if (typeName === 'drone') {
+    // Light metallic ping — high sine blip
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, now); osc.frequency.exponentialRampToValueAtTime(400, now + 0.08);
+    lpf.frequency.setValueAtTime(3000, now);
+    gain.gain.setValueAtTime(0.04, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.08);
+  } else if (typeName === 'scout') {
+    // Quick high-pitched tick
+    const osc = audioCtx.createOscillator(); osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1200, now); osc.frequency.exponentialRampToValueAtTime(600, now + 0.05);
+    lpf.frequency.setValueAtTime(2500, now);
+    gain.gain.setValueAtTime(0.035, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.05);
+  } else if (typeName === 'brute') {
+    // Heavy dull thud — low frequency
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, now); osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+    lpf.frequency.setValueAtTime(600, now);
+    gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.15);
+  } else if (typeName === 'stinger') {
+    // Sharp electric zap
+    const osc = audioCtx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(600, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.06);
+    lpf.frequency.setValueAtTime(1800, now); lpf.frequency.exponentialRampToValueAtTime(400, now + 0.06);
+    gain.gain.setValueAtTime(0.03, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.06);
+  } else if (typeName === 'hive') {
+    // Squelchy organic pop — sine with quick pitch bend
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+    lpf.frequency.setValueAtTime(1200, now); lpf.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+    gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.1);
+  } else if (typeName === 'phantom') {
+    // Eerie whisper — filtered noise burst
+    const bs = audioCtx.sampleRate * 0.08; const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < bs; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/bs, 2);
+    const src = audioCtx.createBufferSource(); src.buffer = buf;
+    lpf.frequency.setValueAtTime(2000, now); lpf.frequency.exponentialRampToValueAtTime(500, now + 0.08);
+    gain.gain.setValueAtTime(0.03, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    src.connect(lpf); src.start(now);
+  } else if (typeName === 'titan') {
+    // Deep resonant gong
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, now); osc.frequency.exponentialRampToValueAtTime(90, now + 0.2);
+    lpf.frequency.setValueAtTime(800, now);
+    gain.gain.setValueAtTime(0.05, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.2);
+    // Harmonic overtone
+    const osc2 = audioCtx.createOscillator(); osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(360, now); osc2.frequency.exponentialRampToValueAtTime(180, now + 0.15);
+    const g2 = audioCtx.createGain(); g2.connect(audioCtx.destination);
+    g2.gain.setValueAtTime(0.02, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc2.connect(g2); osc2.start(now); osc2.stop(now + 0.15);
+  } else if (typeName === 'overlord') {
+    // Massive impact — sub bass + distorted crack
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(60, now); osc.frequency.exponentialRampToValueAtTime(25, now + 0.25);
+    lpf.frequency.setValueAtTime(500, now);
+    gain.gain.setValueAtTime(0.07, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.25);
+  } else {
+    // Fallback — generic soft ping
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(500, now); osc.frequency.exponentialRampToValueAtTime(200, now + 0.08);
+    lpf.frequency.setValueAtTime(2000, now);
+    gain.gain.setValueAtTime(0.04, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+    osc.connect(lpf); osc.start(now); osc.stop(now + 0.08);
+  }
+}
+
 function playSound(type) {
   if (!audioCtx || soundMuted) return;
   const now = audioCtx.currentTime;
@@ -760,10 +965,8 @@ function playSound(type) {
     if (!weaponDrone.active) initWeaponDrone();
     weaponDrone.lastShootTime = audioCtx.currentTime;
   } else if (type === 'missile') {
-    const osc = audioCtx.createOscillator(); osc.type = 'triangle';
-    osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(500, now + 0.15);
-    gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-    osc.connect(gain); osc.start(now); osc.stop(now + 0.2);
+    // Handled by startTorpedoSound/stopTorpedoSound
+    startTorpedoSound();
   } else if (type === 'laser') {
     // Handled by startLaserSound/stopLaserSound
   } else if (type === 'explode') {
@@ -1726,8 +1929,44 @@ class Star {
     this.coronaPhase = 0;
     this.texture = generateSunTexture(this.radius);
     this.texRadius = this.texture.width * 0.35; // matches R in generateSunTexture
+    // Plasma arc lifecycle system
+    this.plasmaArcs = [];
+    this.arcSpawnTimer = 0;
   }
-  update(dt) { this.coronaPhase += dt; }
+  spawnPlasmaArc() {
+    const R = this.radius;
+    const baseAngle = Math.random() * Math.PI * 2;
+    const maxHeight = R * (0.3 + Math.random() * 0.6); // how far it reaches
+    const lifetime = 1.5 + Math.random() * 2.5; // 1.5–4 seconds
+    const arcWidth = 0.15 + Math.random() * 0.35; // angular spread in radians
+    const curveBias = (Math.random() - 0.5) * 0.8; // which way the arc curves
+    const thickness = 1.5 + Math.random() * 2.5;
+    this.plasmaArcs.push({
+      baseAngle, maxHeight, lifetime, maxLifetime: lifetime,
+      arcWidth, curveBias, thickness, age: 0,
+      // Secondary arc properties for double-strand look
+      strand2Offset: (Math.random() - 0.5) * 0.08,
+      strand2HeightMul: 0.6 + Math.random() * 0.3,
+    });
+  }
+  update(dt) {
+    this.coronaPhase += dt;
+    // Spawn new arcs periodically
+    this.arcSpawnTimer -= dt;
+    if (this.arcSpawnTimer <= 0) {
+      this.spawnPlasmaArc();
+      this.arcSpawnTimer = 0.4 + Math.random() * 1.2; // new arc every 0.4–1.6s
+    }
+    // Update and cull arcs
+    for (let i = this.plasmaArcs.length - 1; i >= 0; i--) {
+      this.plasmaArcs[i].age += dt;
+      if (this.plasmaArcs[i].age >= this.plasmaArcs[i].lifetime) {
+        this.plasmaArcs.splice(i, 1);
+      }
+    }
+    // Cap max arcs
+    while (this.plasmaArcs.length > 8) this.plasmaArcs.shift();
+  }
   gravityAt(x, y) {
     const dx = this.x - x, dy = this.y - y;
     const d = Math.max(Math.hypot(dx, dy), this.radius);
@@ -1811,32 +2050,93 @@ class Star {
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    // Solar prominences
-    ctx.globalAlpha = 0.35;
-    for (let i = 0; i < 3; i++) {
-      const pAngle = t*0.04 + i*2.094;
-      const pLen = R*(0.3 + 0.15*Math.sin(i*1.5 + t*0.3));
-      const baseX = sx + Math.cos(pAngle)*R*0.95;
-      const baseY = sy + Math.sin(pAngle)*R*0.95;
-      const tipX = sx + Math.cos(pAngle)*(R + pLen);
-      const tipY = sy + Math.sin(pAngle)*(R + pLen);
-      const cpDist = R*0.5 + pLen*0.6;
-      const cpAngle = pAngle + 0.4*Math.sin(i*2.3 + t*0.2);
-      const cpX = sx + Math.cos(cpAngle)*cpDist;
-      const cpY = sy + Math.sin(cpAngle)*cpDist;
-      ctx.strokeStyle = `rgba(255,${80+i*30},${10+i*10},0.6)`;
-      ctx.lineWidth = 2 + Math.sin(i*1.7 + t*0.4);
+    // Dynamic plasma arcs — grow, arch, and subside
+    for (const arc of this.plasmaArcs) {
+      const progress = arc.age / arc.maxLifetime; // 0→1
+      // Envelope: grows fast, holds, then fades out
+      let envelope;
+      if (progress < 0.15) envelope = progress / 0.15; // quick rise
+      else if (progress < 0.65) envelope = 1.0; // sustain
+      else envelope = 1.0 - (progress - 0.65) / 0.35; // fade out
+      envelope = Math.max(0, Math.min(1, envelope));
+      if (envelope < 0.01) continue;
+
+      const height = arc.maxHeight * envelope;
+      const ba = arc.baseAngle;
+      const halfW = arc.arcWidth * 0.5;
+
+      // Arc foot positions on the sun surface
+      const foot1X = sx + Math.cos(ba - halfW) * R;
+      const foot1Y = sy + Math.sin(ba - halfW) * R;
+      const foot2X = sx + Math.cos(ba + halfW) * R;
+      const foot2Y = sy + Math.sin(ba + halfW) * R;
+
+      // Apex — arches outward from the midpoint
+      const midAngle = ba + arc.curveBias * 0.3 * Math.sin(arc.age * 1.5);
+      const apexDist = R + height;
+      const apexX = sx + Math.cos(midAngle) * apexDist;
+      const apexY = sy + Math.sin(midAngle) * apexDist;
+
+      // Control points for smooth cubic bezier arch
+      const cp1Dist = R + height * 0.7;
+      const cp1Angle = ba - halfW * 0.3 + arc.curveBias * 0.15;
+      const cp1X = sx + Math.cos(cp1Angle) * cp1Dist;
+      const cp1Y = sy + Math.sin(cp1Angle) * cp1Dist;
+      const cp2Angle = ba + halfW * 0.3 + arc.curveBias * 0.15;
+      const cp2X = sx + Math.cos(cp2Angle) * cp1Dist;
+      const cp2Y = sy + Math.sin(cp2Angle) * cp1Dist;
+
+      // Draw primary strand
+      const alpha = envelope * 0.55;
+      const g = Math.floor(80 + envelope * 100);
+      const b2 = Math.floor(10 + envelope * 30);
+      ctx.strokeStyle = `rgba(255,${g},${b2},${alpha})`;
+      ctx.lineWidth = arc.thickness * envelope;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(baseX, baseY);
-      ctx.quadraticCurveTo(cpX + Math.cos(pAngle+1.2)*pLen*0.5, cpY + Math.sin(pAngle+1.2)*pLen*0.5, tipX, tipY);
+      ctx.moveTo(foot1X, foot1Y);
+      ctx.bezierCurveTo(cp1X, cp1Y, apexX, apexY, foot2X, foot2Y);
       ctx.stroke();
-      const promG = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, pLen*0.4);
-      promG.addColorStop(0, `rgba(255,${100+i*20},20,0.3)`);
-      promG.addColorStop(1, 'rgba(200,40,0,0)');
-      ctx.fillStyle = promG;
-      ctx.beginPath(); ctx.arc(tipX, tipY, pLen*0.4, 0, Math.PI*2); ctx.fill();
+
+      // Secondary thinner strand (parallel, slightly offset)
+      const s2Height = height * arc.strand2HeightMul;
+      const s2Mid = ba + arc.strand2Offset + arc.curveBias * 0.2 * Math.sin(arc.age * 2.1 + 1);
+      const s2Apex = R + s2Height;
+      const s2ApexX = sx + Math.cos(s2Mid) * s2Apex;
+      const s2ApexY = sy + Math.sin(s2Mid) * s2Apex;
+      const s2cp1D = R + s2Height * 0.65;
+      const s2cp1X = sx + Math.cos(cp1Angle + arc.strand2Offset) * s2cp1D;
+      const s2cp1Y = sy + Math.sin(cp1Angle + arc.strand2Offset) * s2cp1D;
+      const s2cp2X = sx + Math.cos(cp2Angle + arc.strand2Offset) * s2cp1D;
+      const s2cp2Y = sy + Math.sin(cp2Angle + arc.strand2Offset) * s2cp1D;
+      ctx.strokeStyle = `rgba(255,${g+40},${b2+20},${alpha * 0.5})`;
+      ctx.lineWidth = arc.thickness * envelope * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(foot1X, foot1Y);
+      ctx.bezierCurveTo(s2cp1X, s2cp1Y, s2ApexX, s2ApexY, foot2X, foot2Y);
+      ctx.stroke();
+
+      // Glow at apex
+      const glowR = height * 0.35 * envelope;
+      if (glowR > 1) {
+        const glowG = ctx.createRadialGradient(apexX, apexY, 0, apexX, apexY, glowR);
+        glowG.addColorStop(0, `rgba(255,${g+30},${b2+10},${alpha * 0.4})`);
+        glowG.addColorStop(1, 'rgba(200,40,0,0)');
+        ctx.fillStyle = glowG;
+        ctx.beginPath(); ctx.arc(apexX, apexY, glowR, 0, Math.PI*2); ctx.fill();
+      }
+
+      // Bright footpoints on surface
+      ctx.globalAlpha = alpha * 0.6;
+      for (const fx of [[foot1X, foot1Y], [foot2X, foot2Y]]) {
+        const fpG = ctx.createRadialGradient(fx[0], fx[1], 0, fx[0], fx[1], R*0.06);
+        fpG.addColorStop(0, 'rgba(255,220,100,0.7)');
+        fpG.addColorStop(1, 'rgba(255,100,20,0)');
+        ctx.fillStyle = fpG;
+        ctx.beginPath(); ctx.arc(fx[0], fx[1], R*0.06, 0, Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     }
-    ctx.globalAlpha = 1;
   }
   heatDamage(entity) {
     const d = dist(this, entity);
@@ -2255,6 +2555,7 @@ class Ship {
     if (nearest) {
       const laserResist = (nearest.isBoss && !nearest.nearSun) ? 0.15 : 1;
       nearest.hp -= LASER_DPS * (this.laserMult || 1) * dt * laserResist;
+      playEnemyHitSound(nearest.typeName);
       particles.emit(nearest.x, nearest.y, 3, '#f4f', 100, 0.15, 2);
       particles.emit(nearest.x, nearest.y, 1, '#fff', 60, 0.1, 1);
       const a = angle(this, nearest);
@@ -2282,6 +2583,7 @@ class Ship {
         // Boss critical takes 3x knockback
         const knockbackMult = (inv.isBoss && inv.critical) ? 3 : 1;
         inv.hp -= 80*(1 - d/effectiveRadius);
+        playEnemyHitSound(inv.typeName);
         const nx = (inv.x - this.x)/Math.max(d,1), ny = (inv.y - this.y)/Math.max(d,1);
         inv.vx += nx*150*knockbackMult; inv.vy += ny*150*knockbackMult;
 
@@ -2327,6 +2629,7 @@ class Ship {
       particles.emit(this.x, this.y, 50, '#ff0', 280, 0.7, 3);
       playSound('explode_big'); game.shake.add(12);
       stopLaserSound();
+      stopTorpedoSound();
       this.respawn();
     }
   }
@@ -4072,9 +4375,11 @@ const SYSTEM_EXPANSION = [
 
 function expandSystem(wave) {
   if (!game) return;
+  if (!game.expandedWaves) game.expandedWaves = new Set();
 
   for (const expansion of SYSTEM_EXPANSION) {
-    if (expansion.wave === wave) {
+    if (expansion.wave === wave && !game.expandedWaves.has(wave)) {
+      game.expandedWaves.add(wave);
       // Create new planet
       const p = new Planet(0, 0, expansion.radius, expansion.color1, expansion.color2, expansion.name);
       p.orbitRadius = expansion.orbitR;
@@ -4300,7 +4605,11 @@ function updateGame(dt) {
 
   // Weapons
   if (mouseDown && game.ship.alive) game.ship.fire(game.bullets, game.particles);
-  if (keys['e']) game.ship.fireMissile(game.invaders, game.particles);
+  if (keys['e']) {
+    game.ship.fireMissile(game.invaders, game.particles);
+  } else {
+    stopTorpedoSound();
+  }
   const laserUnlockWave = (SHIP_TYPES[game.ship.shipType] && SHIP_TYPES[game.ship.shipType].laserWave) || 3;
   if (keys['q'] && game.wave >= laserUnlockWave) {
     game.ship.fireLaser(game.invaders, game.particles, dt);
@@ -4333,6 +4642,7 @@ function updateGame(dt) {
           dmgMult = 0.15;
         }
         inv.hp -= b.damage * dmgMult;
+        playEnemyHitSound(inv.typeName);
         const a = Math.atan2(b.vy, b.vx);
         inv.vx += Math.cos(a)*25; inv.vy += Math.sin(a)*25;
         game.particles.emit(b.x, b.y, 5, inv.color, 150, 0.2, 2);
@@ -4411,6 +4721,7 @@ function updateGame(dt) {
         if (sd < TORPEDO_SPLASH) {
           const dmg = m.damage * (1 - sd/TORPEDO_SPLASH);
           inv.hp -= dmg;
+          playEnemyHitSound(inv.typeName);
           const nx = (inv.x - m.x)/Math.max(sd,1), ny = (inv.y - m.y)/Math.max(sd,1);
           inv.vx += nx*25; inv.vy += ny*25;
 
@@ -5715,6 +6026,8 @@ window.addEventListener('keydown', e => {
     gamePaused = !gamePaused;
     document.getElementById('pause-menu').style.display = gamePaused ? 'flex' : 'none';
     if (gamePaused) {
+      stopTorpedoSound();
+      stopLaserSound();
       updatePauseAchievements();
     }
   }
