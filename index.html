@@ -355,7 +355,7 @@ canvas { display: block; cursor: crosshair; }
     <div class="key">P</div><div class="action">Pause / Resume</div>
   </div>
   <div style="margin-top:8px;">
-    <button id="sound-toggle-btn" onclick="soundMuted=!soundMuted; if(soundMuted)stopLaserSound(); this.textContent=soundMuted?'♪ SOUND: OFF':'♪ SOUND: ON'; this.style.borderColor=soundMuted?'#666':'#0ff'; this.style.color=soundMuted?'#666':'#0ff';" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">♪ SOUND: ON</button>
+    <button id="sound-toggle-btn" onclick="soundMuted=!soundMuted; if(soundMuted){stopLaserSound();stopWeaponDrone();} this.textContent=soundMuted?'♪ SOUND: OFF':'♪ SOUND: ON'; this.style.borderColor=soundMuted?'#666':'#0ff'; this.style.color=soundMuted?'#666':'#0ff';" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">♪ SOUND: ON</button>
   </div>
   <div style="margin-top:8px;">
     <button id="palette-toggle-btn" onclick="cyclePalette()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">PALETTE: STANDARD</button>
@@ -595,20 +595,127 @@ function cyclePalette() {
   if (btn) btn.textContent = 'PALETTE: ' + getPalette().name;
 }
 
-// --- Feature: Ambient Generative Weapon Audio System ---
-let musicState = {
-  // E minor pentatonic notes (in Hz) - across multiple octaves
-  notes: [
-    // Octave 1: E2, G2, A2, B2, D2
-    82.41, 98.00, 110.00, 123.47, 146.83,
-    // Octave 2: E3, G3, A3, B3, D3
-    164.81, 196.00, 220.00, 246.94, 293.66,
-    // Octave 3: E4, G4, A4, B4, D4
-    329.63, 392.00, 440.00, 493.88, 587.33,
-  ],
-  lastNoteTime: 0,
-  lastNoteIndex: 7, // Start near middle
+// --- Feature: Ambient Weapon Drone System ---
+// Instead of individual notes per shot, a continuous evolving pad that
+// swells when firing and fades when idle. Slow harmonic shifts create
+// an atmospheric soundscape rather than repetitive blips.
+let weaponDrone = {
+  active: false,
+  oscs: null,        // array of oscillator nodes
+  gains: null,       // array of per-osc gain nodes
+  masterGain: null,  // master volume
+  filter: null,      // lowpass filter
+  lfo: null,         // slow LFO for movement
+  lfoGain: null,
+  targetVolume: 0,   // what we're fading toward
+  currentChord: 0,   // index into chord progression
+  chordTimer: 0,     // time until next chord change
+  lastShootTime: 0,  // track firing activity
 };
+
+// Slow-evolving chord progression (E minor ambient: Em, Cmaj7, Am7, Bm)
+const DRONE_CHORDS = [
+  [82.41, 123.47, 164.81, 246.94],  // Em: E2, B2, E3, B3
+  [65.41, 98.00, 164.81, 246.94],   // C:  C2, G2, E3, B3
+  [55.00, 82.41, 130.81, 220.00],   // Am: A1, E2, C3, A3
+  [61.74, 92.50, 123.47, 185.00],   // Bm: B1, F#2, B2, F#3
+];
+
+function initWeaponDrone() {
+  if (!audioCtx || weaponDrone.active) return;
+  weaponDrone.active = true;
+
+  // Master gain (starts silent)
+  weaponDrone.masterGain = audioCtx.createGain();
+  weaponDrone.masterGain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+
+  // Lowpass filter — warm, muffled tone
+  weaponDrone.filter = audioCtx.createBiquadFilter();
+  weaponDrone.filter.type = 'lowpass';
+  weaponDrone.filter.frequency.setValueAtTime(800, audioCtx.currentTime);
+  weaponDrone.filter.Q.setValueAtTime(0.7, audioCtx.currentTime);
+  weaponDrone.filter.connect(weaponDrone.masterGain);
+  weaponDrone.masterGain.connect(audioCtx.destination);
+
+  // LFO for subtle pitch wobble
+  weaponDrone.lfo = audioCtx.createOscillator();
+  weaponDrone.lfo.type = 'sine';
+  weaponDrone.lfo.frequency.setValueAtTime(0.15, audioCtx.currentTime); // very slow
+  weaponDrone.lfoGain = audioCtx.createGain();
+  weaponDrone.lfoGain.gain.setValueAtTime(1.5, audioCtx.currentTime); // subtle ±1.5Hz drift
+  weaponDrone.lfo.connect(weaponDrone.lfoGain);
+  weaponDrone.lfo.start();
+
+  // 4 oscillators for the chord
+  const chord = DRONE_CHORDS[0];
+  weaponDrone.oscs = [];
+  weaponDrone.gains = [];
+  for (let i = 0; i < 4; i++) {
+    const osc = audioCtx.createOscillator();
+    osc.type = i < 2 ? 'sine' : 'triangle'; // mix sine and triangle
+    osc.frequency.setValueAtTime(chord[i], audioCtx.currentTime);
+    weaponDrone.lfoGain.connect(osc.frequency); // LFO modulates all pitches
+
+    const g = audioCtx.createGain();
+    // Lower voices louder, upper voices quieter
+    g.gain.setValueAtTime(i === 0 ? 0.35 : i === 1 ? 0.25 : i === 2 ? 0.15 : 0.1, audioCtx.currentTime);
+    osc.connect(g);
+    g.connect(weaponDrone.filter);
+    osc.start();
+    weaponDrone.oscs.push(osc);
+    weaponDrone.gains.push(g);
+  }
+
+  weaponDrone.currentChord = 0;
+  weaponDrone.chordTimer = 4 + Math.random() * 3; // 4-7 seconds per chord
+}
+
+function updateWeaponDrone(dt) {
+  if (!weaponDrone.active || !audioCtx || soundMuted) return;
+  const now = audioCtx.currentTime;
+
+  // Determine if player is actively firing (fired within last 0.15s)
+  const firing = (now - weaponDrone.lastShootTime) < 0.15;
+  weaponDrone.targetVolume = firing ? 0.025 : 0;
+
+  // Smooth volume fade (swell up over 0.3s, fade out over 1.5s)
+  const current = weaponDrone.masterGain.gain.value;
+  const target = weaponDrone.targetVolume;
+  if (Math.abs(current - target) > 0.001) {
+    const rate = target > current ? 3.0 : 0.7; // fast swell, slow fade
+    const next = current + (target - current) * Math.min(1, rate * dt);
+    weaponDrone.masterGain.gain.setValueAtTime(Math.max(0.001, next), now);
+  }
+
+  // Open filter when firing (brighter tone), close when idle (darker)
+  const filterTarget = firing ? 2000 : 600;
+  const filterCurrent = weaponDrone.filter.frequency.value;
+  const filterNext = filterCurrent + (filterTarget - filterCurrent) * Math.min(1, 2 * dt);
+  weaponDrone.filter.frequency.setValueAtTime(filterNext, now);
+
+  // Slow chord progression
+  weaponDrone.chordTimer -= dt;
+  if (weaponDrone.chordTimer <= 0) {
+    weaponDrone.currentChord = (weaponDrone.currentChord + 1) % DRONE_CHORDS.length;
+    const chord = DRONE_CHORDS[weaponDrone.currentChord];
+    // Glide to new chord frequencies over 2 seconds
+    for (let i = 0; i < 4 && i < weaponDrone.oscs.length; i++) {
+      weaponDrone.oscs[i].frequency.exponentialRampToValueAtTime(chord[i], now + 2.0);
+    }
+    weaponDrone.chordTimer = 5 + Math.random() * 4; // 5-9 seconds per chord
+  }
+}
+
+function stopWeaponDrone() {
+  if (!weaponDrone.active) return;
+  try {
+    if (weaponDrone.oscs) weaponDrone.oscs.forEach(o => { try { o.stop(); } catch(e){} });
+    if (weaponDrone.lfo) try { weaponDrone.lfo.stop(); } catch(e){}
+  } catch(e){}
+  weaponDrone.active = false;
+  weaponDrone.oscs = null;
+  weaponDrone.gains = null;
+}
 
 function playSound(type) {
   if (!audioCtx || soundMuted) return;
@@ -616,72 +723,9 @@ function playSound(type) {
   const gain = audioCtx.createGain();
   gain.connect(audioCtx.destination);
   if (type === 'shoot') {
-    const now2 = audioCtx.currentTime;
-    if (now2 - musicState.lastNoteTime < 0.03) return; // 30ms debounce for denser textures
-    musicState.lastNoteTime = now2;
-
-    // Weighted stepwise motion: 70% next/prev note, 30% random jump
-    let nextIndex;
-    if (Math.random() < 0.7) {
-      const direction = Math.random() < 0.5 ? -1 : 1;
-      nextIndex = (musicState.lastNoteIndex + direction + musicState.notes.length) % musicState.notes.length;
-    } else {
-      nextIndex = Math.floor(Math.random() * musicState.notes.length);
-    }
-    musicState.lastNoteIndex = nextIndex;
-
-    const baseFreq = musicState.notes[nextIndex];
-    const waveform = Math.random() < 0.5 ? 'sine' : 'triangle';
-
-    // Subtle pitch drift: ±3%
-    const driftFactor = 1 + (Math.random() - 0.5) * 0.06;
-    const freq = baseFreq * driftFactor;
-
-    // Primary tone
-    const osc1 = audioCtx.createOscillator();
-    osc1.type = waveform;
-    osc1.frequency.setValueAtTime(freq, now);
-
-    // Subtle harmonic fifth above (very quiet)
-    const osc2 = audioCtx.createOscillator();
-    osc2.type = waveform;
-    const fifthFreq = freq * 1.5;
-    osc2.frequency.setValueAtTime(fifthFreq, now);
-
-    // Lowpass filter for warmth
-    const filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(4000 + Math.random() * 2000, now);
-    filter.Q.setValueAtTime(1, now);
-
-    // Envelope variation: attack/decay times vary slightly
-    const attackTime = 0.01 + Math.random() * 0.01;
-    const decayTime = 0.15 + Math.random() * 0.05;
-
-    // Primary oscillator gain (main voice)
-    const gain1 = audioCtx.createGain();
-    gain1.gain.setValueAtTime(0.015, now); // Much quieter for atmospheric texture
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + decayTime);
-
-    // Harmonic fifth gain (very quiet layer)
-    const gain2 = audioCtx.createGain();
-    gain2.gain.setValueAtTime(0.004, now); // 1/4 of primary
-    gain2.gain.exponentialRampToValueAtTime(0.0005, now + decayTime);
-
-    // Route: osc1 -> filter -> gain1 -> destination
-    osc1.connect(filter);
-    filter.connect(gain1);
-    gain1.connect(audioCtx.destination);
-
-    // Route: osc2 -> gain2 -> destination
-    osc2.connect(gain2);
-    gain2.connect(audioCtx.destination);
-
-    // Start both oscillators and stop after decay time
-    osc1.start(now);
-    osc1.stop(now + decayTime);
-    osc2.start(now);
-    osc2.stop(now + decayTime);
+    // Instead of individual notes, just signal the ambient drone that we're firing
+    if (!weaponDrone.active) initWeaponDrone();
+    weaponDrone.lastShootTime = audioCtx.currentTime;
   } else if (type === 'missile') {
     const osc = audioCtx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(500, now + 0.15);
@@ -4038,6 +4082,7 @@ function updateGame(dt) {
   if (!gameRunning || !game) return;
   game.time += dt;
   game.star.update(dt);
+  updateWeaponDrone(dt);
 
   // Planets orbit the star
   for (const p of game.planets) {
