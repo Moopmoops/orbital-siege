@@ -2426,23 +2426,26 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Sun heat glow — visible burning when near the sun
+    // Sun heat glow — dimmer at high speed (whipping through), brighter when lingering
     if (game && game.star) {
       const dToStar = dist(this, game.star);
       const heatZone = game.star.radius + HEAT_RANGE_OUTER;
       if (dToStar < heatZone) {
         const heatIntensity = 1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER;
         const hi = clamp(heatIntensity, 0, 1);
-        // Orange-red glow around the ship that intensifies closer to sun
-        ctx.globalAlpha = hi * 0.6;
+        const spd = Math.hypot(this.vx, this.vy);
+        // Fast ships barely glow near sun — they're whipping through
+        const speedDamp = clamp(1 - (spd - 80) / 200, 0.15, 1);
+        const effectiveHi = hi * speedDamp;
+        ctx.globalAlpha = effectiveHi * 0.6;
         const heatGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.3, 0, 0, SHIP_SIZE*2.5);
-        heatGrad.addColorStop(0, `rgba(255,${Math.floor(200-hi*150)},${Math.floor(50-hi*40)},0.8)`);
-        heatGrad.addColorStop(0.5, `rgba(255,${Math.floor(100-hi*60)},0,0.4)`);
+        heatGrad.addColorStop(0, `rgba(255,${Math.floor(200-effectiveHi*150)},${Math.floor(50-effectiveHi*40)},0.8)`);
+        heatGrad.addColorStop(0.5, `rgba(255,${Math.floor(100-effectiveHi*60)},0,0.4)`);
         heatGrad.addColorStop(1, 'rgba(200,30,0,0)');
         ctx.fillStyle = heatGrad;
         ctx.beginPath(); ctx.arc(0, 0, SHIP_SIZE*2.5, 0, Math.PI*2); ctx.fill();
-        // Flickering sparks/embers
-        if (hi > 0.3) {
+        // Flickering sparks only when slow and deep
+        if (effectiveHi > 0.3) {
           for (let i = 0; i < 3; i++) {
             const sa = Math.random()*Math.PI*2;
             const sr = SHIP_SIZE*(0.5 + Math.random()*1.5);
@@ -2454,22 +2457,26 @@ class Ship {
       }
     }
 
-    // Atmospheric entry glow near planets
+    // Atmospheric entry glow near planets — faster = brighter (friction heating)
     if (game && game.planets) {
+      const spd = Math.hypot(this.vx, this.vy);
       for (const planet of game.planets) {
         const dToPlanet = dist(this, planet);
-        const atmoZone = planet.radius * 1.8; // atmosphere extends 80% beyond surface
+        const atmoZone = planet.radius * 1.8;
         if (dToPlanet < atmoZone && dToPlanet > planet.radius * 0.5) {
-          const atmoIntensity = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 0.8), 0, 1);
-          if (atmoIntensity > 0) {
-            // Get a warm version of the planet's color
-            ctx.globalAlpha = atmoIntensity * 0.35;
-            const atmoGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.2, 0, 0, SHIP_SIZE*2);
-            atmoGrad.addColorStop(0, `rgba(255,200,100,0.6)`);
-            atmoGrad.addColorStop(0.6, `rgba(255,150,50,0.3)`);
+          const proximityFactor = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 0.8), 0, 1);
+          // Speed-dependent: slow = no glow, fast = bright glow (atmospheric friction)
+          const speedFactor = clamp((spd - 40) / 150, 0, 1);
+          const atmoIntensity = proximityFactor * speedFactor;
+          if (atmoIntensity > 0.02) {
+            ctx.globalAlpha = atmoIntensity * 0.5;
+            const glowSize = SHIP_SIZE * (1.5 + speedFactor * 1.5);
+            const atmoGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.2, 0, 0, glowSize);
+            atmoGrad.addColorStop(0, `rgba(255,${Math.floor(220-speedFactor*80)},${Math.floor(120-speedFactor*80)},0.7)`);
+            atmoGrad.addColorStop(0.5, `rgba(255,${Math.floor(160-speedFactor*60)},${Math.floor(60-speedFactor*40)},0.3)`);
             atmoGrad.addColorStop(1, 'rgba(200,100,20,0)');
             ctx.fillStyle = atmoGrad;
-            ctx.beginPath(); ctx.arc(0, 0, SHIP_SIZE*2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, glowSize, 0, Math.PI*2); ctx.fill();
             ctx.globalAlpha = 1;
           }
         }
@@ -4622,10 +4629,10 @@ function drawGame() {
     }
     // Glow pass
     const orbitColor = getPalette().orbitLine;
-    ctx.strokeStyle = orbitColor + '1f'; ctx.lineWidth = 5;
+    ctx.strokeStyle = orbitColor + '40'; ctx.lineWidth = 5;
     ctx.stroke();
     // Sharp pass
-    ctx.strokeStyle = orbitColor + '73'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = orbitColor + 'b0'; ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.setLineDash([]);
   }
