@@ -809,19 +809,19 @@ function updateWeaponDrone(dt) {
 
   // Determine if player is actively firing (fired within last 0.15s)
   const firing = (now - weaponDrone.lastShootTime) < 0.15;
-  weaponDrone.targetVolume = firing ? 0.025 : 0;
+  weaponDrone.targetVolume = firing ? 0.010 : 0;
 
   // Smooth volume fade (swell up over 0.3s, fade out over 1.5s)
   const current = weaponDrone.masterGain.gain.value;
   const target = weaponDrone.targetVolume;
   if (Math.abs(current - target) > 0.001) {
-    const rate = target > current ? 3.0 : 0.7; // fast swell, slow fade
+    const rate = target > current ? 2.5 : 0.7; // fast swell, slow fade
     const next = current + (target - current) * Math.min(1, rate * dt);
     weaponDrone.masterGain.gain.setValueAtTime(Math.max(0.001, next), now);
   }
 
   // Open filter when firing (brighter tone), close when idle (darker)
-  const filterTarget = firing ? 2000 : 600;
+  const filterTarget = firing ? 1200 : 400;
   const filterCurrent = weaponDrone.filter.frequency.value;
   const filterNext = filterCurrent + (filterTarget - filterCurrent) * Math.min(1, 2 * dt);
   weaponDrone.filter.frequency.setValueAtTime(filterNext, now);
@@ -836,13 +836,13 @@ function updateWeaponDrone(dt) {
     }
     // Slowly morph waveforms between sine and triangle by cross-fading gains
     // Voice 0 & 1 breathe louder/softer in antiphase for movement
-    const breath = Math.sin(now * 0.4) * 0.08;
-    weaponDrone.gains[0].gain.setValueAtTime(0.35 + breath, now);
-    weaponDrone.gains[1].gain.setValueAtTime(0.25 - breath, now);
+    const breath = Math.sin(now * 0.4) * 0.05;
+    weaponDrone.gains[0].gain.setValueAtTime(0.25 + breath, now);
+    weaponDrone.gains[1].gain.setValueAtTime(0.18 - breath, now);
     // Upper voices have their own slower breathing
-    const breath2 = Math.sin(now * 0.23 + 1.5) * 0.04;
-    weaponDrone.gains[2].gain.setValueAtTime(0.15 + breath2, now);
-    weaponDrone.gains[3].gain.setValueAtTime(0.10 - breath2, now);
+    const breath2 = Math.sin(now * 0.23 + 1.5) * 0.03;
+    weaponDrone.gains[2].gain.setValueAtTime(0.10 + breath2, now);
+    weaponDrone.gains[3].gain.setValueAtTime(0.07 - breath2, now);
   }
 
   // Slow chord progression
@@ -2823,21 +2823,38 @@ class Ship {
         // Fast ships barely glow near sun — they're whipping through
         const speedDamp = clamp(1 - (spd - 80) / 200, 0.15, 1);
         const effectiveHi = hi * speedDamp;
-        ctx.globalAlpha = effectiveHi * 0.6;
-        const heatGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.3, 0, 0, SHIP_SIZE*2.5);
-        heatGrad.addColorStop(0, `rgba(255,${Math.floor(200-effectiveHi*150)},${Math.floor(50-effectiveHi*40)},0.8)`);
-        heatGrad.addColorStop(0.5, `rgba(255,${Math.floor(100-effectiveHi*60)},0,0.4)`);
-        heatGrad.addColorStop(1, 'rgba(200,30,0,0)');
-        ctx.fillStyle = heatGrad;
-        ctx.beginPath(); ctx.arc(0, 0, SHIP_SIZE*2.5, 0, Math.PI*2); ctx.fill();
-        // Flickering sparks only when slow and deep
-        if (effectiveHi > 0.3) {
-          for (let i = 0; i < 3; i++) {
-            const sa = Math.random()*Math.PI*2;
-            const sr = SHIP_SIZE*(0.5 + Math.random()*1.5);
-            ctx.fillStyle = `rgba(255,${Math.floor(150+Math.random()*105)},0,${0.3+Math.random()*0.4})`;
-            ctx.beginPath(); ctx.arc(Math.cos(sa)*sr, Math.sin(sa)*sr, 1+Math.random()*1.5, 0, Math.PI*2); ctx.fill();
-          }
+
+        // Outer heat haze — wide soft glow
+        const outerSize = SHIP_SIZE * (3.5 + effectiveHi * 2);
+        ctx.globalAlpha = effectiveHi * 0.35;
+        const outerGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.5, 0, 0, outerSize);
+        outerGrad.addColorStop(0, 'rgba(255,80,10,0.5)');
+        outerGrad.addColorStop(0.4, 'rgba(255,40,0,0.2)');
+        outerGrad.addColorStop(1, 'rgba(180,15,0,0)');
+        ctx.fillStyle = outerGrad;
+        ctx.beginPath(); ctx.arc(0, 0, outerSize, 0, Math.PI*2); ctx.fill();
+
+        // Core fire envelope — intense orange-white close to ship
+        const coreSize = SHIP_SIZE * (2.0 + effectiveHi * 1.5);
+        ctx.globalAlpha = effectiveHi * 0.7;
+        const coreGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.15, 0, 0, coreSize);
+        coreGrad.addColorStop(0, `rgba(255,${Math.floor(240-effectiveHi*100)},${Math.floor(120-effectiveHi*100)},0.9)`);
+        coreGrad.addColorStop(0.3, `rgba(255,${Math.floor(160-effectiveHi*80)},${Math.floor(30-effectiveHi*20)},0.6)`);
+        coreGrad.addColorStop(0.7, `rgba(220,${Math.floor(60-effectiveHi*30)},0,0.2)`);
+        coreGrad.addColorStop(1, 'rgba(180,20,0,0)');
+        ctx.fillStyle = coreGrad;
+        ctx.beginPath(); ctx.arc(0, 0, coreSize, 0, Math.PI*2); ctx.fill();
+
+        // Hot white-yellow highlight at center when very close
+        if (effectiveHi > 0.4) {
+          const whiteSize = SHIP_SIZE * (0.8 + effectiveHi * 0.6);
+          ctx.globalAlpha = (effectiveHi - 0.4) * 1.2;
+          const whiteGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, whiteSize);
+          whiteGrad.addColorStop(0, 'rgba(255,255,200,0.8)');
+          whiteGrad.addColorStop(0.5, 'rgba(255,200,80,0.3)');
+          whiteGrad.addColorStop(1, 'rgba(255,120,20,0)');
+          ctx.fillStyle = whiteGrad;
+          ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
         }
         ctx.globalAlpha = 1;
       }
