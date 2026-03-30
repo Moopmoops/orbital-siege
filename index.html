@@ -325,9 +325,9 @@ canvas { display: block; cursor: crosshair; }
     <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
   </div>
   <div class="right">
-    <div id="hud-hp">HULL: ████████████████████ 100%</div>
-    <div id="hud-energy">ENERGY: ████████████████████ 100%</div>
-    <div id="hud-weapons">MISSILES: ▮▮▮▮▮ | LASER: LOCKED</div>
+    <div id="hud-hp" style="margin-bottom:4px;">HULL: ████████████████████ 100%</div>
+    <div id="hud-energy" style="margin-bottom:4px;">ENERGY: ████████████████████ 100%</div>
+    <div id="hud-weapons">TORPEDOES: READY | LASER: LOCKED</div>
   </div>
 </div>
 
@@ -767,36 +767,55 @@ function playSound(type) {
   } else if (type === 'laser') {
     // Handled by startLaserSound/stopLaserSound
   } else if (type === 'explode') {
-    const bs = audioCtx.sampleRate * 0.3; const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
-    const d = buf.getChannelData(0); for (let i = 0; i < bs; i++) d[i] = (Math.random()*2-1)*(1-i/bs);
+    // Softer explosion — filtered noise with slower attack
+    const bs = audioCtx.sampleRate * 0.4; const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < bs; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/bs, 1.5);
     const src = audioCtx.createBufferSource(); src.buffer = buf;
-    gain.gain.setValueAtTime(0.15, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
-    src.connect(gain); src.start(now);
+    const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass';
+    lpf.frequency.setValueAtTime(1200, now); lpf.frequency.exponentialRampToValueAtTime(300, now + 0.4);
+    gain.gain.setValueAtTime(0.001, now); gain.gain.linearRampToValueAtTime(0.10, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    src.connect(lpf); lpf.connect(gain); src.start(now);
   } else if (type === 'explode_big') {
-    const bs = audioCtx.sampleRate * 0.6; const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
-    const d = buf.getChannelData(0); for (let i = 0; i < bs; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/bs,0.4);
+    // Deep muffled boom — heavy lowpass, longer decay
+    const bs = audioCtx.sampleRate * 0.8; const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < bs; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/bs, 0.8);
     const src = audioCtx.createBufferSource(); src.buffer = buf;
-    gain.gain.setValueAtTime(0.25, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-    src.connect(gain); src.start(now);
+    const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass';
+    lpf.frequency.setValueAtTime(800, now); lpf.frequency.exponentialRampToValueAtTime(150, now + 0.8);
+    gain.gain.setValueAtTime(0.001, now); gain.gain.linearRampToValueAtTime(0.18, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+    src.connect(lpf); lpf.connect(gain); src.start(now);
+    // Sub-bass thud
+    const sub = audioCtx.createOscillator(); sub.type = 'sine';
+    sub.frequency.setValueAtTime(45, now); sub.frequency.exponentialRampToValueAtTime(20, now + 0.5);
+    const subG = audioCtx.createGain(); subG.connect(audioCtx.destination);
+    subG.gain.setValueAtTime(0.12, now); subG.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    sub.connect(subG); sub.start(now); sub.stop(now + 0.5);
   } else if (type === 'hit') {
-    const osc = audioCtx.createOscillator(); osc.type = 'triangle';
-    osc.frequency.setValueAtTime(150, now); osc.frequency.exponentialRampToValueAtTime(40, now + 0.08);
-    gain.gain.setValueAtTime(0.08, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-    osc.connect(gain); osc.start(now); osc.stop(now + 0.08);
-  } else if (type === 'bomb') {
+    // Softer thud instead of sharp crack
     const osc = audioCtx.createOscillator(); osc.type = 'sine';
-    osc.frequency.setValueAtTime(60, now); osc.frequency.exponentialRampToValueAtTime(15, now + 0.8);
-    gain.gain.setValueAtTime(0.2, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
-    osc.connect(gain); osc.start(now); osc.stop(now + 0.8);
+    osc.frequency.setValueAtTime(100, now); osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+    gain.gain.setValueAtTime(0.001, now); gain.gain.linearRampToValueAtTime(0.06, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.12);
+  } else if (type === 'bomb') {
+    // Deep rumble with filtered noise tail
+    const osc = audioCtx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(50, now); osc.frequency.exponentialRampToValueAtTime(12, now + 1.0);
+    gain.gain.setValueAtTime(0.15, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+    osc.connect(gain); osc.start(now); osc.stop(now + 1.0);
     setTimeout(() => {
-      if (!audioCtx) return;
+      if (!audioCtx || soundMuted) return;
       const g2 = audioCtx.createGain(); g2.connect(audioCtx.destination);
-      const bs = audioCtx.sampleRate * 0.5; const b2 = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
-      const d2 = b2.getChannelData(0); for (let i = 0; i < bs; i++) d2[i] = (Math.random()*2-1)*Math.pow(1-i/bs,0.3);
+      const bs = audioCtx.sampleRate * 0.6; const b2 = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
+      const d2 = b2.getChannelData(0); for (let i = 0; i < bs; i++) d2[i] = (Math.random()*2-1)*Math.pow(1-i/bs, 1.2);
       const s2 = audioCtx.createBufferSource(); s2.buffer = b2;
-      g2.gain.setValueAtTime(0.18, audioCtx.currentTime); g2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.5);
-      s2.connect(g2); s2.start();
-    }, 100);
+      const lpf2 = audioCtx.createBiquadFilter(); lpf2.type = 'lowpass';
+      lpf2.frequency.setValueAtTime(600, audioCtx.currentTime); lpf2.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.6);
+      g2.gain.setValueAtTime(0.10, audioCtx.currentTime); g2.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+      s2.connect(lpf2); lpf2.connect(g2); s2.start();
+    }, 80);
   } else if (type === 'reproduce') {
     const osc = audioCtx.createOscillator(); osc.type = 'sine';
     osc.frequency.setValueAtTime(300, now); osc.frequency.exponentialRampToValueAtTime(700, now + 0.25);
@@ -1936,16 +1955,17 @@ class Planet {
 
   drawRings(ctx, sx, sy, R, half) {
     ctx.save();
-    // Clip to top or bottom half
-    ctx.beginPath();
+
     if (half === 'back') {
-      // Bottom half (behind planet)
-      ctx.rect(sx - R*3, sy, R*6, R*3);
-    } else {
-      // Top half (in front)
-      ctx.rect(sx - R*3, sy - R*3, R*6, R*3);
+      // Back rings: clip OUT the planet body circle so rings don't show through
+      ctx.beginPath();
+      // Outer bounding box (clockwise)
+      ctx.rect(sx - R*4, sy - R*4, R*8, R*8);
+      // Planet body cutout (counter-clockwise)
+      ctx.arc(sx, sy, R + 1, 0, Math.PI*2, true);
+      ctx.clip('evenodd');
     }
-    ctx.clip();
+    // No special clip needed for front — just draw on top
 
     // Draw ring ellipses
     ctx.translate(sx, sy);
@@ -1955,14 +1975,29 @@ class Planet {
     const rComp = (rgbColor >> 16) & 255;
     const gComp = (rgbColor >> 8) & 255;
     const bComp = rgbColor & 255;
-    for (let r = 0; r < 4; r++) {
-      const ringR = R * (1.5 + r * 0.3);
-      const ringAlpha = 0.15 - r * 0.03;
-      ctx.strokeStyle = `rgba(${rComp},${gComp},${bComp},${ringAlpha})`;
-      ctx.lineWidth = R * 0.15;
-      ctx.beginPath();
-      ctx.arc(0, 0, ringR, 0, Math.PI * 2);
-      ctx.stroke();
+
+    if (half === 'back') {
+      // Only draw the back arc (bottom semicircle in ring space)
+      for (let r = 0; r < 4; r++) {
+        const ringR = R * (1.5 + r * 0.3);
+        const ringAlpha = 0.15 - r * 0.03;
+        ctx.strokeStyle = `rgba(${rComp},${gComp},${bComp},${ringAlpha})`;
+        ctx.lineWidth = R * 0.15;
+        ctx.beginPath();
+        ctx.arc(0, 0, ringR, 0, Math.PI); // bottom half only
+        ctx.stroke();
+      }
+    } else {
+      // Front: top semicircle
+      for (let r = 0; r < 4; r++) {
+        const ringR = R * (1.5 + r * 0.3);
+        const ringAlpha = 0.15 - r * 0.03;
+        ctx.strokeStyle = `rgba(${rComp},${gComp},${bComp},${ringAlpha})`;
+        ctx.lineWidth = R * 0.15;
+        ctx.beginPath();
+        ctx.arc(0, 0, ringR, Math.PI, Math.PI*2); // top half only
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -2602,14 +2637,14 @@ class Ship {
 
 // ARH types by wave theme
 const ARH_TYPES = {
-  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 80,  shootChance: 0 },
-  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 30,  shootChance: 0 },
-  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 120, shootChance: 0 },
+  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0 },
+  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0 },
+  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0 },
   stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.3 },
-  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 60,  shootChance: 0 },
-  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 200, shootChance: 0.2 },
+  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0 },
+  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.2 },
   titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.5 },
-  overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 0, shootChance: 0.8, isBoss: true },
+  overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 350, shootChance: 0.8, isBoss: true },
 };
 
 function getWaveTypes(wave) {
@@ -4469,7 +4504,7 @@ function updateGame(dt) {
         if (swapOverlayVisible) { swapOverlayVisible = false; document.getElementById('ship-swap-overlay').classList.remove('show'); }
       }
       game.wave++;
-      game.waveTimer = 6;
+      game.waveTimer = 8;
       spawnWave();
       game.ship.hp = Math.min(game.ship.maxHp, game.ship.hp + 25);
     }
@@ -4815,19 +4850,20 @@ function drawGame() {
     ctx.globalAlpha = 1; ctx.textAlign = 'left';
   }
 
-  // Wave announcement (suppressed during boss rush)
+  // Wave announcement (suppressed during boss rush) — positioned in upper third
   if (!bossRushMode && game.invaders.length === 0 && game.waveTimer > 1) {
+    const announceY = 130; // fixed near top, well clear of gameplay
     ctx.fillStyle = '#0ff'; ctx.font = '28px Courier New'; ctx.textAlign = 'center';
-    ctx.globalAlpha = Math.min(1, (game.waveTimer-1)/1);
-    ctx.fillText(`WAVE ${game.wave} CLEARED`, canvas.width/2, canvas.height/2 - 30);
+    ctx.globalAlpha = Math.min(1, (game.waveTimer-1)/1.5);
+    ctx.fillText(`WAVE ${game.wave} CLEARED`, canvas.width/2, announceY);
     ctx.font = '14px Courier New'; ctx.fillStyle = '#4af';
-    ctx.fillText('Next wave incoming...', canvas.width/2, canvas.height/2 + 10);
+    ctx.fillText('Next wave incoming...', canvas.width/2, announceY + 35);
     const nextTypes = getWaveTypes(game.wave + 1);
     const currentTypes = getWaveTypes(game.wave);
     const newTypes = nextTypes.filter(t => !currentTypes.includes(t));
     const returningTypes = nextTypes.filter(t => currentTypes.includes(t));
     ctx.font = '11px Courier New';
-    let typeY = canvas.height/2 + 30;
+    let typeY = announceY + 55;
     if (newTypes.length > 0) {
       ctx.fillStyle = '#f84';
       ctx.fillText(`New: ${newTypes.map(t => ARH_TYPES[t].name).join(', ')}`, canvas.width/2, typeY);
