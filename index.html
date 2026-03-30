@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Orbital Siege — Forward Compatible</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; }
@@ -167,6 +169,73 @@ canvas { display: block; cursor: crosshair; }
 #ship-swap-overlay .swap-item:hover { border-color: #0ff; background: rgba(0,255,255,0.1); }
 #ship-swap-overlay .swap-item.current { border-color: #0ff; color: #0ff; }
 #ship-swap-overlay .swap-item.queued { border-color: #fa0; color: #fa0; }
+#mode-select {
+  display: none; flex-direction: column; align-items: center; margin-top: 20px;
+}
+#mode-select.show { display: flex; }
+#mode-select h2 { font-size: 24px; letter-spacing: 4px; margin-bottom: 20px; color: #0ff; }
+#mode-select .mode-grid { display: flex; gap: 20px; }
+#mode-select .mode-btn {
+  pointer-events: all; cursor: pointer; font-family: 'Courier New', monospace;
+  font-size: 18px; padding: 16px 48px; letter-spacing: 4px; transition: all 0.3s;
+  border: 2px solid; text-align: center; width: 200px;
+}
+#mode-select .mode-btn.ranked {
+  color: #0ff; border-color: #0ff;
+  background: none; text-shadow: 0 0 10px #0ff; box-shadow: 0 0 15px rgba(0,255,255,0.2);
+}
+#mode-select .mode-btn.ranked:hover {
+  background: rgba(0,255,255,0.15); box-shadow: 0 0 30px rgba(0,255,255,0.4);
+}
+#mode-select .mode-btn.freeplay {
+  color: #888; border-color: #888;
+  background: none; text-shadow: 0 0 10px #888;
+}
+#mode-select .mode-btn.freeplay:hover {
+  color: #aaa; border-color: #aaa; background: rgba(136,136,136,0.1); box-shadow: 0 0 15px rgba(136,136,136,0.2);
+}
+#mode-select .mode-desc {
+  font-size: 12px; color: #8cf; margin-top: 6px; min-height: 32px; text-align: center;
+}
+#hud-lives { margin-top: 6px; }
+#leaderboard {
+  display: none; flex-direction: column; align-items: center;
+  background: rgba(0,0,0,0.85); padding: 30px; border-radius: 8px;
+  border: 2px solid #0ff; margin-top: 20px; max-height: 400px; overflow-y: auto;
+}
+#leaderboard.show { display: flex; }
+#leaderboard h2 { font-size: 22px; letter-spacing: 4px; margin-bottom: 15px; color: #0ff; }
+#leaderboard-table {
+  width: 100%; font-size: 12px; font-family: 'Courier New', monospace;
+  border-collapse: collapse;
+}
+#leaderboard-table th {
+  color: #fa8; border-bottom: 1px solid rgba(0,255,255,0.3); padding: 6px 12px; text-align: left;
+  font-weight: bold;
+}
+#leaderboard-table td { color: #8cf; padding: 6px 12px; border-bottom: 1px solid rgba(0,255,255,0.1); }
+#leaderboard-table tr.player-entry { background: rgba(0,255,255,0.1); }
+#leaderboard-table tr.player-entry td { color: #0ff; font-weight: bold; }
+#leaderboard .unavailable { color: #888; font-size: 11px; padding: 10px; }
+#name-entry {
+  display: none; flex-direction: column; align-items: center; padding: 20px;
+  background: rgba(0,10,30,0.8); border: 1px solid #0ff; border-radius: 4px; margin-top: 20px;
+}
+#name-entry.show { display: flex; }
+#name-entry p { color: #0ff; font-size: 14px; margin-bottom: 12px; }
+#name-entry input {
+  background: #111; color: #0ff; border: 2px solid #0ff; padding: 8px 12px;
+  font-family: 'Courier New', monospace; font-size: 14px; max-width: 200px;
+  text-transform: uppercase; text-align: center;
+}
+#name-entry input::placeholder { color: #444; }
+#name-entry .submit-btn {
+  pointer-events: all; cursor: pointer; font-family: 'Courier New', monospace;
+  font-size: 14px; color: #0ff; background: none; border: 2px solid #0ff;
+  padding: 8px 30px; letter-spacing: 3px; transition: all 0.3s; margin-top: 12px;
+}
+#name-entry .submit-btn:hover { background: rgba(0,255,255,0.15); box-shadow: 0 0 20px rgba(0,255,255,0.3); }
+#game-over .leaderboard-section { margin-top: 20px; }
 </style>
 </head>
 <body>
@@ -189,6 +258,15 @@ canvas { display: block; cursor: crosshair; }
     <span>J</span> &mdash; Achievements<br>
   </div>
   <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
+  <button class="start-btn" id="leaderboard-btn" onclick="toggleStartLeaderboard()" style="margin-left:20px;">LEADERBOARD</button>
+  <div id="leaderboard" style="margin-top: 30px;">
+    <h2>HIGH SCORES</h2>
+    <table id="leaderboard-table">
+      <thead><tr><th>RANK</th><th>NAME</th><th>SCORE</th><th>WAVE</th></tr></thead>
+      <tbody id="leaderboard-body"></tbody>
+    </table>
+    <div class="unavailable" id="leaderboard-status"></div>
+  </div>
   <div id="ship-select">
     <div class="carousel">
       <button class="arrow-btn" onclick="cycleShip(-1)">&lt;</button>
@@ -197,6 +275,19 @@ canvas { display: block; cursor: crosshair; }
     </div>
     <button class="deploy-btn" onclick="deployShip()">DEPLOY</button>
   </div>
+  <div id="mode-select">
+    <h2>SELECT GAME MODE</h2>
+    <div class="mode-grid">
+      <button class="mode-btn ranked" onclick="selectGameMode('ranked')">
+        RANKED
+        <div class="mode-desc">5 Lives<br>Leaderboard</div>
+      </button>
+      <button class="mode-btn freeplay" onclick="selectGameMode('freeplay')">
+        FREE PLAY
+        <div class="mode-desc">Unlimited Lives<br>No Leaderboard</div>
+      </button>
+    </div>
+  </div>
 </div>
 
 <div id="ship-swap-overlay" id="ship-swap"></div>
@@ -204,7 +295,19 @@ canvas { display: block; cursor: crosshair; }
 <div id="game-over">
   <h1>ORBIT LOST</h1>
   <div class="stats" id="final-stats"></div>
-  <button class="start-btn" onclick="startGame()">RELAUNCH</button>
+  <div id="name-entry">
+    <p>YOU EARNED A HIGH SCORE!</p>
+    <input type="text" id="name-input" placeholder="ENTER NAME" maxlength="12">
+    <button class="submit-btn" onclick="submitHighScore()">SUBMIT</button>
+  </div>
+  <div class="leaderboard-section" id="game-over-leaderboard">
+    <h2 style="color:#0ff;margin-top:20px;margin-bottom:10px;">HIGH SCORES</h2>
+    <table id="game-over-leaderboard-table" style="font-size:12px;color:#8cf;font-family:'Courier New',monospace;border-collapse:collapse;width:100%;max-width:400px;">
+      <thead><tr><th style="color:#fa8;text-align:left;padding:6px;">RANK</th><th style="color:#fa8;text-align:left;padding:6px;">NAME</th><th style="color:#fa8;text-align:right;padding:6px;">SCORE</th></tr></thead>
+      <tbody id="game-over-leaderboard-body"></tbody>
+    </table>
+  </div>
+  <button class="start-btn" onclick="startGame()" style="margin-top:20px;">RELAUNCH</button>
 </div>
 
 <div id="ui-overlay">
@@ -212,6 +315,7 @@ canvas { display: block; cursor: crosshair; }
     <div id="hud-score">SCORE: 0</div>
     <div id="hud-wave">WAVE: 1</div>
     <div id="hud-kills">KILLS: 0</div>
+    <div id="hud-lives" style="color:#0ff;">LIVES: ♦♦♦♦♦</div>
     <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
   </div>
   <div class="right">
@@ -383,6 +487,9 @@ window.addEventListener('resize', resize); resize();
 let selectedShipType = 'vanguard';
 let gameRunning = false;
 let gamePaused = false;
+let gameMode = null; // 'ranked' or 'freeplay'
+let leaderboardData = [];
+let firebaseReady = false;
 
 // --- Input ---
 const keys = {}; let mouseX = 0, mouseY = 0, mouseDown = false;
@@ -1713,6 +1820,16 @@ class Ship {
   respawn() {
     game.deaths = (game.deaths || 0) + 1;
     game.achievementTracking.deathsSinceBoss += 1;
+
+    // In ranked mode, decrement lives
+    if (gameMode === 'ranked') {
+      game.lives--;
+      if (game.lives <= 0) {
+        gameOver();
+        return;
+      }
+    }
+
     // Escalating penalty: 10% first death, 20% second, 30% thereafter
     const penalty = game.deaths === 1 ? 0.10 : game.deaths === 2 ? 0.20 : 0.30;
     game.score = Math.max(0, Math.floor(game.score * (1 - penalty)));
@@ -2613,58 +2730,124 @@ function drawARH(ctx, inv, cam) {
     } else if (variant.name === 'THE ARCHON') {
       ctx.save();
       ctx.translate(sx, sy);
-      // Armored carapace — angular
-      ctx.fillStyle = hsl(h, 25, 15);
-      ctx.beginPath();
-      ctx.moveTo(0, -s*0.7); ctx.lineTo(s*0.6, -s*0.2);
-      ctx.lineTo(s*0.5, s*0.5); ctx.lineTo(-s*0.5, s*0.5);
-      ctx.lineTo(-s*0.6, -s*0.2); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = hsl(h, 50, 40);
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      // Central turret — tracks player
       const turretA = game.ship.alive ? angle(inv, game.ship) - rot : 0;
-      ctx.fillStyle = hsl(h, 30, 25);
-      ctx.beginPath(); ctx.arc(0, 0, s*0.3, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle = hsl(h, 50, 45);
+      // Outer threat glow — pulsing red aura
+      const glowPulse = 0.4 + Math.sin(t * 3) * 0.15;
+      const grd = ctx.createRadialGradient(0, 0, s*0.3, 0, 0, s*1.6);
+      grd.addColorStop(0, `rgba(255,40,20,${glowPulse * 0.3})`);
+      grd.addColorStop(0.5, `rgba(255,20,0,${glowPulse * 0.1})`);
+      grd.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(-s*1.6, -s*1.6, s*3.2, s*3.2);
+      // 6 heavy weapon arms — thick armored limbs with glowing tips
+      for (let i = 0; i < 6; i++) {
+        const armA = (i / 6) * Math.PI * 2 + Math.sin(t * 0.8 + i * 2) * 0.12;
+        const len1 = s * 0.65, len2 = s * 1.2;
+        const wave = Math.sin(t * 1.5 + i * 1.1) * s * 0.08;
+        const elbowX = Math.cos(armA) * len1 + wave;
+        const elbowY = Math.sin(armA) * len1 - wave;
+        const tipX = Math.cos(armA) * len2 + wave * 1.5;
+        const tipY = Math.sin(armA) * len2 - wave * 0.5;
+        // Arm segments — thick with armor plating look
+        ctx.strokeStyle = hsl(h, 15, 22);
+        ctx.lineWidth = s * 0.1;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(armA) * s * 0.35, Math.sin(armA) * s * 0.35);
+        ctx.lineTo(elbowX, elbowY);
+        ctx.stroke();
+        ctx.strokeStyle = hsl(h, 20, 18);
+        ctx.lineWidth = s * 0.07;
+        ctx.beginPath();
+        ctx.moveTo(elbowX, elbowY);
+        ctx.lineTo(tipX, tipY);
+        ctx.stroke();
+        // Glowing joint
+        ctx.fillStyle = hsl(h, 80, 50 + Math.sin(t * 4 + i) * 15);
+        ctx.beginPath(); ctx.arc(elbowX, elbowY, s * 0.06, 0, Math.PI * 2); ctx.fill();
+        // Weapon tip — glowing orb
+        const tipGlow = 0.5 + Math.sin(t * 3 + i * 1.5) * 0.3;
+        ctx.fillStyle = `rgba(255,${80 + i * 20},20,${tipGlow})`;
+        ctx.beginPath(); ctx.arc(tipX, tipY, s * 0.08, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(tipX, tipY, s * 0.03, 0, Math.PI * 2); ctx.fill();
+      }
+      // Main body — heavy layered hexagonal armor
+      // Outer armor ring
+      ctx.fillStyle = hsl(h, 15, 12);
+      ctx.strokeStyle = hsl(h, 40, 35);
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(turretA)*s*0.5, Math.sin(turretA)*s*0.5);
-      ctx.stroke();
-      // Turret barrel tip
-      ctx.fillStyle = hsl(h, 70, 55);
-      ctx.beginPath(); ctx.arc(Math.cos(turretA)*s*0.5, Math.sin(turretA)*s*0.5, 3, 0, Math.PI*2); ctx.fill();
-      // 6 mechanical legs — thick, segmented, animated
       for (let i = 0; i < 6; i++) {
-        const side = i < 3 ? -1 : 1;
-        const idx = i % 3;
-        const baseA2 = side * (0.8 + idx * 0.5) - Math.PI/2;
-        const shoulderX = Math.cos(baseA2) * s*0.4;
-        const shoulderY = Math.sin(baseA2) * s*0.4;
-        const elbowX = Math.cos(baseA2) * s*0.8 + Math.sin(t*1.5+i*1.2)*s*0.1;
-        const elbowY = Math.sin(baseA2) * s*0.8 + Math.cos(t*1.8+i)*s*0.1;
-        const footX = Math.cos(baseA2) * s*1.3 + Math.sin(t*1.2+i*0.8)*s*0.15;
-        const footY = Math.sin(baseA2) * s*1.3 + s*0.15;
-        ctx.strokeStyle = hsl(h, 20, 20);
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(shoulderX, shoulderY);
-        ctx.lineTo(elbowX, elbowY);
-        ctx.lineTo(footX, footY);
-        ctx.stroke();
-        // Joint dots
-        ctx.fillStyle = hsl(h, 45, 40);
-        ctx.beginPath(); ctx.arc(elbowX, elbowY, 2.5, 0, Math.PI*2); ctx.fill();
-        // Foot
-        ctx.fillStyle = hsl(h, 35, 30);
-        ctx.beginPath(); ctx.arc(footX, footY, 3, 0, Math.PI*2); ctx.fill();
+        const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+        const px = Math.cos(a) * s * 0.7, py = Math.sin(a) * s * 0.7;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
       }
-      // Eye
-      ctx.fillStyle = '#f44';
-      ctx.beginPath(); ctx.arc(0, -s*0.15, s*0.12, 0, Math.PI*2); ctx.fill();
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Inner armor plate — slightly rotated for layered look
+      ctx.fillStyle = hsl(h, 20, 18);
+      ctx.strokeStyle = hsl(h, 50, 40);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const px = Math.cos(a) * s * 0.5, py = Math.sin(a) * s * 0.5;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Armor panel lines — detail
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+        ctx.strokeStyle = hsl(h, 30, 28);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * s * 0.3, Math.sin(a) * s * 0.3);
+        ctx.lineTo(Math.cos(a) * s * 0.68, Math.sin(a) * s * 0.68);
+        ctx.stroke();
+      }
+      // Central turret dome — rotating, tracks player
+      ctx.fillStyle = hsl(h, 25, 22);
+      ctx.beginPath(); ctx.arc(0, 0, s * 0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = hsl(h, 50, 45);
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Twin cannon barrels
+      const barrelW = s * 0.05, barrelL = s * 0.65;
+      for (const offset of [-0.08, 0.08]) {
+        const bx = Math.cos(turretA + offset) * barrelL;
+        const by = Math.sin(turretA + offset) * barrelL;
+        ctx.strokeStyle = hsl(h, 30, 30);
+        ctx.lineWidth = s * 0.06;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(turretA + offset) * s * 0.15, Math.sin(turretA + offset) * s * 0.15);
+        ctx.lineTo(bx, by);
+        ctx.stroke();
+        // Muzzle glow
+        const muzzleGlow = 0.5 + Math.sin(t * 6 + offset * 50) * 0.3;
+        ctx.fillStyle = `rgba(255,100,30,${muzzleGlow})`;
+        ctx.beginPath(); ctx.arc(bx, by, s * 0.05, 0, Math.PI * 2); ctx.fill();
+      }
+      // Central eye — large, menacing, glowing
+      const eyePulse = 0.7 + Math.sin(t * 2.5) * 0.3;
+      const eyeGrd = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.2);
+      eyeGrd.addColorStop(0, `rgba(255,255,255,${eyePulse})`);
+      eyeGrd.addColorStop(0.3, `rgba(255,60,20,${eyePulse})`);
+      eyeGrd.addColorStop(0.7, `rgba(200,0,0,${eyePulse * 0.5})`);
+      eyeGrd.addColorStop(1, 'rgba(100,0,0,0)');
+      ctx.fillStyle = eyeGrd;
+      ctx.beginPath(); ctx.arc(0, 0, s * 0.2, 0, Math.PI * 2); ctx.fill();
+      // Eye pupil — tracks player
+      const pupilDist = s * 0.05;
       ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.arc(0, -s*0.15, s*0.04, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath();
+      ctx.arc(Math.cos(turretA) * pupilDist, Math.sin(turretA) * pupilDist, s * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+      // Bright eye dot
+      ctx.fillStyle = '#f44';
+      ctx.beginPath();
+      ctx.arc(Math.cos(turretA) * pupilDist * 0.5, Math.sin(turretA) * pupilDist * 0.5, s * 0.025, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
 
     } else if (variant.name === 'OBLIVION CORE') {
@@ -3072,6 +3255,7 @@ function initGame() {
     bombRings: [], scanRings: [],
     cam: { x: ship.x, y: ship.y },
     score: 0, kills: 0, wave: 1, deaths: 0,
+    lives: gameMode === 'ranked' ? 5 : Infinity,
     waveTimer: 5, waveSpawnCount: 5,
     time: 0, respawnMsg: null,
     boss: null, bossMessage: null, bossMessageTimer: 0,
@@ -3919,6 +4103,15 @@ function updateHUD() {
   document.getElementById('hud-score').textContent = `SCORE: ${game.score}`;
   document.getElementById('hud-wave').textContent = bossRushMode ? `BOSS RUSH (${bossRushKills} / ${bossRushKills + bossRushQueue.length + (game.boss ? 1 : 0)})` : `WAVE: ${game.wave}`;
   document.getElementById('hud-kills').textContent = `KILLS: ${game.kills}${game.deaths ? '  DEATHS: '+game.deaths : ''}`;
+
+  // Update lives display
+  const livesEl = document.getElementById('hud-lives');
+  if (gameMode === 'ranked') {
+    livesEl.textContent = `LIVES: ${'♦'.repeat(Math.max(0, game.lives))}${'♢'.repeat(Math.max(0, 5-game.lives))}`;
+  } else {
+    livesEl.textContent = 'FREE PLAY';
+  }
+
   document.getElementById('hud-hp').innerHTML = `<span style="color:${hpColor}">HULL: ${'█'.repeat(hpBars)}${'░'.repeat(20-hpBars)} ${Math.round(hpPct*100)}%</span>`;
   document.getElementById('hud-energy').innerHTML = `ENERGY: ${'█'.repeat(enBars)}${'░'.repeat(20-enBars)} ${Math.round(enPct*100)}%`;
 
@@ -3927,6 +4120,157 @@ function updateHUD() {
   const laserStatus = game.wave >= laserWave ? (game.ship.laserActive ? 'FIRING' : 'READY') : `LOCKED (Wave ${laserWave})`;
   const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
   document.getElementById('hud-weapons').innerHTML = `TORPEDOES: ${torpStatus} | LASER: ${laserStatus}${swapInfo}`;
+}
+
+// --- Firebase Configuration ---
+const firebaseConfig = {
+  apiKey: "AIzaSyDCOdZYWQo2P8nJziKyHfE3xJoirgZgrvI",
+  authDomain: "orbital-siege-c39c5.firebaseapp.com",
+  databaseURL: "https://orbital-siege-c39c5-default-rtdb.firebaseio.com",
+  projectId: "orbital-siege-c39c5",
+  storageBucket: "orbital-siege-c39c5.firebasestorage.app",
+  messagingSenderId: "826679067413",
+  appId: "1:826679067413:web:b8c23487ad53be8ad2df1c"
+};
+
+// Initialize Firebase
+try {
+  if (typeof firebase !== 'undefined' && firebaseConfig.apiKey !== 'YOUR_API_KEY') {
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    firebaseReady = true;
+    loadLeaderboard();
+  }
+} catch (e) {
+  console.log('Firebase not configured or unavailable:', e.message);
+}
+
+// --- Leaderboard Functions ---
+async function loadLeaderboard() {
+  if (!firebaseReady) {
+    console.log('Firebase not ready');
+    return;
+  }
+  try {
+    const db = firebase.database();
+    const snapshot = await db.ref('scores').orderByChild('score').limitToLast(20).once('value');
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      leaderboardData = Object.entries(data).map(([key, val]) => ({
+        id: key,
+        ...val,
+        date: val.date || new Date().toISOString()
+      })).sort((a, b) => b.score - a.score);
+    } else {
+      leaderboardData = [];
+    }
+    updateLeaderboardUI();
+  } catch (e) {
+    console.error('Error loading leaderboard:', e);
+  }
+}
+
+function updateLeaderboardUI() {
+  const tbody = document.getElementById('leaderboard-body');
+  const gameOverTbody = document.getElementById('game-over-leaderboard-body');
+
+  if (!firebaseReady || leaderboardData.length === 0) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;">No scores yet</td></tr>';
+    if (gameOverTbody) gameOverTbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;">No scores yet</td></tr>';
+    return;
+  }
+
+  let html = '';
+  for (let i = 0; i < Math.min(leaderboardData.length, 20); i++) {
+    const score = leaderboardData[i];
+    html += `<tr><td>${i+1}</td><td>${score.name || 'UNKNOWN'}</td><td>${score.score}</td><td>${score.wave || 0}</td></tr>`;
+  }
+  if (tbody) tbody.innerHTML = html;
+
+  let gameOverHtml = '';
+  for (let i = 0; i < Math.min(leaderboardData.length, 10); i++) {
+    const score = leaderboardData[i];
+    gameOverHtml += `<tr><td style="padding:6px;">${i+1}</td><td style="padding:6px;">${score.name || 'UNKNOWN'}</td><td style="padding:6px;text-align:right;">${score.score}</td></tr>`;
+  }
+  if (gameOverTbody) gameOverTbody.innerHTML = gameOverHtml;
+}
+
+function isHighScore(score) {
+  if (!firebaseReady || leaderboardData.length < 20) return true;
+  return score > leaderboardData[leaderboardData.length - 1].score;
+}
+
+async function submitScore(name, score, wave, kills) {
+  if (!firebaseReady) return;
+  try {
+    const db = firebase.database();
+    await db.ref('scores').push({
+      name: (name || 'UNKNOWN').toUpperCase().substring(0, 12),
+      score: Math.floor(score),
+      wave: Math.floor(wave),
+      kills: Math.floor(kills),
+      date: new Date().toISOString()
+    });
+    await loadLeaderboard();
+  } catch (e) {
+    console.error('Error submitting score:', e);
+  }
+}
+
+function toggleStartLeaderboard() {
+  const lb = document.getElementById('leaderboard');
+  if (lb) {
+    lb.classList.toggle('show');
+    if (lb.classList.contains('show')) {
+      loadLeaderboard();
+    }
+  }
+}
+
+// --- Game Over Handler ---
+function gameOver() {
+  if (gameMode !== 'ranked') return;
+  gameRunning = false;
+
+  const finalScore = game.score;
+  const finalWave = game.wave;
+  const finalKills = game.kills;
+
+  // Show game-over screen
+  const gameOverEl = document.getElementById('game-over');
+  gameOverEl.style.display = 'flex';
+
+  // Show final stats
+  document.getElementById('final-stats').innerHTML = `
+    SCORE: ${finalScore}<br>
+    WAVE: ${finalWave}<br>
+    KILLS: ${finalKills}<br>
+    DEATHS: ${game.deaths}
+  `;
+
+  // Check if score qualifies for leaderboard
+  const nameEntryEl = document.getElementById('name-entry');
+  if (isHighScore(finalScore)) {
+    nameEntryEl.classList.add('show');
+    document.getElementById('name-input').value = '';
+    document.getElementById('name-input').focus();
+  } else {
+    nameEntryEl.classList.remove('show');
+  }
+
+  // Update leaderboard display
+  updateLeaderboardUI();
+}
+
+function submitHighScore() {
+  if (!game) return;
+  const nameInput = document.getElementById('name-input');
+  const name = nameInput.value.trim() || 'UNKNOWN';
+
+  submitScore(name, game.score, game.wave, game.kills);
+
+  // Hide name entry
+  document.getElementById('name-entry').classList.remove('show');
 }
 
 // --- Loop ---
@@ -3960,6 +4304,16 @@ function cycleShip(dir) {
   updateShipCard();
 }
 
+function showModeSelect() {
+  document.getElementById('ship-select').classList.remove('show');
+  document.getElementById('mode-select').classList.add('show');
+}
+
+function selectGameMode(mode) {
+  gameMode = mode;
+  startGame();
+}
+
 function updateShipCard() {
   const key = shipTypeKeys[shipSelectIndex];
   const type = SHIP_TYPES[key];
@@ -3982,18 +4336,21 @@ function updateShipCard() {
 
 function deployShip() {
   selectedShipType = shipTypeKeys[shipSelectIndex];
-  startGame();
+  showModeSelect();
 }
 
 function startGame() {
   initAudio();
   document.getElementById('start-screen').style.display = 'none';
   document.getElementById('game-over').style.display = 'none';
+  document.getElementById('mode-select').classList.remove('show');
+  document.getElementById('ship-select').classList.remove('show');
+  document.getElementById('leaderboard').classList.remove('show');
   try { document.getElementById('ship-swap-overlay').classList.remove('show'); } catch(e) {}
   initGame();
   gameRunning = true;
   buildDebugPanel();
-  console.log('Game started with ship:', selectedShipType, 'invaders:', game.invaders.length);
+  console.log('Game started with ship:', selectedShipType, 'mode:', gameMode, 'invaders:', game.invaders.length);
 }
 
 // --- Ship Swap Overlay (V key) ---
