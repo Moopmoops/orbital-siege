@@ -637,14 +637,24 @@ function initWeaponDrone() {
   weaponDrone.filter.connect(weaponDrone.masterGain);
   weaponDrone.masterGain.connect(audioCtx.destination);
 
-  // LFO for subtle pitch wobble
+  // LFO 1 for subtle pitch wobble
   weaponDrone.lfo = audioCtx.createOscillator();
   weaponDrone.lfo.type = 'sine';
-  weaponDrone.lfo.frequency.setValueAtTime(0.15, audioCtx.currentTime); // very slow
+  weaponDrone.lfo.frequency.setValueAtTime(0.15, audioCtx.currentTime);
   weaponDrone.lfoGain = audioCtx.createGain();
-  weaponDrone.lfoGain.gain.setValueAtTime(1.5, audioCtx.currentTime); // subtle ±1.5Hz drift
+  weaponDrone.lfoGain.gain.setValueAtTime(1.2, audioCtx.currentTime);
   weaponDrone.lfo.connect(weaponDrone.lfoGain);
   weaponDrone.lfo.start();
+
+  // LFO 2 — slower, modulates the filter for organic breathing
+  weaponDrone.lfo2 = audioCtx.createOscillator();
+  weaponDrone.lfo2.type = 'sine';
+  weaponDrone.lfo2.frequency.setValueAtTime(0.07, audioCtx.currentTime); // very slow ~14s cycle
+  const lfo2Gain = audioCtx.createGain();
+  lfo2Gain.gain.setValueAtTime(300, audioCtx.currentTime); // ±300Hz filter sweep
+  weaponDrone.lfo2.connect(lfo2Gain);
+  lfo2Gain.connect(weaponDrone.filter.frequency);
+  weaponDrone.lfo2.start();
 
   // 4 oscillators for the chord
   const chord = DRONE_CHORDS[0];
@@ -674,6 +684,12 @@ function updateWeaponDrone(dt) {
   if (!weaponDrone.active || !audioCtx || soundMuted) return;
   const now = audioCtx.currentTime;
 
+  // Silence when paused
+  if (gamePaused) {
+    weaponDrone.masterGain.gain.setValueAtTime(0.001, now);
+    return;
+  }
+
   // Determine if player is actively firing (fired within last 0.15s)
   const firing = (now - weaponDrone.lastShootTime) < 0.15;
   weaponDrone.targetVolume = firing ? 0.025 : 0;
@@ -693,16 +709,32 @@ function updateWeaponDrone(dt) {
   const filterNext = filterCurrent + (filterTarget - filterCurrent) * Math.min(1, 2 * dt);
   weaponDrone.filter.frequency.setValueAtTime(filterNext, now);
 
+  // Organic micro-detuning — each oscillator drifts slightly over time
+  if (weaponDrone.oscs) {
+    for (let i = 0; i < weaponDrone.oscs.length; i++) {
+      const drift = Math.sin(now * (0.3 + i * 0.17) + i * 2.1) * (1.5 + i * 0.5);
+      const baseFreq = DRONE_CHORDS[weaponDrone.currentChord][i];
+      // Gentle breathing: each voice wobbles ±2-4 cents independently
+      weaponDrone.oscs[i].frequency.setValueAtTime(baseFreq + drift, now);
+    }
+    // Slowly morph waveforms between sine and triangle by cross-fading gains
+    // Voice 0 & 1 breathe louder/softer in antiphase for movement
+    const breath = Math.sin(now * 0.4) * 0.08;
+    weaponDrone.gains[0].gain.setValueAtTime(0.35 + breath, now);
+    weaponDrone.gains[1].gain.setValueAtTime(0.25 - breath, now);
+    // Upper voices have their own slower breathing
+    const breath2 = Math.sin(now * 0.23 + 1.5) * 0.04;
+    weaponDrone.gains[2].gain.setValueAtTime(0.15 + breath2, now);
+    weaponDrone.gains[3].gain.setValueAtTime(0.10 - breath2, now);
+  }
+
   // Slow chord progression
   weaponDrone.chordTimer -= dt;
   if (weaponDrone.chordTimer <= 0) {
     weaponDrone.currentChord = (weaponDrone.currentChord + 1) % DRONE_CHORDS.length;
-    const chord = DRONE_CHORDS[weaponDrone.currentChord];
-    // Glide to new chord frequencies over 2 seconds
-    for (let i = 0; i < 4 && i < weaponDrone.oscs.length; i++) {
-      weaponDrone.oscs[i].frequency.exponentialRampToValueAtTime(chord[i], now + 2.0);
-    }
     weaponDrone.chordTimer = 5 + Math.random() * 4; // 5-9 seconds per chord
+    // Chord changes are now handled by the organic detuning above
+    // which naturally glides to the new base frequencies
   }
 }
 
@@ -711,6 +743,7 @@ function stopWeaponDrone() {
   try {
     if (weaponDrone.oscs) weaponDrone.oscs.forEach(o => { try { o.stop(); } catch(e){} });
     if (weaponDrone.lfo) try { weaponDrone.lfo.stop(); } catch(e){}
+    if (weaponDrone.lfo2) try { weaponDrone.lfo2.stop(); } catch(e){}
   } catch(e){}
   weaponDrone.active = false;
   weaponDrone.oscs = null;
@@ -1709,14 +1742,29 @@ class Star {
     ctx.fillStyle = eg;
     ctx.beginPath(); ctx.arc(sx, sy, R*2.0, 0, Math.PI*2); ctx.fill();
 
-    // Pre-rendered texture — slowly rotating, clipped to circle to avoid square edges
+    // Pre-rendered texture — clipped to sun body circle only (no square edges)
     ctx.save();
-    ctx.beginPath(); ctx.arc(sx, sy, R*2.4, 0, Math.PI*2); ctx.clip();
+    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.clip();
     ctx.translate(sx, sy);
     ctx.rotate(t * 0.02); // very slow rotation
     const texScale = R / this.texRadius;
     ctx.drawImage(this.texture, -this.texture.width/2 * texScale, -this.texture.height/2 * texScale, this.texture.width * texScale, this.texture.height * texScale);
     ctx.restore();
+
+    // Procedural corona glow (replaces texture corona — no square artifacts)
+    ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 5; i++) {
+      const cAngle = t*0.05 + i*1.257;
+      const cLen = R*(0.5 + 0.25*Math.sin(i*2.3 + t*0.15));
+      const cx2 = sx + Math.cos(cAngle)*R*0.3, cy2 = sy + Math.sin(cAngle)*R*0.3;
+      const cg2 = ctx.createRadialGradient(cx2, cy2, R*0.2, cx2, cy2, R + cLen);
+      cg2.addColorStop(0, 'rgba(255,120,30,0.15)');
+      cg2.addColorStop(0.5, 'rgba(220,60,10,0.06)');
+      cg2.addColorStop(1, 'rgba(150,20,0,0)');
+      ctx.fillStyle = cg2;
+      ctx.beginPath(); ctx.arc(cx2, cy2, R + cLen, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // Animated plasma overlay (low alpha, adds movement)
     ctx.save();
@@ -4629,10 +4677,10 @@ function drawGame() {
     }
     // Glow pass
     const orbitColor = getPalette().orbitLine;
-    ctx.strokeStyle = orbitColor + '40'; ctx.lineWidth = 5;
+    ctx.strokeStyle = orbitColor + '66'; ctx.lineWidth = 6;
     ctx.stroke();
     // Sharp pass
-    ctx.strokeStyle = orbitColor + 'b0'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = orbitColor; ctx.lineWidth = 2;
     ctx.stroke();
     ctx.setLineDash([]);
   }
