@@ -244,18 +244,17 @@ canvas { display: block; cursor: crosshair; }
   <div class="studio">FORWARD COMPATIBLE</div>
   <h1>ORBITAL SIEGE</h1>
   <div class="subtitle">DEFEND THE SYSTEM FROM THE ARH SWARM</div>
-  <div class="controls">
-    <span>W</span> / <span>S</span> &mdash; Prograde / Retrograde (speed up / slow down orbit)<br>
-    <span>A</span> / <span>D</span> &mdash; Radial in / out &nbsp;&nbsp;
-    <span>SHIFT</span> &mdash; Boost<br>
-    <span>MOUSE</span> &mdash; Aim &nbsp;&nbsp;
-    <span>CLICK</span> &mdash; Fire cannon<br>
-    <span>E</span> &mdash; Seeking torpedoes (hold) &nbsp;&nbsp;
-    <span>SPACE</span> &mdash; Orbital bomb<br>
-    <span>Q</span> &mdash; Laser beam (Wave 3+) &nbsp;&nbsp;
-    <span>TAB</span> &mdash; Scan nearest ARH<br>
-    <span>V</span> &mdash; Ship swap menu &nbsp;&nbsp;
-    <span>J</span> &mdash; Achievements<br>
+  <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;">
+    <div><span>W</span><span>S</span> or <span>↑</span><span>↓</span> &mdash; Speed up / Slow down</div>
+    <div><span>A</span><span>D</span> or <span>←</span><span>→</span> &mdash; Radial in / out</div>
+    <div><span>CLICK</span> &mdash; Fire cannons</div>
+    <div><span>SHIFT</span> &mdash; Boost thrust</div>
+    <div><span>E</span> &mdash; Seeking torpedoes</div>
+    <div><span>SPACE</span> &mdash; Orbital bomb</div>
+    <div><span>Q</span> &mdash; Laser beam</div>
+    <div><span>TAB</span> &mdash; Scan target</div>
+    <div><span>V</span> &mdash; Ship swap</div>
+    <div><span>P</span> &mdash; Pause / Controls</div>
   </div>
   <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
   <button class="start-btn" id="leaderboard-btn" onclick="toggleStartLeaderboard()" style="margin-left:20px;">LEADERBOARD</button>
@@ -341,7 +340,7 @@ canvas { display: block; cursor: crosshair; }
     <div class="key">E</div><div class="action">Lock-on missile</div>
     <div class="key">Q</div><div class="action">Laser beam (hold)</div>
     <div class="key">SPACE</div><div class="action">Orbital bomb</div>
-    <div class="key">F</div><div class="action">Scan pulse</div>
+    <div class="key">TAB</div><div class="action">Scan target</div>
     <div class="controls-section">SYSTEMS</div>
     <div class="key">V</div><div class="action">Swap ship (between waves)</div>
     <div class="key">J</div><div class="action">Achievement journal</div>
@@ -493,7 +492,7 @@ let firebaseReady = false;
 
 // --- Input ---
 const keys = {}; let mouseX = 0, mouseY = 0, mouseDown = false;
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if(['tab',' '].includes(e.key.toLowerCase()) || e.key === 'Tab') e.preventDefault(); });
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if(['tab',' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()) || e.key === 'Tab') e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
 window.addEventListener('mousedown', () => { mouseDown = true; });
@@ -1685,7 +1684,7 @@ class Ship {
     const spd = Math.hypot(this.vx, this.vy);
     const velAngle = Math.atan2(this.vy, this.vx); // direction of travel
     const thrustAmt = this.thrustPower * boost;
-    if (keys['w']) {
+    if ((keys['w'] || keys['arrowup'])) {
       // Prograde — accelerate along velocity (raises orbit on opposite side)
       if (spd > 1) {
         this.vx += (this.vx/spd)*thrustAmt*0.6*dt;
@@ -1701,7 +1700,7 @@ class Ship {
           2, keys['shift'] ? '#4af' : '#f84', ba, 0.5, 150*boost, 0.3, 2);
       }
     }
-    if (keys['s']) {
+    if ((keys['s'] || keys['arrowdown'])) {
       // Retrograde — decelerate along velocity (lowers orbit)
       if (spd > 5) {
         this.vx -= (this.vx/spd)*thrustAmt*0.5*dt;
@@ -1709,7 +1708,7 @@ class Ship {
         this.thrustOn = true;
       }
     }
-    if (keys['a']) {
+    if ((keys['a'] || keys['arrowleft'])) {
       // Radial in (toward nearest body) — gentle
       const nb = game.planets.reduce((b,p) => dist(this,p) < dist(this,b) ? p : b);
       const ra = angle(this, nb);
@@ -1717,7 +1716,7 @@ class Ship {
       this.vy += Math.sin(ra)*thrustAmt*0.25*dt;
       this.thrustOn = true;
     }
-    if (keys['d']) {
+    if ((keys['d'] || keys['arrowright'])) {
       // Radial out (away from nearest body) — gentle
       const nb = game.planets.reduce((b,p) => dist(this,p) < dist(this,b) ? p : b);
       const ra = angle(nb, this);
@@ -1735,7 +1734,7 @@ class Ship {
     const band = enforceBand(this, game.bodies);
     this.vx += band.ax*dt; this.vy += band.ay*dt;
     // Clockwork orbit — gentle correction toward circular orbit (thrust overrides)
-    const thrustActive = keys['w'] || keys['s'] || keys['a'] || keys['d'];
+    const thrustActive = (keys['w'] || keys['arrowup']) || (keys['s'] || keys['arrowdown']) || (keys['a'] || keys['arrowleft']) || (keys['d'] || keys['arrowright']);
     enforceCircularOrbit(this, game.bodies, thrustActive ? SHIP_CLOCKWORK_THRUST : SHIP_CLOCKWORK_IDLE, ORBIT_PERIOD);
 
     this.x += this.vx*dt; this.y += this.vy*dt;
@@ -3213,7 +3212,7 @@ function updateHints(dt) {
   }
 
   // Hint 2: Thrust accumulator
-  const thrustAccum = (keys['w'] || keys['s'] || keys['a'] || keys['d']) ? 1 : 0;
+  const thrustAccum = ((keys['w'] || keys['arrowup']) || (keys['s'] || keys['arrowdown']) || (keys['a'] || keys['arrowleft']) || (keys['d'] || keys['arrowright'])) ? 1 : 0;
   hints.thrustAccumTimer = thrustAccum ? hints.thrustAccumTimer + dt : 0;
   if (hints.thrustAccumTimer > 60 && !hints.shownHints.has('thrust_accum')) {
     hints.activeHint = { text: 'Ease off the throttle — let gravity do the work', timer: 4 };
