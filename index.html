@@ -2872,14 +2872,37 @@ class Ship {
           const speedFactor = clamp((spd - 40) / 150, 0, 1);
           const atmoIntensity = proximityFactor * speedFactor;
           if (atmoIntensity > 0.02) {
-            ctx.globalAlpha = atmoIntensity * 0.5;
-            const glowSize = SHIP_SIZE * (1.5 + speedFactor * 1.5);
-            const atmoGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.2, 0, 0, glowSize);
-            atmoGrad.addColorStop(0, `rgba(255,${Math.floor(220-speedFactor*80)},${Math.floor(120-speedFactor*80)},0.7)`);
-            atmoGrad.addColorStop(0.5, `rgba(255,${Math.floor(160-speedFactor*60)},${Math.floor(60-speedFactor*40)},0.3)`);
-            atmoGrad.addColorStop(1, 'rgba(200,100,20,0)');
-            ctx.fillStyle = atmoGrad;
-            ctx.beginPath(); ctx.arc(0, 0, glowSize, 0, Math.PI*2); ctx.fill();
+            // Outer atmospheric haze — large, soft
+            const outerGlowSize = SHIP_SIZE * (3.0 + speedFactor * 3.0);
+            ctx.globalAlpha = atmoIntensity * 0.6;
+            const outerAtmo = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.3, 0, 0, outerGlowSize);
+            outerAtmo.addColorStop(0, `rgba(255,${Math.floor(180-speedFactor*60)},${Math.floor(80-speedFactor*60)},0.6)`);
+            outerAtmo.addColorStop(0.4, `rgba(255,${Math.floor(120-speedFactor*40)},${Math.floor(40-speedFactor*30)},0.3)`);
+            outerAtmo.addColorStop(1, 'rgba(200,60,10,0)');
+            ctx.fillStyle = outerAtmo;
+            ctx.beginPath(); ctx.arc(0, 0, outerGlowSize, 0, Math.PI*2); ctx.fill();
+
+            // Inner bright core
+            const coreGlowSize = SHIP_SIZE * (1.5 + speedFactor * 1.5);
+            ctx.globalAlpha = atmoIntensity * 0.9;
+            const coreAtmo = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.1, 0, 0, coreGlowSize);
+            coreAtmo.addColorStop(0, `rgba(255,${Math.floor(240-speedFactor*60)},${Math.floor(160-speedFactor*100)},0.9)`);
+            coreAtmo.addColorStop(0.4, `rgba(255,${Math.floor(180-speedFactor*60)},${Math.floor(80-speedFactor*60)},0.5)`);
+            coreAtmo.addColorStop(1, 'rgba(220,80,10,0)');
+            ctx.fillStyle = coreAtmo;
+            ctx.beginPath(); ctx.arc(0, 0, coreGlowSize, 0, Math.PI*2); ctx.fill();
+
+            // White-hot center at high speed
+            if (atmoIntensity > 0.4) {
+              const whiteSize = SHIP_SIZE * (0.6 + atmoIntensity * 0.8);
+              ctx.globalAlpha = (atmoIntensity - 0.4) * 1.5;
+              const whiteAtmo = ctx.createRadialGradient(0, 0, 0, 0, 0, whiteSize);
+              whiteAtmo.addColorStop(0, 'rgba(255,255,220,0.9)');
+              whiteAtmo.addColorStop(0.5, 'rgba(255,220,120,0.4)');
+              whiteAtmo.addColorStop(1, 'rgba(255,150,40,0)');
+              ctx.fillStyle = whiteAtmo;
+              ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
+            }
             ctx.globalAlpha = 1;
           }
         }
