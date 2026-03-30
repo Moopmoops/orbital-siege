@@ -243,6 +243,8 @@ canvas { display: block; cursor: crosshair; }
 <div id="start-screen">
   <div class="studio">FORWARD COMPATIBLE</div>
   <h1>ORBITAL SIEGE</h1>
+  <div id="version-display" style="color:#4af;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;margin-bottom:4px;opacity:0.7;cursor:pointer;" onclick="toggleChangelog()" title="Click for changelog"></div>
+  <div id="changelog-panel" style="display:none;max-width:500px;margin:0 auto 10px;padding:10px 16px;background:rgba(0,20,40,0.9);border:1px solid #4af;border-radius:6px;text-align:left;font-family:'Courier New',monospace;font-size:10px;color:#8cf;max-height:200px;overflow-y:auto;"></div>
   <div class="subtitle">DEFEND THE SYSTEM FROM THE ARH SWARM</div>
   <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;">
     <div><span>W</span><span>S</span> or <span>↑</span><span>↓</span> &mdash; Speed up / Slow down</div>
@@ -258,10 +260,14 @@ canvas { display: block; cursor: crosshair; }
   </div>
   <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
   <button class="start-btn" id="leaderboard-btn" onclick="toggleStartLeaderboard()" style="margin-left:20px;">LEADERBOARD</button>
+  <div id="checkpoint-section" style="margin-top:15px;font-family:'Courier New',monospace;font-size:11px;">
+    <div style="color:#4af;letter-spacing:2px;margin-bottom:8px;">CHECKPOINTS</div>
+    <div id="checkpoint-list"></div>
+  </div>
   <div id="leaderboard" style="margin-top: 30px;">
     <h2>HIGH SCORES</h2>
     <table id="leaderboard-table">
-      <thead><tr><th>RANK</th><th>NAME</th><th>SCORE</th><th>WAVE</th></tr></thead>
+      <thead><tr><th>RANK</th><th>NAME</th><th>SCORE</th><th>WAVE</th><th>ACH</th><th>SPD</th></tr></thead>
       <tbody id="leaderboard-body"></tbody>
     </table>
     <div class="unavailable" id="leaderboard-status"></div>
@@ -301,8 +307,8 @@ canvas { display: block; cursor: crosshair; }
   </div>
   <div class="leaderboard-section" id="game-over-leaderboard">
     <h2 style="color:#0ff;margin-top:20px;margin-bottom:10px;">HIGH SCORES</h2>
-    <table id="game-over-leaderboard-table" style="font-size:12px;color:#8cf;font-family:'Courier New',monospace;border-collapse:collapse;width:100%;max-width:400px;">
-      <thead><tr><th style="color:#fa8;text-align:left;padding:6px;">RANK</th><th style="color:#fa8;text-align:left;padding:6px;">NAME</th><th style="color:#fa8;text-align:right;padding:6px;">SCORE</th></tr></thead>
+    <table id="game-over-leaderboard-table" style="font-size:12px;color:#8cf;font-family:'Courier New',monospace;border-collapse:collapse;width:100%;max-width:500px;">
+      <thead><tr><th style="color:#fa8;text-align:left;padding:6px;">RANK</th><th style="color:#fa8;text-align:left;padding:6px;">NAME</th><th style="color:#fa8;text-align:right;padding:6px;">SCORE</th><th style="color:#fa8;text-align:center;padding:6px;">WAVE</th><th style="color:#fa8;text-align:center;padding:6px;">ACH</th><th style="color:#fa8;text-align:right;padding:6px;">SPD</th></tr></thead>
       <tbody id="game-over-leaderboard-body"></tbody>
     </table>
   </div>
@@ -330,6 +336,7 @@ canvas { display: block; cursor: crosshair; }
 <div id="pause-menu">
   <h1>PAUSED</h1>
   <div class="pause-subtitle">ORBITAL SIEGE — FORWARD COMPATIBLE</div>
+  <div id="pause-version" style="color:#4af;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;margin-bottom:8px;opacity:0.6;"></div>
   <div class="controls-grid">
     <div class="controls-section">FLIGHT</div>
     <div class="key">W / S</div><div class="action">Prograde / Retrograde thrust</div>
@@ -345,9 +352,15 @@ canvas { display: block; cursor: crosshair; }
     <div class="key">V</div><div class="action">Swap ship (between waves)</div>
     <div class="key">J</div><div class="action">Achievement journal</div>
     <div class="key">P</div><div class="action">Pause / Resume</div>
-    <div class="key">`</div><div class="action">Debug panel</div>
+  </div>
+  <div style="margin-top:8px;">
+    <button id="sound-toggle-btn" onclick="soundMuted=!soundMuted; if(soundMuted)stopLaserSound(); this.textContent=soundMuted?'♪ SOUND: OFF':'♪ SOUND: ON'; this.style.borderColor=soundMuted?'#666':'#0ff'; this.style.color=soundMuted?'#666':'#0ff';" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">♪ SOUND: ON</button>
+  </div>
+  <div style="margin-top:8px;">
+    <button id="palette-toggle-btn" onclick="cyclePalette()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">PALETTE: STANDARD</button>
   </div>
   <div class="resume-hint">PRESS P TO RESUME</div>
+  <div id="pause-achievements" style="margin-top:20px;"></div>
 </div>
 <div id="boss-rush-picker"></div>
 
@@ -359,8 +372,62 @@ canvas { display: block; cursor: crosshair; }
 
 <script>
 // ============================================================
-// ORBITAL SIEGE v2 — Forward Compatible
+// ORBITAL SIEGE — Forward Compatible
 // ============================================================
+const GAME_VERSION = { major: 0, minor: 9, patch: 0, label: 'Beta' };
+const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
+const GAME_CHANGELOG = [
+  { version: '0.9.0', date: '2026-03-30', changes: [
+    'NEW: Wave checkpoint system — resume from waves 5, 10, 15, 20',
+    'NEW: 3 unlockable color palettes (Standard, Crimson Tide, Void Walker)',
+    'NEW: Adaptive melodic weapon audio',
+    'NEW: Sound mute toggle in pause menu',
+    'VISUAL: All 7 ARH enemy types redesigned with unique silhouettes',
+    'VISUAL: Iron Maw boss overhauled with animated jaw mechanics',
+    'VISUAL: Enhanced ship selection previews',
+    'FIX: Bosses can now only be killed by pushing into the sun',
+    'FIX: Planet rings render correctly (front/back depth)',
+    'FIX: Ranked mode no longer penalizes score on death',
+  ]},
+  { version: '0.8.0', date: '2026-03-29', changes: [
+    'NEW: Solar system expansion — 6 planets, moons, and rings appear as you progress',
+    'NEW: Ranked mode (5 lives + leaderboard) and Free Play mode',
+    'NEW: Firebase-powered global leaderboard',
+    'NEW: Boss Rush debug mode',
+    'NEW: Pause menu with P key',
+    'NEW: Arrow key support as WASD alternative',
+    'VISUAL: The Archon boss visual overhaul',
+    'FIX: Sun plasma rendering, debug leaderboard exploit, various UI fixes',
+  ]},
+];
+
+// Populate version displays on load
+document.addEventListener('DOMContentLoaded', () => {
+  const vd = document.getElementById('version-display');
+  if (vd) vd.textContent = GAME_VERSION_STRING;
+  const pv = document.getElementById('pause-version');
+  if (pv) pv.textContent = GAME_VERSION_STRING;
+
+  // Build changelog HTML
+  const cp = document.getElementById('changelog-panel');
+  if (cp) {
+    let html = '<div style="color:#0ff;letter-spacing:2px;margin-bottom:8px;font-size:11px;">CHANGELOG</div>';
+    for (const entry of GAME_CHANGELOG) {
+      html += `<div style="color:#fff;margin-bottom:4px;font-size:11px;">v${entry.version} <span style="color:#555;">(${entry.date})</span></div>`;
+      for (const c of entry.changes) {
+        const color = c.startsWith('NEW:') ? '#4f4' : c.startsWith('FIX:') ? '#fa0' : c.startsWith('VISUAL:') ? '#c4f' : '#8cf';
+        html += `<div style="color:${color};padding-left:10px;margin-bottom:2px;">• ${c}</div>`;
+      }
+      html += '<div style="height:6px;"></div>';
+    }
+    cp.innerHTML = html;
+  }
+});
+
+function toggleChangelog() {
+  const cp = document.getElementById('changelog-panel');
+  if (cp) cp.style.display = cp.style.display === 'none' ? 'block' : 'none';
+}
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -373,7 +440,7 @@ function initAudio() { if (!audioCtx) audioCtx = new AudioCtx(); }
 // Continuous laser audio
 let laserAudio = { osc: null, gain: null, active: false };
 function startLaserSound() {
-  if (!audioCtx || laserAudio.active) return;
+  if (!audioCtx || laserAudio.active || soundMuted) return;
   laserAudio.gain = audioCtx.createGain();
   laserAudio.gain.connect(audioCtx.destination);
   laserAudio.gain.gain.setValueAtTime(0, audioCtx.currentTime);
@@ -412,16 +479,191 @@ function stopLaserSound() {
   }
 }
 
+let soundMuted = false;
+
+// --- Feature: Wave Checkpoint System ---
+const CHECKPOINT_WAVES = [5, 10, 15, 20];
+
+function generateCheckpointCode(wave) {
+  return 'WAVE' + wave + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+}
+
+function updateCheckpointList() {
+  const container = document.getElementById('checkpoint-list');
+  if (!container) return;
+  const checkpoints = JSON.parse(localStorage.getItem('orbital-siege-checkpoints') || '{}');
+  const waves = Object.keys(checkpoints).map(Number).sort((a,b) => a - b);
+  if (waves.length === 0) {
+    container.innerHTML = '<span style="color:#555;">Reach wave 5 to unlock your first checkpoint</span>';
+    return;
+  }
+  let html = '';
+  for (const w of waves) {
+    html += `<button onclick="startFromCheckpoint(${w})" style="margin:3px;padding:5px 12px;background:transparent;border:1px solid #4af;color:#4af;font-family:'Courier New',monospace;font-size:10px;cursor:pointer;letter-spacing:1px;">WAVE ${w}</button>`;
+  }
+  container.innerHTML = html;
+}
+
+function startFromCheckpoint(wave) {
+  selectedShipType = shipTypeKeys[shipSelectIndex];
+  gameMode = 'freeplay';
+  debugUsed = true;
+  startGame();
+  game.wave = wave;
+  game.invaders = [];
+  game.boss = null;
+  // Expand system for ALL waves up to and including the checkpoint wave
+  for (let w = 1; w <= wave; w++) expandSystem(w);
+  spawnWave();
+  game.bossMessage = `CHECKPOINT: WAVE ${wave}`;
+  game.bossMessageTimer = 3;
+  game.bossSubMessage = 'LEADERBOARD DISABLED';
+  game.bossSubMessageTimer = 3;
+}
+
+// --- Feature: Color Palette System ---
+const COLOR_PALETTES = {
+  standard: {
+    name: 'STANDARD',
+    desc: 'Classic cyan command console',
+    unlockWave: 0,
+    hud: '#0ff',
+    hudDim: '#4af',
+    bullet: '#4ef',
+    bulletGlow: '#0cf',
+    enemyBullet: '#f44',
+    stars: '#fff',
+    orbitLine: '#4af',
+  },
+  crimson: {
+    name: 'CRIMSON TIDE',
+    desc: 'Unlocked at Wave 10',
+    unlockWave: 10,
+    hud: '#f44',
+    hudDim: '#a44',
+    bullet: '#f84',
+    bulletGlow: '#f44',
+    enemyBullet: '#4ff',
+    stars: '#fdd',
+    orbitLine: '#f44',
+  },
+  void: {
+    name: 'VOID WALKER',
+    desc: 'Unlocked at Wave 20',
+    unlockWave: 20,
+    hud: '#c4f',
+    hudDim: '#84a',
+    bullet: '#c4f',
+    bulletGlow: '#a2d',
+    enemyBullet: '#f44',
+    stars: '#edf',
+    orbitLine: '#c4f',
+  },
+};
+
+let currentPalette = 'standard';
+
+function getPalette() {
+  return COLOR_PALETTES[currentPalette] || COLOR_PALETTES.standard;
+}
+
+function cyclePalette() {
+  const keys = Object.keys(COLOR_PALETTES);
+  const maxWave = parseInt(localStorage.getItem('orbital-siege-max-wave') || '1');
+  const available = keys.filter(k => COLOR_PALETTES[k].unlockWave <= maxWave);
+  const idx = available.indexOf(currentPalette);
+  currentPalette = available[(idx + 1) % available.length];
+  const btn = document.getElementById('palette-toggle-btn');
+  if (btn) btn.textContent = 'PALETTE: ' + getPalette().name;
+}
+
+// --- Feature: Ambient Generative Weapon Audio System ---
+let musicState = {
+  // E minor pentatonic notes (in Hz) - across multiple octaves
+  notes: [
+    // Octave 1: E2, G2, A2, B2, D2
+    82.41, 98.00, 110.00, 123.47, 146.83,
+    // Octave 2: E3, G3, A3, B3, D3
+    164.81, 196.00, 220.00, 246.94, 293.66,
+    // Octave 3: E4, G4, A4, B4, D4
+    329.63, 392.00, 440.00, 493.88, 587.33,
+  ],
+  lastNoteTime: 0,
+  lastNoteIndex: 7, // Start near middle
+};
+
 function playSound(type) {
-  if (!audioCtx) return;
+  if (!audioCtx || soundMuted) return;
   const now = audioCtx.currentTime;
   const gain = audioCtx.createGain();
   gain.connect(audioCtx.destination);
   if (type === 'shoot') {
-    const osc = audioCtx.createOscillator(); osc.type = 'triangle';
-    osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(150, now + 0.06);
-    gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-    osc.connect(gain); osc.start(now); osc.stop(now + 0.06);
+    const now2 = audioCtx.currentTime;
+    if (now2 - musicState.lastNoteTime < 0.03) return; // 30ms debounce for denser textures
+    musicState.lastNoteTime = now2;
+
+    // Weighted stepwise motion: 70% next/prev note, 30% random jump
+    let nextIndex;
+    if (Math.random() < 0.7) {
+      const direction = Math.random() < 0.5 ? -1 : 1;
+      nextIndex = (musicState.lastNoteIndex + direction + musicState.notes.length) % musicState.notes.length;
+    } else {
+      nextIndex = Math.floor(Math.random() * musicState.notes.length);
+    }
+    musicState.lastNoteIndex = nextIndex;
+
+    const baseFreq = musicState.notes[nextIndex];
+    const waveform = Math.random() < 0.5 ? 'sine' : 'triangle';
+
+    // Subtle pitch drift: ±3%
+    const driftFactor = 1 + (Math.random() - 0.5) * 0.06;
+    const freq = baseFreq * driftFactor;
+
+    // Primary tone
+    const osc1 = audioCtx.createOscillator();
+    osc1.type = waveform;
+    osc1.frequency.setValueAtTime(freq, now);
+
+    // Subtle harmonic fifth above (very quiet)
+    const osc2 = audioCtx.createOscillator();
+    osc2.type = waveform;
+    const fifthFreq = freq * 1.5;
+    osc2.frequency.setValueAtTime(fifthFreq, now);
+
+    // Lowpass filter for warmth
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(4000 + Math.random() * 2000, now);
+    filter.Q.setValueAtTime(1, now);
+
+    // Envelope variation: attack/decay times vary slightly
+    const attackTime = 0.01 + Math.random() * 0.01;
+    const decayTime = 0.15 + Math.random() * 0.05;
+
+    // Primary oscillator gain (main voice)
+    const gain1 = audioCtx.createGain();
+    gain1.gain.setValueAtTime(0.015, now); // Much quieter for atmospheric texture
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + decayTime);
+
+    // Harmonic fifth gain (very quiet layer)
+    const gain2 = audioCtx.createGain();
+    gain2.gain.setValueAtTime(0.004, now); // 1/4 of primary
+    gain2.gain.exponentialRampToValueAtTime(0.0005, now + decayTime);
+
+    // Route: osc1 -> filter -> gain1 -> destination
+    osc1.connect(filter);
+    filter.connect(gain1);
+    gain1.connect(audioCtx.destination);
+
+    // Route: osc2 -> gain2 -> destination
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+
+    // Start both oscillators and stop after decay time
+    osc1.start(now);
+    osc1.stop(now + decayTime);
+    osc2.start(now);
+    osc2.stop(now + decayTime);
   } else if (type === 'missile') {
     const osc = audioCtx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(200, now); osc.frequency.exponentialRampToValueAtTime(500, now + 0.15);
@@ -486,6 +728,7 @@ window.addEventListener('resize', resize); resize();
 let selectedShipType = 'vanguard';
 let gameRunning = false;
 let gamePaused = false;
+let debugUsed = false;
 let gameMode = null; // 'ranked' or 'freeplay'
 let leaderboardData = [];
 let firebaseReady = false;
@@ -1193,9 +1436,13 @@ window.addEventListener('keydown', e => {
     debugVisible = !debugVisible;
     const panel = document.getElementById('debug-panel');
     panel.style.display = debugVisible ? 'block' : 'none';
-    if (debugVisible && !panel.innerHTML) buildDebugPanel();
+    if (debugVisible && !panel.innerHTML) {
+      buildDebugPanel();
+      debugUsed = true;
+    }
   }
   if (e.key.toLowerCase() === 'j') {
+    if (gamePaused) return;
     achievementJournalVisible = !achievementJournalVisible;
     updateAchievementJournal();
   }
@@ -1514,6 +1761,9 @@ class Planet {
     ctx.fillStyle = rim;
     ctx.beginPath(); ctx.arc(sx, sy, R*1.2, 0, Math.PI*2); ctx.fill();
 
+    // Draw BACK half of rings (behind planet)
+    if (this.hasRings) this.drawRings(ctx, sx, sy, R, 'back');
+
     // Pre-rendered planet texture — with slow rotation
     ctx.save();
     ctx.translate(sx, sy);
@@ -1557,27 +1807,8 @@ class Planet {
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // Rings (if applicable)
-    if (this.hasRings) {
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(this.ringTilt || 0.3);
-      ctx.scale(1, 0.3); // flatten to ellipse
-      for (let r = 0; r < 4; r++) {
-        const ringR = R * (1.5 + r * 0.3);
-        const ringAlpha = 0.15 - r * 0.03;
-        const rgbColor = this.color1.startsWith('#') ? parseInt(this.color1.slice(1), 16) : 0xffffff;
-        const rComp = (rgbColor >> 16) & 255;
-        const gComp = (rgbColor >> 8) & 255;
-        const bComp = rgbColor & 255;
-        ctx.strokeStyle = `rgba(${rComp},${gComp},${bComp},${ringAlpha})`;
-        ctx.lineWidth = R * 0.15;
-        ctx.beginPath();
-        ctx.arc(0, 0, ringR, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.restore();
-    }
+    // Draw FRONT half of rings (in front of planet)
+    if (this.hasRings) this.drawRings(ctx, sx, sy, R, 'front');
 
     // Name label
     ctx.fillStyle = this.color1 + '60';
@@ -1585,6 +1816,39 @@ class Planet {
     ctx.textAlign = 'center';
     ctx.fillText(this.name, sx, sy + R + 14);
     ctx.textAlign = 'left';
+  }
+
+  drawRings(ctx, sx, sy, R, half) {
+    ctx.save();
+    // Clip to top or bottom half
+    ctx.beginPath();
+    if (half === 'back') {
+      // Bottom half (behind planet)
+      ctx.rect(sx - R*3, sy, R*6, R*3);
+    } else {
+      // Top half (in front)
+      ctx.rect(sx - R*3, sy - R*3, R*6, R*3);
+    }
+    ctx.clip();
+
+    // Draw ring ellipses
+    ctx.translate(sx, sy);
+    ctx.rotate(this.ringTilt || 0.3);
+    ctx.scale(1, 0.3); // flatten to ellipse
+    const rgbColor = this.color1.startsWith('#') ? parseInt(this.color1.slice(1), 16) : 0xffffff;
+    const rComp = (rgbColor >> 16) & 255;
+    const gComp = (rgbColor >> 8) & 255;
+    const bComp = rgbColor & 255;
+    for (let r = 0; r < 4; r++) {
+      const ringR = R * (1.5 + r * 0.3);
+      const ringAlpha = 0.15 - r * 0.03;
+      ctx.strokeStyle = `rgba(${rComp},${gComp},${bComp},${ringAlpha})`;
+      ctx.lineWidth = R * 0.15;
+      ctx.beginPath();
+      ctx.arc(0, 0, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 }
 
@@ -1682,6 +1946,7 @@ class Ship {
     this.thrustOn = false;
     const boost = keys['shift'] ? 2.0 : 1;
     const spd = Math.hypot(this.vx, this.vy);
+    if (game && spd > (game.topSpeed || 0)) game.topSpeed = spd;
     const velAngle = Math.atan2(this.vy, this.vx); // direction of travel
     const thrustAmt = this.thrustPower * boost;
     if ((keys['w'] || keys['arrowup'])) {
@@ -1835,6 +2100,12 @@ class Ship {
       particles.emit(nearest.x, nearest.y, 1, '#fff', 60, 0.1, 1);
       const a = angle(this, nearest);
       nearest.vx += Math.cos(a)*30*dt; nearest.vy += Math.sin(a)*30*dt;
+
+      // Boss critical state floor
+      if (nearest.isBoss && nearest.hp < 1) {
+        nearest.hp = 1;
+        nearest.critical = true;
+      }
     }
   }
   fireBomb(invaders, particles) {
@@ -1911,11 +2182,16 @@ class Ship {
         gameOver();
         return;
       }
+      // No score penalty in ranked mode
+      game.respawnMsg = { text: `RESPAWNED  (${game.lives} LIVES LEFT)`, timer: 2.5 };
+    } else {
+      // Free play: escalating penalty
+      const penalty = game.deaths === 1 ? 0.10 : game.deaths === 2 ? 0.20 : 0.30;
+      game.score = Math.max(0, Math.floor(game.score * (1 - penalty)));
+      // Flash message showing actual penalty
+      game.respawnMsg = { text: `RESPAWNED  (-${Math.round(penalty*100)}% SCORE)`, timer: 2.5 };
     }
 
-    // Escalating penalty: 10% first death, 20% second, 30% thereafter
-    const penalty = game.deaths === 1 ? 0.10 : game.deaths === 2 ? 0.20 : 0.30;
-    game.score = Math.max(0, Math.floor(game.score * (1 - penalty)));
     // Respawn near nearest planet
     const planet = game.planets.reduce((best, p) => dist(this, p) < dist(this, best) ? p : best);
     const orbitR = planet.radius + ORBIT_MIN + 40;
@@ -1931,8 +2207,6 @@ class Ship {
     this.torpedoCooldown = 0;
     this.invulnTimer = 2.0; // 2 seconds of invuln after respawn
     this.alive = true;
-    // Flash message showing actual penalty
-    game.respawnMsg = { text: `RESPAWNED  (-${Math.round(penalty*100)}% SCORE)`, timer: 2.5 };
   }
   draw(ctx, cam) {
     if (!this.alive) return;
@@ -1948,54 +2222,115 @@ class Ship {
     const sx = this.x - cam.x + canvas.width/2, sy = this.y - cam.y + canvas.height/2;
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(this.angle);
 
-    // Ship: angular fighter design
-    // Main hull
-    ctx.fillStyle = '#c8d0e0';
-    ctx.strokeStyle = '#6af';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(SHIP_SIZE*2, 0);           // nose
-    ctx.lineTo(SHIP_SIZE*0.6, -SHIP_SIZE*0.5);
-    ctx.lineTo(-SHIP_SIZE*0.2, -SHIP_SIZE*0.6);
-    ctx.lineTo(-SHIP_SIZE*0.8, -SHIP_SIZE*1.1); // upper wing tip
-    ctx.lineTo(-SHIP_SIZE*1.2, -SHIP_SIZE*0.7);
-    ctx.lineTo(-SHIP_SIZE*0.6, -SHIP_SIZE*0.3);
-    ctx.lineTo(-SHIP_SIZE*0.8, 0);          // rear center
-    ctx.lineTo(-SHIP_SIZE*0.6, SHIP_SIZE*0.3);
-    ctx.lineTo(-SHIP_SIZE*1.2, SHIP_SIZE*0.7);
-    ctx.lineTo(-SHIP_SIZE*0.8, SHIP_SIZE*1.1);  // lower wing tip
-    ctx.lineTo(-SHIP_SIZE*0.2, SHIP_SIZE*0.6);
-    ctx.lineTo(SHIP_SIZE*0.6, SHIP_SIZE*0.5);
-    ctx.closePath();
-    ctx.fill(); ctx.stroke();
+    // Ship: draw based on ship type
+    const accentColor = SHIP_TYPES[this.shipType] ? SHIP_TYPES[this.shipType].accentColor : '#0ff';
+    const flicker = this.thrustOn ? (0.6 + Math.random()*0.4) : 0;
 
-    // Cockpit canopy
-    ctx.fillStyle = '#2af';
-    ctx.globalAlpha = 0.7;
-    ctx.beginPath();
-    ctx.moveTo(SHIP_SIZE*1.5, 0);
-    ctx.lineTo(SHIP_SIZE*0.5, -SHIP_SIZE*0.25);
-    ctx.lineTo(SHIP_SIZE*0.3, 0);
-    ctx.lineTo(SHIP_SIZE*0.5, SHIP_SIZE*0.25);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    if (this.shipType === 'vanguard') {
+      // Vanguard: balanced angular fighter
+      ctx.fillStyle = '#c8d0e0';
+      ctx.strokeStyle = '#6af';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(SHIP_SIZE*2, 0);
+      ctx.lineTo(SHIP_SIZE*0.6, -SHIP_SIZE*0.5);
+      ctx.lineTo(-SHIP_SIZE*0.2, -SHIP_SIZE*0.6);
+      ctx.lineTo(-SHIP_SIZE*0.8, -SHIP_SIZE*1.1);
+      ctx.lineTo(-SHIP_SIZE*1.2, -SHIP_SIZE*0.7);
+      ctx.lineTo(-SHIP_SIZE*0.6, -SHIP_SIZE*0.3);
+      ctx.lineTo(-SHIP_SIZE*0.8, 0);
+      ctx.lineTo(-SHIP_SIZE*0.6, SHIP_SIZE*0.3);
+      ctx.lineTo(-SHIP_SIZE*1.2, SHIP_SIZE*0.7);
+      ctx.lineTo(-SHIP_SIZE*0.8, SHIP_SIZE*1.1);
+      ctx.lineTo(-SHIP_SIZE*0.2, SHIP_SIZE*0.6);
+      ctx.lineTo(SHIP_SIZE*0.6, SHIP_SIZE*0.5);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Cockpit
+      ctx.fillStyle = '#2af'; ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(SHIP_SIZE*1.5, 0);
+      ctx.lineTo(SHIP_SIZE*0.5, -SHIP_SIZE*0.25);
+      ctx.lineTo(SHIP_SIZE*0.3, 0);
+      ctx.lineTo(SHIP_SIZE*0.5, SHIP_SIZE*0.25);
+      ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+      // Wing accents
+      ctx.strokeStyle = '#4cf'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(-SHIP_SIZE*0.3, -SHIP_SIZE*0.5);
+      ctx.lineTo(-SHIP_SIZE*0.9, -SHIP_SIZE*0.9);
+      ctx.moveTo(-SHIP_SIZE*0.3, SHIP_SIZE*0.5);
+      ctx.lineTo(-SHIP_SIZE*0.9, SHIP_SIZE*0.9);
+      ctx.stroke();
+    } else if (this.shipType === 'interceptor') {
+      // Interceptor: long needle-nose with swept delta wings
+      ctx.fillStyle = '#d0d8e8';
+      ctx.strokeStyle = '#fa0';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(SHIP_SIZE*2.5, 0);      // long sharp nose
+      ctx.lineTo(SHIP_SIZE*0.3, -SHIP_SIZE*0.4);
+      ctx.lineTo(-SHIP_SIZE*0.3, -SHIP_SIZE*0.8); // swept wing
+      ctx.lineTo(-SHIP_SIZE*1.0, -SHIP_SIZE*0.5);
+      ctx.lineTo(-SHIP_SIZE*0.7, 0);
+      ctx.lineTo(-SHIP_SIZE*1.0, SHIP_SIZE*0.5);
+      ctx.lineTo(-SHIP_SIZE*0.3, SHIP_SIZE*0.8);
+      ctx.lineTo(SHIP_SIZE*0.3, SHIP_SIZE*0.4);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Cockpit
+      ctx.fillStyle = '#fa0'; ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(SHIP_SIZE*1.8, -SHIP_SIZE*0.15);
+      ctx.lineTo(SHIP_SIZE*0.8, -SHIP_SIZE*0.1);
+      ctx.lineTo(SHIP_SIZE*0.8, SHIP_SIZE*0.1);
+      ctx.lineTo(SHIP_SIZE*1.8, SHIP_SIZE*0.15);
+      ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    } else if (this.shipType === 'bulwark') {
+      // Bulwark: wide boxy armored tank
+      ctx.fillStyle = '#b8c8d0';
+      ctx.strokeStyle = '#4f4';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(SHIP_SIZE*1.5, 0);     // blunt nose
+      ctx.lineTo(SHIP_SIZE*0.8, -SHIP_SIZE*0.7);
+      ctx.lineTo(-SHIP_SIZE*0.2, -SHIP_SIZE*0.7);
+      ctx.lineTo(-SHIP_SIZE*0.9, -SHIP_SIZE*0.4);
+      ctx.lineTo(-SHIP_SIZE*1.0, 0);
+      ctx.lineTo(-SHIP_SIZE*0.9, SHIP_SIZE*0.4);
+      ctx.lineTo(-SHIP_SIZE*0.2, SHIP_SIZE*0.7);
+      ctx.lineTo(SHIP_SIZE*0.8, SHIP_SIZE*0.7);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Cockpit
+      ctx.fillStyle = '#4f4'; ctx.globalAlpha = 0.5;
+      ctx.fillRect(SHIP_SIZE*0.5, -SHIP_SIZE*0.3, SHIP_SIZE*0.6, SHIP_SIZE*0.6);
+      ctx.globalAlpha = 1;
+    } else if (this.shipType === 'wraith') {
+      // Wraith: organic swept manta-ray
+      ctx.fillStyle = '#d0c8e0';
+      ctx.strokeStyle = '#c4f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(SHIP_SIZE*2, 0);        // manta nose
+      ctx.quadraticCurveTo(SHIP_SIZE*0.5, -SHIP_SIZE*0.6, -SHIP_SIZE*0.5, -SHIP_SIZE*0.9);
+      ctx.lineTo(-SHIP_SIZE*1.0, -SHIP_SIZE*0.5);
+      ctx.quadraticCurveTo(-SHIP_SIZE*0.7, 0, -SHIP_SIZE*1.0, SHIP_SIZE*0.5);
+      ctx.lineTo(-SHIP_SIZE*0.5, SHIP_SIZE*0.9);
+      ctx.quadraticCurveTo(SHIP_SIZE*0.5, SHIP_SIZE*0.6, SHIP_SIZE*2, 0);
+      ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // Cockpit canopy
+      ctx.fillStyle = '#c4f'; ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.arc(SHIP_SIZE*0.8, 0, SHIP_SIZE*0.35, 0, Math.PI*2);
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
 
-    // Wing accents
-    ctx.strokeStyle = '#4cf';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-SHIP_SIZE*0.3, -SHIP_SIZE*0.5);
-    ctx.lineTo(-SHIP_SIZE*0.9, -SHIP_SIZE*0.9);
-    ctx.moveTo(-SHIP_SIZE*0.3, SHIP_SIZE*0.5);
-    ctx.lineTo(-SHIP_SIZE*0.9, SHIP_SIZE*0.9);
-    ctx.stroke();
-
-    // Engine glow
+    // Engine glow (all ship types)
     if (this.thrustOn) {
-      const flicker = 0.6 + Math.random()*0.4;
       ctx.globalAlpha = flicker;
-      ctx.fillStyle = keys['shift'] ? '#4af' : '#f84';
+      ctx.fillStyle = accentColor;
       // Upper engine
       ctx.beginPath();
       ctx.moveTo(-SHIP_SIZE*0.6, -SHIP_SIZE*0.25);
@@ -2086,7 +2421,7 @@ class Ship {
 
 // ARH types by wave theme
 const ARH_TYPES = {
-  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 0,   shootChance: 0 },
+  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 80,  shootChance: 0 },
   scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 30,  shootChance: 0 },
   brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 120, shootChance: 0 },
   stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.3 },
@@ -2409,6 +2744,12 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       inv.hp -= 3;
       const a = angle(ship, inv);
       inv.vx += Math.cos(a)*40; inv.vy += Math.sin(a)*40;
+
+      // Boss critical state floor
+      if (inv.isBoss && inv.hp < 1) {
+        inv.hp = 1;
+        inv.critical = true;
+      }
     }
   }
 
@@ -2423,194 +2764,278 @@ function drawARH(ctx, inv, cam) {
   if (s < 1) return;
 
   const gen = inv.generation;
-  const rot = inv.pulsePhase * 0.5; // slow rotation
-  const t = inv.pulsePhase;
-
-  // Iridescent effect when about to reproduce — subtle border color shift only
-  let hue = inv.baseHue;
-  if (inv.reproduceProgress > 0.5) {
-    const irid = (inv.reproduceProgress - 0.5)*2;
-    hue = (inv.baseHue + Date.now()*0.3*irid) % 360;
-  }
-
-  // Premium palette: dark muted bodies, color only on thin borders/accents
-  const color = hsl(hue, 15, 18);       // very dark muted body
-  const light = hsl(hue, 60, 60);       // bright accent for borders
-  const dark = hsl(hue, 12, 10);        // near-black body shadow
-  const glow = hsl(hue, 70, 55);        // bright accent glow
-  const dim = hsl(hue, 10, 7);          // deepest shadow
-  const accent = hsl(hue, 65, 50);      // thin border color
-  // Alpha variants for transparency effects
-  const lightA = (a) => hsla(hue, 60, 60, a);
-  const darkA = (a) => hsla(hue, 12, 10, a);
-  const glowA = (a) => hsla(hue, 70, 55, a);
-  const dimA = (a) => hsla(hue, 10, 7, a);
-  const accentA = (a) => hsla(hue, 65, 50, a);
+  const h = inv.baseHue;
+  const t = game.time;
 
   ctx.save();
   ctx.translate(sx, sy);
-  ctx.rotate(rot);
 
-  // Phantom cloaking — semi-transparent
-  if (inv.typeName === 'phantom') {
-    ctx.globalAlpha = 0.4 + Math.sin(inv.pulsePhase*2)*0.15;
-  }
+  // Type-specific unique renderings
+  if (inv.typeName === 'drone') {
+    // Drone: spinning diamond core with flutter wings
+    const rot = t * 1.5; // fast spinning
 
-  // ---- ALL TYPES: Dark insectoid machine with colored border accents ----
-  const bw = s*1.0, bh = s*0.7;
+    // Pulsing glow dot
+    const glowSize = s*0.3 + Math.sin(t*3)*s*0.1;
+    ctx.fillStyle = hsl(h, 80, 70);
+    ctx.beginPath(); ctx.arc(0, 0, glowSize, 0, Math.PI*2); ctx.fill();
 
-  // Main body — dark carapace with thin colorful border
-  // Rear segment
-  const rearG = ctx.createRadialGradient(-bw*0.1, bh*0.3, 0, 0, bh*0.2, bw*0.8);
-  rearG.addColorStop(0, color);
-  rearG.addColorStop(0.6, dark);
-  rearG.addColorStop(1, dim);
-  ctx.fillStyle = rearG;
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 1.0;
-  ctx.beginPath(); ctx.ellipse(0, bh*0.2, bw*0.7, bh*0.6, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-  // Front segment (overlapping) — dark with accent border
-  const frontG = ctx.createRadialGradient(-bw*0.15, -bh*0.25, 0, 0, -bh*0.15, bw*0.6);
-  frontG.addColorStop(0, hsl(hue, 20, 22));
-  frontG.addColorStop(0.5, color);
-  frontG.addColorStop(1, dark);
-  ctx.fillStyle = frontG;
-  ctx.beginPath(); ctx.ellipse(0, -bh*0.15, bw*0.55, bh*0.5, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-  // Segment seam — thin dark line
-  ctx.strokeStyle = dimA(0.5); ctx.lineWidth = 0.6;
-  ctx.beginPath(); ctx.moveTo(-bw*0.45, 0); ctx.lineTo(bw*0.45, 0); ctx.stroke();
+    // Diamond core
+    ctx.fillStyle = hsl(h, 70, 45);
+    ctx.beginPath();
+    ctx.moveTo(0, -s*0.4);
+    ctx.lineTo(s*0.3, 0);
+    ctx.lineTo(0, s*0.4);
+    ctx.lineTo(-s*0.3, 0);
+    ctx.closePath();
+    ctx.fill();
 
-  // Sensor eye — small, no glow halo
-  const eyeR = s*0.18 + gen*s*0.03;
-  const eyeColor = gen >= 4 ? '#f44' : gen >= 2 ? accent : light;
-  const eyeColorA = (a) => gen >= 4 ? `rgba(255,68,68,${a})` : accentA(a);
-  // Eye body — just a small bright dot
-  ctx.fillStyle = eyeColor;
-  ctx.beginPath(); ctx.arc(0, 0, eyeR, 0, Math.PI*2); ctx.fill();
-  // Tiny specular
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.beginPath(); ctx.arc(-eyeR*0.2, -eyeR*0.2, eyeR*0.25, 0, Math.PI*2); ctx.fill();
-  // Pupil
-  ctx.fillStyle = '#000';
-  ctx.beginPath(); ctx.arc(0, 0, eyeR*0.25, 0, Math.PI*2); ctx.fill();
-
-  // Antennae / sensor prongs — more with higher gen, thinner/subtler
-  const numProng = 2 + Math.min(gen, 3);
-  ctx.lineWidth = 0.8;
-  for (let i = 0; i < numProng; i++) {
-    const a = (i/numProng)*Math.PI*2 + t*0.3;
-    const len = s*0.7 + gen*s*0.12;
-    const tipX = Math.cos(a)*len, tipY = Math.sin(a)*len;
-    ctx.strokeStyle = dimA(0.6);
-    ctx.beginPath(); ctx.moveTo(Math.cos(a)*bw*0.45, Math.sin(a)*bh*0.45);
-    ctx.lineTo(tipX, tipY); ctx.stroke();
-    // Tip dot — tiny dark
-    ctx.fillStyle = dim;
-    ctx.beginPath(); ctx.arc(tipX, tipY, 0.8, 0, Math.PI*2); ctx.fill();
-  }
-
-  // Type-specific mechanical features
-  if (inv.shape === 'diamond') {
-    // Drone: spinning segmented ring
-    ctx.strokeStyle = dimA(0.5); ctx.lineWidth = 0.8;
-    ctx.setLineDash([2,4]);
-    ctx.beginPath(); ctx.arc(0, 0, s*0.65, rot*2, rot*2 + Math.PI*1.5); ctx.stroke();
-    ctx.setLineDash([]);
-  } else if (inv.shape === 'tri') {
-    // Scout: thruster nozzles — dark metal, accent border
-    for (let side = -1; side <= 1; side += 2) {
-      ctx.fillStyle = dim;
-      ctx.fillRect(-s*0.18, side*bh - 1.5, s*0.36, 3);
-      ctx.strokeStyle = dimA(0.5); ctx.lineWidth = 0.5;
-      ctx.strokeRect(-s*0.18, side*bh - 1.5, s*0.36, 3);
-    }
-  } else if (inv.shape === 'hex') {
-    // Brute: heavy side armor with rivet detail
-    for (let side = -1; side <= 1; side += 2) {
-      const px = side*(bw+1);
-      ctx.fillStyle = dark;
-      ctx.fillRect(px - 2, -bh*0.45, 4, bh*0.9);
-      ctx.strokeStyle = dimA(0.4); ctx.lineWidth = 0.6;
-      ctx.strokeRect(px - 2, -bh*0.45, 4, bh*0.9);
-      // Rivets
-      ctx.fillStyle = dimA(0.5);
-      ctx.beginPath(); ctx.arc(px, -bh*0.3, 1, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(px, bh*0.3, 1, 0, Math.PI*2); ctx.fill();
-    }
-  } else if (inv.shape === 'arrow') {
-    // Stinger: weapon barrel — dark metal with accent tip
-    ctx.fillStyle = dim;
-    ctx.fillRect(bw*0.4, -1.5, s*0.9, 3);
-    ctx.strokeStyle = dimA(0.4); ctx.lineWidth = 0.5;
-    ctx.strokeRect(bw*0.4, -1.5, s*0.9, 3);
-    // Barrel tip dot
-    ctx.fillStyle = gen >= 3 ? '#f44' : dim;
-    ctx.beginPath(); ctx.arc(bw*0.4 + s*0.9, 0, 1.5, 0, Math.PI*2); ctx.fill();
-  } else if (inv.shape === 'octagon') {
-    // Hive: internal cell circles — thin dark strokes
-    ctx.strokeStyle = dimA(0.4); ctx.lineWidth = 0.5;
+    // 4 flutter wings (animated oscillating lines)
+    ctx.strokeStyle = hsla(h, 65, 55, 0.6);
+    ctx.lineWidth = 1.5;
     for (let i = 0; i < 4; i++) {
-      const cx2 = (i%2 - 0.5)*bw*0.5, cy2 = (Math.floor(i/2) - 0.5)*bh*0.5;
-      ctx.beginPath(); ctx.arc(cx2, cy2, s*0.13, 0, Math.PI*2); ctx.stroke();
-    }
-  } else if (inv.shape === 'crescent') {
-    // Phantom: dashed cloaking outline — no glow
-    ctx.globalAlpha = 0.25 + Math.sin(t*3)*0.1;
-    ctx.strokeStyle = 'rgba(180,200,220,0.3)'; ctx.lineWidth = 0.5;
-    ctx.setLineDash([2,3]);
-    ctx.beginPath(); ctx.arc(0, 0, s*1.1, 0, Math.PI*2); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
-  } else if (inv.shape === 'star6') {
-    // Titan: heavy mount points + glowing threat ring
-    ctx.fillStyle = dim;
-    for (let i = 0; i < 4; i++) {
-      const a = (i/4)*Math.PI*2 + rot*0.5;
-      const mx2 = Math.cos(a)*bw*0.8, my2 = Math.sin(a)*bh*0.8;
-      ctx.fillRect(mx2-2.5, my2-2.5, 5, 5);
-    }
-    // Threat ring — thin dark
-    ctx.strokeStyle = dimA(0.5); ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.arc(0, 0, eyeR + 3, 0, Math.PI*2); ctx.stroke();
-  }
-
-  // Generation evolution — more legs, mandibles, plating
-  if (gen >= 1) {
-    const numLegs = 2 + gen;
-    for (let i = 0; i < numLegs; i++) {
-      const side = i % 2 === 0 ? -1 : 1;
-      const along = -bh*0.3 + (Math.floor(i/2)/(Math.floor(numLegs/2)||1))*bh*0.8;
-      const legLen = s*0.35 + gen*1.5;
-      const midX = side*bw*0.65, midY = along + side*2;
-      const tipX2 = side*(bw*0.65 + legLen), tipY2 = along + Math.sin(t*2+i)*3;
-      ctx.strokeStyle = dimA(0.6); ctx.lineWidth = 0.8;
-      ctx.beginPath(); ctx.moveTo(side*bw*0.4, along); ctx.lineTo(midX, midY); ctx.lineTo(tipX2, tipY2); ctx.stroke();
-      // Joint
-      ctx.fillStyle = dimA(0.7);
-      ctx.beginPath(); ctx.arc(midX, midY, 0.8, 0, Math.PI*2); ctx.fill();
-    }
-  }
-  if (gen >= 2) {
-    // Mandible pincers
-    ctx.strokeStyle = dimA(0.6); ctx.lineWidth = 1;
-    for (let side = -1; side <= 1; side += 2) {
+      const wingAngle = (i/4)*Math.PI*2 + rot;
+      const wingX = Math.cos(wingAngle)*s*0.5;
+      const wingY = Math.sin(wingAngle)*s*0.5;
+      const flutter = Math.sin(t*4+i)*s*0.15;
       ctx.beginPath();
-      ctx.moveTo(side*bw*0.2, -bh*0.5);
-      ctx.quadraticCurveTo(side*(bw*0.5+gen), -bh*0.6 - s*0.3, side*(bw*0.25+gen*1.5), -bh*0.5 - s*0.4 - gen);
+      ctx.moveTo(wingX, wingY);
+      ctx.lineTo(wingX + Math.cos(wingAngle+Math.PI/2)*flutter, wingY + Math.sin(wingAngle+Math.PI/2)*flutter);
       ctx.stroke();
     }
-  }
-  if (gen >= 3) {
-    // Carapace armor ridge
-    ctx.strokeStyle = hsla(hue, 25, 25, 0.5); ctx.lineWidth = 1.2;
+
+  } else if (inv.typeName === 'scout') {
+    // Scout: dart/arrow shape with speed trail
+    const rot = Math.atan2(inv.vy, inv.vx);
+
+    // Speed trail
+    if (Math.sqrt(inv.vx*inv.vx + inv.vy*inv.vy) > 5) {
+      for (let i = 0; i < 4; i++) {
+        const fadeAlpha = 0.4 * (1 - i/4);
+        ctx.strokeStyle = hsla(h, 60, 50, fadeAlpha);
+        ctx.lineWidth = 1.5 - i*0.3;
+        const trailDist = s*0.3 + i*s*0.2;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-Math.cos(rot)*trailDist, -Math.sin(rot)*trailDist);
+        ctx.stroke();
+      }
+    }
+
+    // Narrow dart body
+    ctx.fillStyle = hsl(h, 70, 50);
     ctx.beginPath();
-    ctx.ellipse(0, bh*0.15, bw*0.82, bh*0.65, 0, 0, Math.PI*2);
-    ctx.stroke();
-    // Inner detail line
-    ctx.strokeStyle = hsla(hue, 20, 20, 0.25); ctx.lineWidth = 0.6;
+    ctx.moveTo(s*0.5, 0);
+    ctx.lineTo(-s*0.3, -s*0.2);
+    ctx.lineTo(-s*0.2, 0);
+    ctx.lineTo(-s*0.3, s*0.2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Swept fins
+    ctx.strokeStyle = hsl(h, 65, 55);
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.ellipse(0, bh*0.15, bw*0.72, bh*0.55, 0, 0, Math.PI*2);
+    ctx.moveTo(-s*0.2, -s*0.15);
+    ctx.lineTo(-s*0.4, -s*0.25);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-s*0.2, s*0.15);
+    ctx.lineTo(-s*0.4, s*0.25);
+    ctx.stroke();
+
+    // Engine glow
+    ctx.fillStyle = hsl(h, 75, 65);
+    ctx.beginPath(); ctx.arc(-s*0.25, 0, s*0.12, 0, Math.PI*2); ctx.fill();
+
+  } else if (inv.typeName === 'brute') {
+    // Brute: chunky hexagon with armor plating
+    const rot = t * 0.3; // slow rotation
+
+    // Double outline for armor
+    ctx.strokeStyle = hsl(h, 50, 30);
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i/6)*Math.PI*2 + rot;
+      const x = Math.cos(angle)*s*0.5;
+      const y = Math.sin(angle)*s*0.5;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // Inner thick outline
+    ctx.strokeStyle = hsl(h, 45, 25);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 3 internal panel lines
+    ctx.strokeStyle = hsla(h, 40, 35, 0.5);
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 3; i++) {
+      const r = s*0.3 + i*s*0.1;
+      ctx.beginPath();
+      for (let j = 0; j < 6; j++) {
+        const angle = (j/6)*Math.PI*2 + rot;
+        const x = Math.cos(angle)*r;
+        const y = Math.sin(angle)*r;
+        if (j === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Glowing red-orange core
+    ctx.fillStyle = hsl(10, 80, 50);
+    ctx.beginPath(); ctx.arc(0, 0, s*0.25, 0, Math.PI*2); ctx.fill();
+
+  } else if (inv.typeName === 'stinger') {
+    // Stinger: wasp-like body with pulsing spine
+    const rot = Math.atan2(inv.vy, inv.vx);
+
+    // Small oval body
+    ctx.fillStyle = hsl(h, 65, 45);
+    ctx.beginPath(); ctx.ellipse(0, 0, s*0.25, s*0.4, 0, 0, Math.PI*2); ctx.fill();
+
+    // Wing arcs
+    for (let side = -1; side <= 1; side += 2) {
+      ctx.strokeStyle = hsla(h, 60, 55, 0.4);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, s*0.35, (side === -1 ? Math.PI*0.3 : Math.PI*1.7), (side === -1 ? Math.PI*0.8 : Math.PI*2.2));
+      ctx.stroke();
+    }
+
+    // 2 long stinger spines trailing behind
+    const spineAlpha = inv.shootTimer && inv.shootTimer > 0 ? 1.0 : 0.6;
+    for (let side = -1; side <= 1; side += 2) {
+      ctx.strokeStyle = hsla(h, 70, (inv.shootTimer > 0 ? 70 : 50), spineAlpha);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(side*s*0.15, s*0.35);
+      ctx.lineTo(side*s*0.35, s*0.65);
+      ctx.stroke();
+    }
+
+  } else if (inv.typeName === 'hive') {
+    // Hive: fat octagon with pulsing internal cells
+    const rot = t * 0.2;
+
+    // Octagonal body
+    const bodyColor = hsl(h, 75, 45);
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const angle = (i/8)*Math.PI*2 + rot;
+      const x = Math.cos(angle)*s*0.5;
+      const y = Math.sin(angle)*s*0.5;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Pulsing outline (intensifies with reproduce progress)
+    const outlineAlpha = 0.5 + inv.reproduceProgress * 0.5;
+    ctx.strokeStyle = hsla(h, 80, 60, outlineAlpha);
+    ctx.lineWidth = 1.5 + inv.reproduceProgress * 1.5;
+    ctx.stroke();
+
+    // 3-4 internal cells/eggs
+    for (let i = 0; i < 4; i++) {
+      const cellAngle = (i/4)*Math.PI*2 + t*0.5;
+      const cellX = Math.cos(cellAngle)*s*0.25;
+      const cellY = Math.sin(cellAngle)*s*0.25;
+      const cellHue = (h + i*20) % 360;
+
+      // Glow brighter if reproduceProgress is high
+      const cellAlpha = 0.3 + Math.max(0.2, inv.reproduceProgress - 0.7) * 0.7;
+      const cellLightness = inv.reproduceProgress > 0.7 ? 65 : 50;
+      ctx.fillStyle = hsla(cellHue, 70, cellLightness, cellAlpha);
+      ctx.beginPath(); ctx.arc(cellX, cellY, s*0.12, 0, Math.PI*2); ctx.fill();
+    }
+
+  } else if (inv.typeName === 'phantom') {
+    // Phantom: flickering wisp with ghost trails
+    const shimmer = 0.3 + Math.sin(t*4)*0.4;
+    ctx.globalAlpha = shimmer;
+
+    // Trailing ghost wisps
+    for (let i = 1; i <= 3; i++) {
+      const trailX = Math.cos(t*0.5)*s*0.3 - i*s*0.15;
+      const trailY = Math.sin(t*0.5)*s*0.3;
+      const trailAlpha = (1 - i/3) * shimmer * 0.4;
+
+      ctx.globalAlpha = trailAlpha;
+      ctx.fillStyle = hsl(h, 70, 50);
+      ctx.beginPath();
+      ctx.arc(trailX, trailY, s*0.25 - i*0.05, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    // Main crescent body
+    ctx.globalAlpha = shimmer;
+    ctx.fillStyle = hsl(h, 75, 55);
+    ctx.beginPath();
+    ctx.arc(0, 0, s*0.3, 0.5, 2.5);
+    ctx.lineTo(0, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Ethereal glow aura
+    ctx.strokeStyle = hsla(h, 80, 65, shimmer*0.3);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0, 0, s*0.4, 0, Math.PI*2); ctx.stroke();
+
+  } else if (inv.typeName === 'titan') {
+    // Titan: large 6-pointed star with rotating outer segments
+    const rot = t * 0.5; // slow rotation
+
+    // Rotating outer segment ring (6 small squares)
+    ctx.fillStyle = hsl(h, 60, 40);
+    for (let i = 0; i < 6; i++) {
+      const segAngle = (i/6)*Math.PI*2 + rot;
+      const segX = Math.cos(segAngle)*s*0.7;
+      const segY = Math.sin(segAngle)*s*0.7;
+      ctx.save();
+      ctx.translate(segX, segY);
+      ctx.rotate(segAngle);
+      ctx.fillRect(-3, -3, 6, 6);
+      ctx.restore();
+    }
+
+    // Thick armored core circle
+    const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.5);
+    coreG.addColorStop(0, hsl(h, 75, 70));
+    coreG.addColorStop(0.5, hsl(h, 70, 50));
+    coreG.addColorStop(1, hsl(h, 60, 30));
+    ctx.fillStyle = coreG;
+    ctx.beginPath(); ctx.arc(0, 0, s*0.5, 0, Math.PI*2); ctx.fill();
+
+    // Multiple glow layers
+    ctx.strokeStyle = hsla(h, 80, 60, 0.6);
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, s*0.55, 0, Math.PI*2); ctx.stroke();
+
+    ctx.strokeStyle = hsla(h, 75, 50, 0.3);
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, 0, s*0.65, 0, Math.PI*2); ctx.stroke();
+
+    // 6-pointed star rays
+    ctx.strokeStyle = hsl(h, 70, 50);
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const angle = (i/6)*Math.PI*2;
+      const x = Math.cos(angle)*s*0.6;
+      const y = Math.sin(angle)*s*0.6;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
@@ -2714,60 +3139,100 @@ function drawARH(ctx, inv, cam) {
     } else if (variant.name === 'IRON MAW') {
       ctx.save();
       ctx.translate(sx, sy);
-      // Heavy armored body
-      const bodyG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.9);
-      bodyG.addColorStop(0, hsl(h, 30, 30));
-      bodyG.addColorStop(1, hsl(h, 20, 10));
-      ctx.fillStyle = bodyG;
+      ctx.rotate(Math.atan2(player.y - inv.y, player.x - inv.x)); // Track player
+
+      // Dark mechanical core behind the jaws
+      const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.4);
+      coreG.addColorStop(0, hsl(h, 20, 25));
+      coreG.addColorStop(1, hsl(h, 15, 10));
+      ctx.fillStyle = coreG;
+      ctx.beginPath(); ctx.arc(0, 0, s*0.4, 0, Math.PI*2); ctx.fill();
+
+      // Rhythmically opening and closing jaws
+      const jawOpen = 0.2 + Math.sin(game.time*2)*0.3;
+      const jawGap = s*0.8*jawOpen;
+
+      // Upper jaw (trapezoid - closes from top)
+      ctx.fillStyle = hsl(h, 25, 22);
       ctx.beginPath();
-      ctx.moveTo(s*0.9, -s*0.4); ctx.lineTo(s*0.9, s*0.4);
-      ctx.lineTo(-s*0.7, s*0.6); ctx.lineTo(-s*0.7, -s*0.6);
-      ctx.closePath(); ctx.fill();
-      // Jaw with interlocking teeth — opens and closes
-      const jawOpen = 0.3 + Math.sin(t*1.5)*0.3;
-      const jawY = s*0.5*jawOpen;
-      // Upper jaw
-      ctx.fillStyle = hsl(h, 25, 20);
+      ctx.moveTo(-s*0.6, -s*0.3);
+      ctx.lineTo(s*0.6, -s*0.2);
+      ctx.lineTo(s*0.5, -s*0.2 - jawGap);
+      ctx.lineTo(-s*0.5, -s*0.3 - jawGap);
+      ctx.closePath();
+      ctx.fill();
+
+      // Lower jaw (trapezoid - closes from bottom)
       ctx.beginPath();
-      ctx.moveTo(s*0.9, -s*0.1); ctx.lineTo(s*1.4, -jawY);
-      ctx.lineTo(s*0.5, -jawY); ctx.closePath(); ctx.fill();
-      // Lower jaw
-      ctx.beginPath();
-      ctx.moveTo(s*0.9, s*0.1); ctx.lineTo(s*1.4, jawY);
-      ctx.lineTo(s*0.5, jawY); ctx.closePath(); ctx.fill();
-      // Teeth on each jaw
-      ctx.fillStyle = hsl(h, 15, 55);
-      for (let i = 0; i < 5; i++) {
-        const tx = s*0.6 + i*s*0.16;
+      ctx.moveTo(-s*0.6, s*0.3);
+      ctx.lineTo(s*0.6, s*0.2);
+      ctx.lineTo(s*0.5, s*0.2 + jawGap);
+      ctx.lineTo(-s*0.5, s*0.3 + jawGap);
+      ctx.closePath();
+      ctx.fill();
+
+      // Grinding teeth/spikes along inner jaw edges
+      ctx.fillStyle = hsl(h, 30, 60);
+      for (let i = 0; i < 8; i++) {
+        const tx = -s*0.5 + (i/7)*s*1.0;
         // Upper teeth
         ctx.beginPath();
-        ctx.moveTo(tx - 2, -jawY); ctx.lineTo(tx, -jawY + s*0.12);
-        ctx.lineTo(tx + 2, -jawY); ctx.closePath(); ctx.fill();
-        // Lower teeth
+        ctx.moveTo(tx - s*0.08, -s*0.2 - jawGap);
+        ctx.lineTo(tx, -s*0.2 - jawGap - s*0.15);
+        ctx.lineTo(tx + s*0.08, -s*0.2 - jawGap);
+        ctx.closePath();
+        ctx.fill();
+        // Lower teeth (inverted)
         ctx.beginPath();
-        ctx.moveTo(tx - 2, jawY); ctx.lineTo(tx, jawY - s*0.12);
-        ctx.lineTo(tx + 2, jawY); ctx.closePath(); ctx.fill();
-      }
-      // 2 cannon arms
-      for (let side = -1; side <= 1; side += 2) {
-        ctx.strokeStyle = hsl(h, 20, 22);
-        ctx.lineWidth = 4;
-        const armAngle = side * (0.6 + Math.sin(t*0.8)*0.15);
-        const armLen = s*1.0;
-        ctx.beginPath();
-        ctx.moveTo(-s*0.3, side*s*0.3);
-        ctx.lineTo(-s*0.3 + Math.cos(armAngle)*armLen*0.5, side*s*0.3 + Math.sin(armAngle)*armLen*0.5);
-        ctx.lineTo(-s*0.3 + Math.cos(armAngle)*armLen, side*s*0.3 + Math.sin(armAngle)*armLen);
-        ctx.stroke();
-        // Cannon tip glow
-        ctx.fillStyle = hsl(h, 60, 50);
-        ctx.beginPath();
-        ctx.arc(-s*0.3 + Math.cos(armAngle)*armLen, side*s*0.3 + Math.sin(armAngle)*armLen, 3, 0, Math.PI*2);
+        ctx.moveTo(tx - s*0.08, s*0.2 + jawGap);
+        ctx.lineTo(tx, s*0.2 + jawGap + s*0.15);
+        ctx.lineTo(tx + s*0.08, s*0.2 + jawGap);
+        ctx.closePath();
         ctx.fill();
       }
-      // Eye slit
-      ctx.fillStyle = hsl(h, 70, 55);
-      ctx.fillRect(-s*0.2, -s*0.05, s*0.6, s*0.1);
+
+      // Orange-red molten glow between the plates (intensifies as jaws open)
+      const glowIntensity = 0.3 + jawOpen * 0.7;
+      ctx.fillStyle = hsla(h, 85, 55, glowIntensity * 0.6);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s*0.45, jawGap*0.4 + s*0.1, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // Molten gradient glow
+      const moltenG = ctx.createLinearGradient(0, -jawGap, 0, jawGap);
+      moltenG.addColorStop(0, hsla(h, 90, 60, glowIntensity*0.4));
+      moltenG.addColorStop(0.5, hsla(h, 80, 55, glowIntensity*0.8));
+      moltenG.addColorStop(1, hsla(h, 90, 60, glowIntensity*0.4));
+      ctx.fillStyle = moltenG;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s*0.4, jawGap*0.35, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // Riveted armor texture on jaw exteriors (small circle dots)
+      ctx.fillStyle = hsla(h, 20, 30, 0.6);
+      for (let i = 0; i < 12; i++) {
+        const angle = (i/12)*Math.PI*2;
+        const rx = Math.cos(angle)*s*0.65;
+        const ry = Math.sin(angle)*s*0.45;
+        ctx.beginPath(); ctx.arc(rx, ry, 1.5, 0, Math.PI*2); ctx.fill();
+      }
+
+      // When damaged, sparks fly from jaw hinges
+      if (hpFrac < 0.5) {
+        for (let i = 0; i < 3; i++) {
+          const sparkLife = (game.time*5 + i*0.3) % 1;
+          const sparkX = (Math.random()-0.5)*s*0.3;
+          const sparkY = (Math.random()-0.5 > 0 ? -1 : 1)*s*0.4;
+          const trailLen = sparkLife*s*0.3;
+          ctx.strokeStyle = hsla(15, 100, 50 + sparkLife*30, 1-sparkLife);
+          ctx.lineWidth = 1.5 + (1-sparkLife)*1;
+          ctx.beginPath();
+          ctx.moveTo(sparkX, sparkY);
+          ctx.lineTo(sparkX + (Math.random()-0.5)*trailLen, sparkY + (Math.random()-0.5)*trailLen);
+          ctx.stroke();
+        }
+      }
+
       ctx.restore();
 
     } else if (variant.name === 'STELLAR DEVOURER') {
@@ -2821,7 +3286,7 @@ function drawARH(ctx, inv, cam) {
       grd.addColorStop(0.5, `rgba(255,20,0,${glowPulse * 0.1})`);
       grd.addColorStop(1, 'rgba(255,0,0,0)');
       ctx.fillStyle = grd;
-      ctx.fillRect(-s*1.6, -s*1.6, s*3.2, s*3.2);
+      ctx.beginPath(); ctx.arc(0, 0, s*1.6, 0, Math.PI*2); ctx.fill();
       // 6 heavy weapon arms — thick armored limbs with glowing tips
       for (let i = 0; i < 6; i++) {
         const armA = (i / 6) * Math.PI * 2 + Math.sin(t * 0.8 + i * 2) * 0.12;
@@ -3304,6 +3769,17 @@ function checkAchievements() {
       unlockAchievement('all_types_kill');
     }
   }
+
+  // orbit_all (orbit 3+ different celestial bodies)
+  if (!game.achievements.orbit_all && game.ship.alive) {
+    if (!game.achievementTracking.bodiesOrbited) game.achievementTracking.bodiesOrbited = new Set();
+    for (const body of game.bodies) {
+      if (dist(game.ship, body) < body.radius * 3) {
+        game.achievementTracking.bodiesOrbited.add(body.name || 'Star');
+      }
+    }
+    if (game.achievementTracking.bodiesOrbited.size >= 3) unlockAchievement('orbit_all');
+  }
 }
 
 function unlockAchievement(key) {
@@ -3396,6 +3872,7 @@ function initGame() {
     bossSubMessage: null, bossSubMessageTimer: 0,
     waveMessage: null, waveMessageTimer: 0,
     pendingShipSwap: null,
+    topSpeed: 0,
     achievements: {},
     achievementTracking: {
       orbitBodies: {},
@@ -3405,6 +3882,7 @@ function initGame() {
       waveStartTime: 0,
       bombKills: 0,
       firstKill: false,
+      bodiesOrbited: new Set(),
     },
     unlockedAchievements: [],
     hintState: {
@@ -3418,6 +3896,22 @@ function initGame() {
 }
 
 function spawnWave() {
+  // Track max wave for palette unlocks
+  const maxWave = Math.max(game.wave, parseInt(localStorage.getItem('orbital-siege-max-wave') || '1'));
+  localStorage.setItem('orbital-siege-max-wave', String(maxWave));
+
+  // Check for checkpoint waves
+  if (CHECKPOINT_WAVES.includes(game.wave)) {
+    const existing = JSON.parse(localStorage.getItem('orbital-siege-checkpoints') || '{}');
+    if (!existing[game.wave]) {
+      existing[game.wave] = generateCheckpointCode(game.wave);
+      localStorage.setItem('orbital-siege-checkpoints', JSON.stringify(existing));
+      game.bossSubMessage = `CHECKPOINT UNLOCKED: WAVE ${game.wave}`;
+      game.bossSubMessageTimer = 4;
+      updateCheckpointList();
+    }
+  }
+
   expandSystem(game.wave);
 
   const count = game.waveSpawnCount + game.wave*2;
@@ -3649,6 +4143,13 @@ function updateGame(dt) {
           inv.hp -= dmg;
           const nx = (inv.x - m.x)/Math.max(sd,1), ny = (inv.y - m.y)/Math.max(sd,1);
           inv.vx += nx*25; inv.vy += ny*25;
+
+          // Boss critical state floor
+          if (inv.isBoss && inv.hp < 1) {
+            inv.hp = 1;
+            inv.critical = true;
+          }
+
           if (inv.hp <= 0) {
             game.particles.emit(inv.x, inv.y, 18, inv.color, 220, 0.4, 3);
             game.score += inv.points; game.kills++;
@@ -3940,10 +4441,11 @@ function drawGame() {
       i === 0 ? ctx.moveTo(sx2, sy2) : ctx.lineTo(sx2, sy2);
     }
     // Glow pass
-    ctx.strokeStyle = 'rgba(100,180,255,0.12)'; ctx.lineWidth = 5;
+    const orbitColor = getPalette().orbitLine;
+    ctx.strokeStyle = orbitColor + '1f'; ctx.lineWidth = 5;
     ctx.stroke();
     // Sharp pass
-    ctx.strokeStyle = 'rgba(140,210,255,0.45)'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = orbitColor + '73'; ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -3984,10 +4486,10 @@ function drawGame() {
   // Enemy bullets
   for (const b of game.enemyBullets) {
     const sx = b.x - cam.x + canvas.width/2, sy = b.y - cam.y + canvas.height/2;
-    ctx.fillStyle = '#f44';
+    ctx.fillStyle = getPalette().enemyBullet;
     ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 0.3;
-    ctx.fillStyle = '#f00';
+    ctx.fillStyle = 'rgba(100,0,0,1)';
     ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
   }
@@ -3996,9 +4498,10 @@ function drawGame() {
   for (const b of game.bullets) {
     const sx = b.x - cam.x + canvas.width/2, sy = b.y - cam.y + canvas.height/2;
     const ba = Math.atan2(b.vy, b.vx);
-    ctx.strokeStyle = '#ff0'; ctx.lineWidth = 2;
+    const bulletColor = getPalette().bullet;
+    ctx.strokeStyle = bulletColor; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - Math.cos(ba)*10, sy - Math.sin(ba)*10); ctx.stroke();
-    ctx.globalAlpha = 0.4; ctx.fillStyle = '#ff0';
+    ctx.globalAlpha = 0.4; ctx.fillStyle = bulletColor;
     ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI*2); ctx.fill(); ctx.globalAlpha = 1;
   }
 
@@ -4328,22 +4831,22 @@ function updateLeaderboardUI() {
   const gameOverTbody = document.getElementById('game-over-leaderboard-body');
 
   if (!firebaseReady || leaderboardData.length === 0) {
-    if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#888;">No scores yet</td></tr>';
-    if (gameOverTbody) gameOverTbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;">No scores yet</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">No scores yet</td></tr>';
+    if (gameOverTbody) gameOverTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">No scores yet</td></tr>';
     return;
   }
 
   let html = '';
   for (let i = 0; i < Math.min(leaderboardData.length, 20); i++) {
     const score = leaderboardData[i];
-    html += `<tr><td>${i+1}</td><td>${score.name || 'UNKNOWN'}</td><td>${score.score}</td><td>${score.wave || 0}</td></tr>`;
+    html += `<tr><td>${i+1}</td><td>${score.name || 'UNKNOWN'}</td><td>${score.score}</td><td>${score.wave || 0}</td><td>${score.achievements || 0}/${Object.keys(ACHIEVEMENTS).length}</td><td>${score.topSpeed || 0}</td></tr>`;
   }
   if (tbody) tbody.innerHTML = html;
 
   let gameOverHtml = '';
   for (let i = 0; i < Math.min(leaderboardData.length, 10); i++) {
     const score = leaderboardData[i];
-    gameOverHtml += `<tr><td style="padding:6px;">${i+1}</td><td style="padding:6px;">${score.name || 'UNKNOWN'}</td><td style="padding:6px;text-align:right;">${score.score}</td></tr>`;
+    gameOverHtml += `<tr><td style="padding:6px;">${i+1}</td><td style="padding:6px;">${score.name || 'UNKNOWN'}</td><td style="padding:6px;text-align:right;">${score.score}</td><td style="padding:6px;text-align:center;">${score.wave || 0}</td><td style="padding:6px;text-align:center;">${score.achievements || 0}/${Object.keys(ACHIEVEMENTS).length}</td><td style="padding:6px;text-align:right;">${score.topSpeed || 0}</td></tr>`;
   }
   if (gameOverTbody) gameOverTbody.innerHTML = gameOverHtml;
 }
@@ -4355,13 +4858,21 @@ function isHighScore(score) {
 
 async function submitScore(name, score, wave, kills) {
   if (!firebaseReady) return;
+  if (debugUsed) {
+    console.log('Debug mode used — score not eligible for leaderboard');
+    return;
+  }
   try {
     const db = firebase.database();
+    const achCount = game ? Object.keys(game.achievements).filter(k => game.achievements[k]).length : 0;
+    const topSpeed = game ? Math.floor(game.topSpeed || 0) : 0;
     await db.ref('scores').push({
       name: (name || 'UNKNOWN').toUpperCase().substring(0, 12),
       score: Math.floor(score),
       wave: Math.floor(wave),
       kills: Math.floor(kills),
+      achievements: achCount,
+      topSpeed: topSpeed,
       date: new Date().toISOString()
     });
     await loadLeaderboard();
@@ -4403,7 +4914,12 @@ function gameOver() {
 
   // Check if score qualifies for leaderboard
   const nameEntryEl = document.getElementById('name-entry');
-  if (isHighScore(finalScore)) {
+  if (debugUsed) {
+    nameEntryEl.classList.remove('show');
+    // Show debug mode notice
+    const statsEl = document.getElementById('final-stats');
+    statsEl.innerHTML += '<br><span style="color:#f88; font-weight:bold;">LEADERBOARD DISABLED (DEBUG MODE USED)</span>';
+  } else if (isHighScore(finalScore)) {
     nameEntryEl.classList.add('show');
     document.getElementById('name-input').value = '';
     document.getElementById('name-input').focus();
@@ -4417,6 +4933,10 @@ function gameOver() {
 
 function submitHighScore() {
   if (!game) return;
+  if (debugUsed) {
+    alert('Debug mode used — score not eligible for leaderboard');
+    return;
+  }
   const nameInput = document.getElementById('name-input');
   const name = nameInput.value.trim() || 'UNKNOWN';
 
@@ -4467,6 +4987,318 @@ function selectGameMode(mode) {
   startGame();
 }
 
+function updatePauseAchievements() {
+  if (!game) return;
+  const container = document.getElementById('pause-achievements');
+  if (!container) return;
+  const achKeys = Object.keys(ACHIEVEMENTS);
+  const unlocked = achKeys.filter(k => game.achievements[k]).length;
+  let html = `<div style="color:#ffd700;font-size:10px;letter-spacing:3px;margin-bottom:8px;">ACHIEVEMENTS (${unlocked}/${achKeys.length})</div>`;
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;max-width:420px;">';
+  for (const key of achKeys) {
+    const ach = ACHIEVEMENTS[key];
+    const got = game.achievements[key];
+    html += `<div style="font-size:10px;padding:4px 6px;background:rgba(${got?'255,215,0,0.1':'255,255,255,0.03'});border:1px solid ${got?'rgba(255,215,0,0.3)':'rgba(255,255,255,0.1)'};border-radius:3px;">`;
+    html += `<span style="color:${got?'#ffd700':'#444'}">${ach.icon}</span> `;
+    html += `<span style="color:${got?'#ffd700':'#555'}">${ach.name}</span>`;
+    html += '</div>';
+  }
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function drawShipPreview(canvasId, shipKey) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const type = SHIP_TYPES[shipKey];
+  const accentColor = type.accentColor;
+
+  // Parse color (assuming hex format like #0ff, #fa0, etc.)
+  const isDarkColor = shipKey === 'bulwark' || shipKey === 'wraith';
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+
+  // Center the ship in the canvas
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  ctx.translate(centerX, centerY);
+
+  if (shipKey === 'vanguard') {
+    // Vanguard: balanced fighter with detailed design
+    // Fuselage
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(35, 0);
+    ctx.lineTo(-15, -16);
+    ctx.lineTo(-12, -2);
+    ctx.lineTo(-12, 2);
+    ctx.lineTo(-15, 16);
+    ctx.closePath();
+    ctx.fill();
+
+    // Main outline
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+
+    // Upper wing
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(15, -8);
+    ctx.quadraticCurveTo(5, -20, -5, -18);
+    ctx.stroke();
+
+    // Lower wing
+    ctx.beginPath();
+    ctx.moveTo(15, 8);
+    ctx.quadraticCurveTo(5, 20, -5, 18);
+    ctx.stroke();
+
+    // Cockpit canopy (translucent)
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.arc(20, 0, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cockpit highlight
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(20, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Engine nozzles
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(-12, -4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-12, 4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing accent lines
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(10, -10);
+    ctx.lineTo(0, -15);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(10, 10);
+    ctx.lineTo(0, 15);
+    ctx.stroke();
+  } else if (shipKey === 'interceptor') {
+    // Interceptor: needle-like speed fighter
+    // Extremely long pointed fuselage
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(48, 0);
+    ctx.lineTo(-18, -8);
+    ctx.lineTo(-14, -1);
+    ctx.lineTo(-14, 1);
+    ctx.lineTo(-18, 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Main outline
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+
+    // Tiny swept delta fins
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(5, -7);
+    ctx.lineTo(-8, -10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(5, 7);
+    ctx.lineTo(-8, 10);
+    ctx.stroke();
+
+    // Twin engine pods on thin pylons
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-2, -6);
+    ctx.lineTo(-12, -8);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-2, 6);
+    ctx.lineTo(-12, 8);
+    ctx.stroke();
+
+    // Engine nozzles (small)
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(-14, -8, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-14, 8, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cockpit highlight
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(25, 0, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (shipKey === 'bulwark') {
+    // Bulwark: heavy armored fortress
+    // Blunt squared nose with thick hull
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(28, -14);
+    ctx.lineTo(28, 14);
+    ctx.lineTo(-10, 18);
+    ctx.lineTo(-10, -18);
+    ctx.closePath();
+    ctx.fill();
+
+    // Main outline
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 2.5;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+
+    // Side armor panels
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(15, -14);
+    ctx.lineTo(15, 14);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(5, -16);
+    ctx.lineTo(5, 16);
+    ctx.stroke();
+
+    // Heavy armor plating lines
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    for (let y = -14; y <= 14; y += 8) {
+      ctx.beginPath();
+      ctx.moveTo(25, y);
+      ctx.lineTo(-8, y);
+      ctx.stroke();
+    }
+
+    // Multiple engine vents
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.7;
+    for (let y = -12; y <= 12; y += 6) {
+      ctx.beginPath();
+      ctx.arc(-10, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Cockpit
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(15, 0, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (shipKey === 'wraith') {
+    // Wraith: elegant manta ray-like stealth fighter
+    // Curved organic swept wings
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.moveTo(32, 0);
+    ctx.quadraticCurveTo(20, -16, -8, -18);
+    ctx.quadraticCurveTo(-10, 0, -8, 18);
+    ctx.quadraticCurveTo(20, 16, 32, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Main outline
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+
+    // Wing curves (upper)
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(20, -10);
+    ctx.quadraticCurveTo(10, -18, -6, -16);
+    ctx.stroke();
+
+    // Wing curves (lower)
+    ctx.beginPath();
+    ctx.moveTo(20, 10);
+    ctx.quadraticCurveTo(10, 18, -6, 16);
+    ctx.stroke();
+
+    // Central narrow body accent
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(20, -4);
+    ctx.lineTo(-8, -3);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(20, 4);
+    ctx.lineTo(-8, 3);
+    ctx.stroke();
+
+    // Glowing energy lines along wings
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.2;
+    ctx.globalAlpha = 0.7;
+    ctx.setLineDash([4, 2]);
+    ctx.beginPath();
+    ctx.moveTo(18, -12);
+    ctx.quadraticCurveTo(8, -16, -6, -14);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(18, 12);
+    ctx.quadraticCurveTo(8, 16, -6, 14);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Cockpit
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.8;
+    ctx.beginPath();
+    ctx.arc(18, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Engine nozzles (elegant)
+    ctx.fillStyle = accentColor;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(-8, -5, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-8, 5, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 function updateShipCard() {
   const key = shipTypeKeys[shipSelectIndex];
   const type = SHIP_TYPES[key];
@@ -4476,6 +5308,7 @@ function updateShipCard() {
     return `<div class="stat-row"><span>${label}</span><div class="stat-bar"><div class="stat-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
   };
   card.innerHTML = `
+    <canvas id="ship-preview" width="160" height="100" style="margin:0 auto 10px;display:block;"></canvas>
     <div class="ship-name" style="color:${type.accentColor}">${type.name.toUpperCase()}</div>
     <div class="ship-desc">${type.desc}</div>
     ${statBar('HULL', type.hull, 200, '#4f4')}
@@ -4485,6 +5318,7 @@ function updateShipCard() {
     ${statBar('BOMB', type.bombRadiusMult, 1.8, '#4ef')}
     ${statBar('ENERGY', type.energyRegenMult, 2.2, '#0ff')}
   `;
+  drawShipPreview('ship-preview', key);
 }
 
 function deployShip() {
@@ -4551,7 +5385,15 @@ window.addEventListener('keydown', e => {
   if (e.key.toLowerCase() === 'p' && gameRunning) {
     gamePaused = !gamePaused;
     document.getElementById('pause-menu').style.display = gamePaused ? 'flex' : 'none';
+    if (gamePaused) {
+      updatePauseAchievements();
+    }
   }
+});
+
+// Initialize checkpoint list on page load
+document.addEventListener('DOMContentLoaded', () => {
+  updateCheckpointList();
 });
 
 requestAnimationFrame(gameLoop);
