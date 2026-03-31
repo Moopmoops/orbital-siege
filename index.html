@@ -1096,7 +1096,7 @@ const BOSS_MECHANICS = {
       if (boss.minionCooldown <= 0 && Math.random() < 0.015) {
         for (let i = 0; i < 4; i++) {
           const angle = (i/4)*Math.PI*2 + Math.random()*0.5;
-          const minion = createARH(boss.x + Math.cos(angle)*50, boss.y + Math.sin(angle)*50, 'arh', 1, boss.assignedPlanet);
+          const minion = createARH(boss.x + Math.cos(angle)*50, boss.y + Math.sin(angle)*50, 'drone', 1, boss.assignedPlanet || game.planets[0]);
           minion.vx = Math.cos(angle) * 60;
           minion.vy = Math.sin(angle) * 60;
           game.invaders.push(minion);
@@ -1166,7 +1166,7 @@ const BOSS_MECHANICS = {
         const angle1 = Math.random()*Math.PI*2;
         const angle2 = angle1 + Math.PI;
         for (let a of [angle1, angle2]) {
-          const child = createARH(boss.x + Math.cos(a)*40, boss.y + Math.sin(a)*40, 'overlord', boss.tier || 1, boss.assignedPlanet);
+          const child = createARH(boss.x + Math.cos(a)*40, boss.y + Math.sin(a)*40, 'overlord', Math.min(boss.generation || 1, 4), boss.assignedPlanet || game.planets[0]);
           child.hp = boss.maxHp * 0.35;
           child.maxHp = child.hp;
           child.size = boss.size * 0.7;
@@ -1388,8 +1388,9 @@ function hsla(h, s, l, a) { return `hsla(${h},${s}%,${l}%,${a})`; }
 
 // Parameterized boss drawing system with noisy coloring
 function drawParameterizedBoss(inv, sx, sy, s, t) {
+  // Called from within drawARH which has already translated to (sx, sy)
+  // Draw at origin (0,0) in the local coordinate space
   ctx.save();
-  ctx.translate(sx, sy);
 
   const visual = inv.bossVisual;
   const h = inv.colorH || 200;
@@ -3520,17 +3521,18 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
 
   // Compute facing angle toward nearest planet (for visual orientation)
   let nearestPlanetDist = Infinity, nearestPlanetAngle = 0;
-  if (game.planets) {
+  if (game.planets && game.planets.length > 0) {
     for (const p of game.planets) {
       const pd = dist(inv, p);
-      if (pd < nearestPlanetDist) {
+      if (pd < nearestPlanetDist && pd > 0) {
         nearestPlanetDist = pd;
         nearestPlanetAngle = Math.atan2(p.y - inv.y, p.x - inv.x);
       }
     }
   }
+  if (isNaN(nearestPlanetAngle)) nearestPlanetAngle = 0;
   // Smooth rotation toward target facing (lerp)
-  if (inv.facingAngle === undefined) inv.facingAngle = nearestPlanetAngle;
+  if (inv.facingAngle === undefined || isNaN(inv.facingAngle)) inv.facingAngle = nearestPlanetAngle;
   let angleDiff = nearestPlanetAngle - inv.facingAngle;
   // Normalize to [-PI, PI]
   while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
@@ -4067,13 +4069,13 @@ function drawARH(ctx, inv, cam) {
     drawParameterizedBoss(inv, sx, sy, s, t);
   }
 
-  // Boss mechanic visual indicators
+  // Boss mechanic visual indicators (drawn in local coords — already translated to sx,sy)
   if (inv.isBoss) {
     // Shield active — cyan bubble
     if (inv.shielded && inv.shielded > 0) {
       ctx.strokeStyle = `rgba(0,255,255,${0.4 + Math.sin(t*5)*0.2})`;
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx, sy, s*1.3, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, s*1.3, 0, Math.PI*2); ctx.stroke();
     }
     // Charge active — spinning lines
     if (inv.chargeTime && inv.chargeTime > 0) {
@@ -4082,8 +4084,8 @@ function drawARH(ctx, inv, cam) {
         ctx.strokeStyle = `rgba(255,100,0,${0.5})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(sx + Math.cos(a)*s*0.6, sy + Math.sin(a)*s*0.6);
-        ctx.lineTo(sx + Math.cos(a)*s*1.0, sy + Math.sin(a)*s*1.0);
+        ctx.moveTo(Math.cos(a)*s*0.6, Math.sin(a)*s*0.6);
+        ctx.lineTo(Math.cos(a)*s*1.0, Math.sin(a)*s*1.0);
         ctx.stroke();
       }
     }
@@ -4094,7 +4096,7 @@ function drawARH(ctx, inv, cam) {
         const a = (i/4)*Math.PI*2;
         const r = s * 1.4;
         ctx.save();
-        ctx.translate(sx + Math.cos(a)*r, sy + Math.sin(a)*r);
+        ctx.translate(Math.cos(a)*r, Math.sin(a)*r);
         ctx.rotate(a + Math.PI);
         ctx.beginPath();
         ctx.moveTo(0, 0);
@@ -4106,16 +4108,16 @@ function drawARH(ctx, inv, cam) {
     // Heal active — green glow
     if (inv.healActive && inv.healActive > 0) {
       ctx.fillStyle = `rgba(0,255,0,${0.2})`;
-      ctx.beginPath(); ctx.arc(sx, sy, s*1.1, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, s*1.1, 0, Math.PI*2); ctx.fill();
     }
-    // Deny zones from area_deny
+    // Deny zones from area_deny (drawn in world coords, need to undo local translate)
     if (inv.denyZones && inv.denyZones.length > 0) {
       for (const z of inv.denyZones) {
-        const zx = (z.x - game.ship.x)*game.camera.zoom + game.canvas.width/2;
-        const zy = (z.y - game.ship.y)*game.camera.zoom + game.canvas.height/2;
+        const zx = z.x - inv.x; // offset from boss position
+        const zy = z.y - inv.y;
         ctx.strokeStyle = `rgba(255,50,50,${0.3})`;
         ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(zx, zy, z.r*game.camera.zoom, 0, Math.PI*2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(zx, zy, z.r, 0, Math.PI*2); ctx.stroke();
       }
     }
   }
@@ -4952,6 +4954,11 @@ function updateGame(dt) {
   }
 
   // Camera — auto-pan toward action center, auto-zoom to fit
+  // NaN safety — if ship position goes invalid, reset to origin
+  if (isNaN(game.ship.x) || isNaN(game.ship.y)) {
+    game.ship.x = 0; game.ship.y = 0;
+    game.ship.vx = 0; game.ship.vy = 0;
+  }
   let camTargetX = game.ship.x, camTargetY = game.ship.y;
   if (AUTO_PAN > 0 && game.invaders.length > 0) {
     // Find action center: nearest threats + nearest planet
