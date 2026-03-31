@@ -1066,15 +1066,245 @@ const SHIP_TYPES = {
   wraith:      { name: 'Wraith',      hull: 85,  thrust: 110, fireRateMult: 1.0, missileMult: 1.0, laserMult: 1.3, bombRadiusMult: 1.0, energyRegenMult: 1.2, accentColor: '#c4f', desc: 'Laser specialist, wave 1 unlock', laserWave: 1 },
 };
 
-const BOSS_VARIANTS = {
-  nexus_prime:      { name: 'NEXUS PRIME',      baseSize: 40, colorH: 200, desc: 'Command Node' },
-  void_mother:      { name: 'VOID MOTHER',       baseSize: 45, colorH: 60,  desc: 'Hive Carrier' },
-  iron_maw:         { name: 'IRON MAW',          baseSize: 42, colorH: 20,  desc: 'Siege Engine' },
-  stellar_devourer: { name: 'STELLAR DEVOURER',  baseSize: 38, colorH: 280, desc: 'Energy Parasite' },
-  the_archon:       { name: 'THE ARCHON',        baseSize: 44, colorH: 0,   desc: 'War Machine' },
-  oblivion_core:    { name: 'OBLIVION CORE',     baseSize: 36, colorH: 240, desc: 'Gravity Anomaly' },
-  swarm_queen:      { name: 'SWARM QUEEN',       baseSize: 50, colorH: 330, desc: 'Evolved Hive Mind' },
+// Boss tier configurations
+const BOSS_TIERS = {
+  1: { hpBase: 400, hpMult: 1.0, sizeBase: 30, sizeMult: 1.0, mechanics: 1 },
+  2: { hpBase: 900, hpMult: 1.5, sizeBase: 38, sizeMult: 1.2, mechanics: 2 },
+  3: { hpBase: 1500, hpMult: 2.0, sizeBase: 48, sizeMult: 1.4, mechanics: 3 },
 };
+
+// Reusable boss mechanics system
+const BOSS_MECHANICS = {
+  dash: {
+    cooldown: 4.0,
+    apply(boss, dt, game) {
+      if (!boss.dashCooldown) boss.dashCooldown = 0;
+      boss.dashCooldown -= dt;
+      if (boss.dashCooldown <= 0 && Math.random() < 0.02) {
+        const angle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        boss.vx = Math.cos(angle) * 120;
+        boss.vy = Math.sin(angle) * 120;
+        boss.dashCooldown = this.cooldown;
+      }
+    }
+  },
+  minion_spawn: {
+    cooldown: 6.0,
+    apply(boss, dt, game) {
+      if (!boss.minionCooldown) boss.minionCooldown = 0;
+      boss.minionCooldown -= dt;
+      if (boss.minionCooldown <= 0 && Math.random() < 0.015) {
+        for (let i = 0; i < 4; i++) {
+          const angle = (i/4)*Math.PI*2 + Math.random()*0.5;
+          const minion = createARH(boss.x + Math.cos(angle)*50, boss.y + Math.sin(angle)*50, 'arh', 1, boss.assignedPlanet);
+          minion.vx = Math.cos(angle) * 60;
+          minion.vy = Math.sin(angle) * 60;
+          game.invaders.push(minion);
+        }
+        boss.minionCooldown = this.cooldown;
+      }
+    }
+  },
+  gravity_well: {
+    cooldown: 5.0,
+    apply(boss, dt, game) {
+      if (!boss.gravityCooldown) boss.gravityCooldown = 0;
+      boss.gravityCooldown -= dt;
+      if (boss.gravityCooldown <= 0 && Math.random() < 0.015) {
+        boss.gravityActive = 1.5;
+        boss.gravityCooldown = this.cooldown;
+      }
+      if (boss.gravityActive) {
+        const dx = game.ship.x - boss.x;
+        const dy = game.ship.y - boss.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 250) {
+          game.ship.vx *= 0.95;
+          game.ship.vy *= 0.95;
+        }
+        boss.gravityActive -= dt;
+      }
+    }
+  },
+  charge: {
+    cooldown: 5.0,
+    apply(boss, dt, game) {
+      if (!boss.chargeCooldown) boss.chargeCooldown = 0;
+      boss.chargeCooldown -= dt;
+      if (boss.chargeCooldown <= 0 && Math.random() < 0.015) {
+        const angle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        boss.chargeVx = Math.cos(angle) * 200;
+        boss.chargeVy = Math.sin(angle) * 200;
+        boss.chargeTime = 0.8;
+        boss.chargeCooldown = this.cooldown;
+      }
+      if (boss.chargeTime) {
+        boss.chargeTime -= dt;
+        boss.vx = boss.chargeVx;
+        boss.vy = boss.chargeVy;
+      }
+    }
+  },
+  shield: {
+    cooldown: 7.0,
+    apply(boss, dt, game) {
+      if (!boss.shieldCooldown) boss.shieldCooldown = 0;
+      boss.shieldCooldown -= dt;
+      if (boss.shieldCooldown <= 0 && boss.hp / boss.maxHp > 0.3 && Math.random() < 0.01) {
+        boss.shielded = 1.2;
+        boss.shieldCooldown = this.cooldown;
+      }
+      if (boss.shielded) {
+        boss.shielded -= dt;
+      }
+    }
+  },
+  split: {
+    cooldown: 0,
+    apply(boss, dt, game) {
+      if (!boss.hasSplit && boss.hp / boss.maxHp < 0.3) {
+        const angle1 = Math.random()*Math.PI*2;
+        const angle2 = angle1 + Math.PI;
+        for (let a of [angle1, angle2]) {
+          const child = createARH(boss.x + Math.cos(a)*40, boss.y + Math.sin(a)*40, 'overlord', boss.tier || 1, boss.assignedPlanet);
+          child.hp = boss.maxHp * 0.35;
+          child.maxHp = child.hp;
+          child.size = boss.size * 0.7;
+          child.isBoss = true;
+          child.bossDef = boss.bossDef;
+          child.bossVisual = boss.bossVisual;
+          child.bossMechanics = boss.bossMechanics;
+          child.colorH = boss.colorH;
+          child.vx = Math.cos(a) * 80;
+          child.vy = Math.sin(a) * 80;
+          game.invaders.push(child);
+        }
+        boss.hasSplit = true;
+      }
+    }
+  },
+  laser_sweep: {
+    cooldown: 4.0,
+    apply(boss, dt, game) {
+      if (!boss.laserCooldown) boss.laserCooldown = 0;
+      boss.laserCooldown -= dt;
+      if (boss.laserCooldown <= 0 && Math.random() < 0.015) {
+        boss.laserSweepAngle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        boss.laserTime = 0.5;
+        boss.laserCooldown = this.cooldown;
+      }
+    }
+  },
+  area_deny: {
+    cooldown: 5.0,
+    apply(boss, dt, game) {
+      if (!boss.areaCooldown) boss.areaCooldown = 0;
+      boss.areaCooldown -= dt;
+      if (boss.areaCooldown <= 0 && Math.random() < 0.015) {
+        if (!boss.denyZones) boss.denyZones = [];
+        boss.denyZones.push({ x: boss.x, y: boss.y, r: 150, life: 2.0 });
+        boss.areaCooldown = this.cooldown;
+      }
+      if (boss.denyZones) {
+        for (let z of boss.denyZones) {
+          z.life -= dt;
+          const dx = game.ship.x - z.x;
+          const dy = game.ship.y - z.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < z.r) {
+            game.ship.hp -= 0.5*dt;
+          }
+        }
+        boss.denyZones = boss.denyZones.filter(z => z.life > 0);
+      }
+    }
+  },
+  heal: {
+    cooldown: 6.0,
+    apply(boss, dt, game) {
+      if (!boss.healCooldown) boss.healCooldown = 0;
+      boss.healCooldown -= dt;
+      if (boss.healCooldown <= 0 && boss.hp / boss.maxHp < 0.7 && Math.random() < 0.01) {
+        boss.healActive = 2.0;
+        boss.healCooldown = this.cooldown;
+      }
+      if (boss.healActive) {
+        boss.healActive -= dt;
+        boss.hp = Math.min(boss.maxHp, boss.hp + 20*dt);
+      }
+    }
+  },
+  bullet_reflect: {
+    cooldown: 0,
+    apply(boss, dt, game) {
+      if (!boss.reflectActive && boss.hp / boss.maxHp > 0.5 && Math.random() < 0.008) {
+        boss.reflectActive = 0.8;
+      }
+      if (boss.reflectActive) {
+        boss.reflectActive -= dt;
+      }
+    }
+  }
+};
+
+// 50 boss definitions across 3 tiers
+const BOSS_DEFINITIONS = [
+  // TIER 1 (16 bosses) - waves 5-15
+  { id: 'pierce', name: 'PIERCE', tier: 1, hpMult: 1.0, size: 32, colorH: 45, colorH2: 55, mechanics: ['dash'], visual: { shape: 'hex', aura: 'spiky', internal: 'core' }, desc: 'Swift Striker' },
+  { id: 'ironclad', name: 'IRONCLAD', tier: 1, hpMult: 1.2, size: 34, colorH: 30, colorH2: 40, mechanics: ['shield'], visual: { shape: 'circle', aura: 'glow', internal: 'lattice' }, desc: 'Armored Guardian' },
+  { id: 'venom', name: 'VENOM', tier: 1, hpMult: 0.9, size: 31, colorH: 120, colorH2: 130, mechanics: ['minion_spawn'], visual: { shape: 'diamond', aura: 'pulse', internal: 'chambers' }, desc: 'Hive Leader' },
+  { id: 'shatter', name: 'SHATTER', tier: 1, hpMult: 1.1, size: 33, colorH: 200, colorH2: 210, mechanics: ['dash'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Crystalline Horror' },
+  { id: 'scourge', name: 'SCOURGE', tier: 1, hpMult: 1.0, size: 32, colorH: 0, colorH2: 10, mechanics: ['charge'], visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'Burning Plague' },
+  { id: 'phantom', name: 'PHANTOM', tier: 1, hpMult: 0.85, size: 30, colorH: 270, colorH2: 280, mechanics: ['dash'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Spectral Wraith' },
+  { id: 'titan_spawn', name: 'TITAN SPAWN', tier: 1, hpMult: 1.15, size: 35, colorH: 30, colorH2: 35, mechanics: ['minion_spawn'], visual: { shape: 'hex', aura: 'rings', internal: 'chambers' }, desc: 'Young Monstrosity' },
+  { id: 'surge', name: 'SURGE', tier: 1, hpMult: 0.95, size: 31, colorH: 50, colorH2: 60, mechanics: ['charge'], visual: { shape: 'circle', aura: 'electric', internal: 'core' }, desc: 'Energy Conduit' },
+  { id: 'razor', name: 'RAZOR', tier: 1, hpMult: 1.05, size: 32, colorH: 180, colorH2: 190, mechanics: ['dash'], visual: { shape: 'star6', aura: 'spiky', internal: 'lattice' }, desc: 'Cutting Edge' },
+  { id: 'nexus', name: 'NEXUS NODE', tier: 1, hpMult: 1.0, size: 33, colorH: 200, colorH2: 205, mechanics: ['shield'], visual: { shape: 'hex', aura: 'glow', internal: 'eye' }, desc: 'Network Hub' },
+  { id: 'inferno', name: 'INFERNO', tier: 1, hpMult: 1.1, size: 32, colorH: 20, colorH2: 25, mechanics: ['charge'], visual: { shape: 'circle', aura: 'flame', internal: 'vortex' }, desc: 'Molten Beast' },
+  { id: 'void_wisp', name: 'VOID WISP', tier: 1, hpMult: 0.9, size: 30, colorH: 260, colorH2: 270, mechanics: ['minion_spawn'], visual: { shape: 'diamond', aura: 'pulse', internal: 'core' }, desc: 'Dark Fragment' },
+  { id: 'cascade', name: 'CASCADE', tier: 1, hpMult: 1.0, size: 31, colorH: 240, colorH2: 250, mechanics: ['dash'], visual: { shape: 'octagon', aura: 'glow', internal: 'chambers' }, desc: 'Tidal Terror' },
+  { id: 'prism', name: 'PRISM', tier: 1, hpMult: 0.95, size: 32, colorH: 280, colorH2: 290, mechanics: ['shield'], visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Refractive Menace' },
+  { id: 'dirge', name: 'DIRGE', tier: 1, hpMult: 1.05, size: 33, colorH: 290, colorH2: 300, mechanics: ['charge'], visual: { shape: 'circle', aura: 'rings', internal: 'eye' }, desc: 'Sound of Doom' },
+  { id: 'glint', name: 'GLINT', tier: 1, hpMult: 1.0, size: 31, colorH: 60, colorH2: 70, mechanics: ['minion_spawn'], visual: { shape: 'diamond', aura: 'glow', internal: 'vortex' }, desc: 'Swarm Sentinel' },
+
+  // TIER 2 (18 bosses) - waves 20-35
+  { id: 'obliterator', name: 'OBLITERATOR', tier: 2, hpMult: 1.3, size: 40, colorH: 20, colorH2: 30, mechanics: ['charge', 'minion_spawn'], visual: { shape: 'octagon', aura: 'flame', internal: 'core' }, desc: 'Siege Hammer' },
+  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['gravity_well', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
+  { id: 'vortex_lord', name: 'VORTEX LORD', tier: 2, hpMult: 1.4, size: 41, colorH: 270, colorH2: 280, mechanics: ['dash', 'laser_sweep'], visual: { shape: 'hex', aura: 'electric', internal: 'vortex' }, desc: 'Reality Ripper' },
+  { id: 'doomcaller', name: 'DOOMCALLER', tier: 2, hpMult: 1.2, size: 39, colorH: 0, colorH2: 10, mechanics: ['minion_spawn', 'area_deny'], visual: { shape: 'star6', aura: 'rings', internal: 'lattice' }, desc: 'Herald of Ruin' },
+  { id: 'sovereign', name: 'SOVEREIGN', tier: 2, hpMult: 1.6, size: 43, colorH: 200, colorH2: 210, mechanics: ['shield', 'charge'], visual: { shape: 'octagon', aura: 'glow', internal: 'eye' }, desc: 'Absolute Ruler' },
+  { id: 'ravager', name: 'RAVAGER', tier: 2, hpMult: 1.4, size: 40, colorH: 30, colorH2: 40, mechanics: ['dash', 'minion_spawn'], visual: { shape: 'diamond', aura: 'spiky', internal: 'vortex' }, desc: 'World Eater' },
+  { id: 'null_entity', name: 'NULL ENTITY', tier: 2, hpMult: 1.3, size: 40, colorH: 240, colorH2: 260, mechanics: ['gravity_well', 'laser_sweep'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Consuming Void' },
+  { id: 'tyrant', name: 'TYRANT', tier: 2, hpMult: 1.5, size: 42, colorH: 10, colorH2: 20, mechanics: ['charge', 'area_deny'], visual: { shape: 'hex', aura: 'flame', internal: 'core' }, desc: 'Iron Despot' },
+  { id: 'incinerator', name: 'INCINERATOR', tier: 2, hpMult: 1.35, size: 41, colorH: 20, colorH2: 25, mechanics: ['minion_spawn', 'laser_sweep'], visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Infernal Engine' },
+  { id: 'apex', name: 'APEX PREDATOR', tier: 2, hpMult: 1.45, size: 41, colorH: 50, colorH2: 60, mechanics: ['dash', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Evolutionary Peak' },
+  { id: 'scream', name: 'SCREAM', tier: 2, hpMult: 1.2, size: 39, colorH: 280, colorH2: 290, mechanics: ['gravity_well', 'minion_spawn'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Psychic Horror' },
+  { id: 'nightmare', name: 'NIGHTMARE', tier: 2, hpMult: 1.3, size: 40, colorH: 260, colorH2: 270, mechanics: ['charge', 'laser_sweep'], visual: { shape: 'octagon', aura: 'pulse', internal: 'chambers' }, desc: 'Terror Manifest' },
+  { id: 'cataclysm', name: 'CATACLYSM', tier: 2, hpMult: 1.55, size: 42, colorH: 0, colorH2: 15, mechanics: ['area_deny', 'shield'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'World Ender' },
+  { id: 'eclipse', name: 'ECLIPSE', tier: 2, hpMult: 1.4, size: 40, colorH: 270, colorH2: 280, mechanics: ['dash', 'gravity_well'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Darkness Bringer' },
+  { id: 'colossus', name: 'COLOSSUS', tier: 2, hpMult: 1.65, size: 43, colorH: 30, colorH2: 35, mechanics: ['shield', 'minion_spawn'], visual: { shape: 'circle', aura: 'glow', internal: 'eye' }, desc: 'Titanic Abomination' },
+  { id: 'venom_lord', name: 'VENOM LORD', tier: 2, hpMult: 1.35, size: 40, colorH: 120, colorH2: 135, mechanics: ['minion_spawn', 'laser_sweep'], visual: { shape: 'diamond', aura: 'spiky', internal: 'chambers' }, desc: 'Toxin Master' },
+  { id: 'spectral_king', name: 'SPECTRAL KING', tier: 2, hpMult: 1.25, size: 39, colorH: 240, colorH2: 255, mechanics: ['dash', 'area_deny'], visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Phantom Monarch' },
+  { id: 'storm', name: 'STORM', tier: 2, hpMult: 1.4, size: 41, colorH: 200, colorH2: 215, mechanics: ['charge', 'gravity_well'], visual: { shape: 'hex', aura: 'electric', internal: 'lattice' }, desc: 'Tempest Force' },
+
+  // TIER 3 (16 bosses) - waves 40+
+  { id: 'apocalypse', name: 'APOCALYPSE', tier: 3, hpMult: 2.0, size: 50, colorH: 0, colorH2: 20, mechanics: ['charge', 'minion_spawn', 'area_deny'], visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'End Times Incarnate' },
+  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['gravity_well', 'laser_sweep', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
+  { id: 'entropy', name: 'ENTROPY', tier: 3, hpMult: 2.1, size: 51, colorH: 240, colorH2: 260, mechanics: ['split', 'minion_spawn', 'area_deny'], visual: { shape: 'hex', aura: 'electric', internal: 'core' }, desc: 'Decay Absolute' },
+  { id: 'nemesis', name: 'NEMESIS', tier: 3, hpMult: 2.3, size: 53, colorH: 30, colorH2: 40, mechanics: ['charge', 'laser_sweep', 'shield'], visual: { shape: 'star6', aura: 'glow', internal: 'lattice' }, desc: 'Ultimate Adversary' },
+  { id: 'abomination', name: 'ABOMINATION', tier: 3, hpMult: 2.0, size: 50, colorH: 120, colorH2: 140, mechanics: ['minion_spawn', 'area_deny', 'gravity_well'], visual: { shape: 'diamond', aura: 'spiky', internal: 'eye' }, desc: 'Twisted Flesh' },
+  { id: 'omega', name: 'OMEGA', tier: 3, hpMult: 2.4, size: 54, colorH: 200, colorH2: 220, mechanics: ['shield', 'charge', 'laser_sweep'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Final Threat' },
+  { id: 'devourer_prime', name: 'DEVOURER PRIME', tier: 3, hpMult: 2.15, size: 51, colorH: 20, colorH2: 30, mechanics: ['dash', 'minion_spawn', 'gravity_well'], visual: { shape: 'octagon', aura: 'flame', internal: 'chambers' }, desc: 'Insatiable Hunger' },
+  { id: 'nightmare_lord', name: 'NIGHTMARE LORD', tier: 3, hpMult: 2.2, size: 52, colorH: 270, colorH2: 290, mechanics: ['laser_sweep', 'area_deny', 'shield'], visual: { shape: 'hex', aura: 'pulse', internal: 'lattice' }, desc: 'Endless Terror' },
+  { id: 'world_breaker', name: 'WORLD BREAKER', tier: 3, hpMult: 2.25, size: 52, colorH: 10, colorH2: 25, mechanics: ['charge', 'minion_spawn', 'gravity_well'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Planetary Destroyer' },
+  { id: 'infinity_core', name: 'INFINITY CORE', tier: 3, hpMult: 2.3, size: 53, colorH: 240, colorH2: 265, mechanics: ['split', 'laser_sweep', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Boundless Power' },
+  { id: 'dark_sovereign', name: 'DARK SOVEREIGN', tier: 3, hpMult: 2.35, size: 53, colorH: 290, colorH2: 310, mechanics: ['gravity_well', 'minion_spawn', 'area_deny'], visual: { shape: 'circle', aura: 'rings', internal: 'chambers' }, desc: 'Supreme Evil' },
+  { id: 'cosmic_terror', name: 'COSMIC TERROR', tier: 3, hpMult: 2.1, size: 51, colorH: 200, colorH2: 215, mechanics: ['dash', 'laser_sweep', 'shield'], visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Universe Threat' },
+  { id: 'infernal_tyrant', name: 'INFERNAL TYRANT', tier: 3, hpMult: 2.2, size: 52, colorH: 20, colorH2: 35, mechanics: ['charge', 'area_deny', 'gravity_well'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'Burning Despot' },
+  { id: 'genesis_killer', name: 'GENESIS KILLER', tier: 3, hpMult: 2.25, size: 52, colorH: 100, colorH2: 120, mechanics: ['minion_spawn', 'laser_sweep', 'gravity_well'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Life Extinguisher' },
+  { id: 'void_lord', name: 'VOID LORD', tier: 3, hpMult: 2.4, size: 54, colorH: 260, colorH2: 280, mechanics: ['split', 'area_deny', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Abyssal Master' },
+  { id: 'harbinger', name: 'HARBINGER', tier: 3, hpMult: 2.3, size: 53, colorH: 270, colorH2: 290, mechanics: ['charge', 'laser_sweep', 'minion_spawn'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Doom\'s Herald' },
+];
 
 const ACHIEVEMENTS = {
   first_blood:    { name: 'First Blood',    desc: 'Destroy your first ARH',              icon: '⚔' },
@@ -1155,6 +1385,199 @@ function rng(min, max) { return Math.random() * (max - min) + min; }
 function clamp(v, mn, mx) { return Math.max(mn, Math.min(mx, v)); }
 function hsl(h, s, l) { return `hsl(${h},${s}%,${l}%)`; }
 function hsla(h, s, l, a) { return `hsla(${h},${s}%,${l}%,${a})`; }
+
+// Parameterized boss drawing system with noisy coloring
+function drawParameterizedBoss(inv, sx, sy, s, t) {
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  const visual = inv.bossVisual;
+  const h = inv.colorH || 200;
+  const h2 = visual.colorH2 || (h + 30);
+  const shape = visual.shape || 'circle';
+  const aura = visual.aura || 'glow';
+  const internal = visual.internal || 'core';
+  const hpFrac = Math.max(0, Math.min(1, inv.hp / (inv.maxHp || 1)));
+
+  // Noisy color shifting using time-based hue blending
+  const colorShift = Math.sin(t * 1.5) * 0.5;
+  const hueBlend = h + (h2 - h) * (0.5 + colorShift * 0.3);
+
+  // Draw base shape with gradient
+  const shapeG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.9);
+  shapeG.addColorStop(0, hsl(hueBlend, 50, 35 + Math.sin(t*2)*5));
+  shapeG.addColorStop(0.5, hsl(hueBlend, 35, 20));
+  shapeG.addColorStop(1, hsl(hueBlend, 20, 8));
+  ctx.fillStyle = shapeG;
+
+  // Draw shape based on type
+  if (shape === 'circle') {
+    ctx.beginPath(); ctx.arc(0, 0, s*0.8, 0, Math.PI*2); ctx.fill();
+  } else if (shape === 'hex') {
+    drawPolygon(0, 0, s*0.8, 6);
+    ctx.fill();
+  } else if (shape === 'star6') {
+    drawStar(0, 0, s*0.8, 6);
+    ctx.fill();
+  } else if (shape === 'diamond') {
+    ctx.beginPath();
+    ctx.moveTo(0, -s*0.9); ctx.lineTo(s*0.9, 0);
+    ctx.lineTo(0, s*0.9); ctx.lineTo(-s*0.9, 0); ctx.closePath();
+    ctx.fill();
+  } else if (shape === 'octagon') {
+    drawPolygon(0, 0, s*0.8, 8);
+    ctx.fill();
+  }
+
+  // Noisy internal texture — granular color variation
+  ctx.fillStyle = hsla(hueBlend, 40, 45, 0.15);
+  for (let i = 0; i < 8; i++) {
+    const ix = Math.cos((i/8)*Math.PI*2) * s*0.5;
+    const iy = Math.sin((i/8)*Math.PI*2) * s*0.5;
+    const noiseVal = Math.sin(t*1.2 + i)*0.5 + 0.5;
+    ctx.beginPath();
+    ctx.arc(ix, iy, s*0.12 + noiseVal*s*0.05, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Draw aura effect
+  if (aura === 'glow') {
+    ctx.strokeStyle = hsla(hueBlend, 70, 60, 0.3 + Math.sin(t*3)*0.2);
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0, 0, s*1.1, 0, Math.PI*2); ctx.stroke();
+  } else if (aura === 'spiky') {
+    ctx.strokeStyle = hsla(hueBlend, 80, 65, 0.5);
+    for (let i = 0; i < 8; i++) {
+      const a = (i/8)*Math.PI*2;
+      const len = s*(0.9 + Math.sin(t*2.5+i)*0.15);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*s*0.8, Math.sin(a)*s*0.8);
+      ctx.lineTo(Math.cos(a)*len, Math.sin(a)*len);
+      ctx.lineWidth = 2 + Math.sin(t*3+i)*1;
+      ctx.stroke();
+    }
+  } else if (aura === 'rings') {
+    for (let r = 0; r < 3; r++) {
+      ctx.strokeStyle = hsla(hueBlend, 65, 55, (0.4 - r*0.12) + Math.sin(t*2+r)*0.1);
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, s*(1.05 + r*0.15), 0, Math.PI*2); ctx.stroke();
+    }
+  } else if (aura === 'pulse') {
+    const pulse = 0.3 + Math.sin(t*3)*0.25;
+    ctx.fillStyle = hsla(hueBlend, 70, 60, pulse*0.2);
+    ctx.beginPath(); ctx.arc(0, 0, s*1.2, 0, Math.PI*2); ctx.fill();
+  } else if (aura === 'flame') {
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2;
+      const flameH = Math.sin(t*3+i)*0.3 + 0.7;
+      ctx.fillStyle = hsla(h + 20, 90, 60*flameH, 0.3);
+      const flameLenght = s*(0.9 + Math.sin(t*2+i)*0.2);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*s*0.7, Math.sin(a)*s*0.7);
+      ctx.lineTo(Math.cos(a)*flameLenght, Math.sin(a)*flameLenght);
+      ctx.lineTo(Math.cos(a-0.3)*s*0.6, Math.sin(a-0.3)*s*0.6);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (aura === 'electric') {
+    ctx.strokeStyle = hsla(hueBlend, 100, 70, 0.4 + Math.sin(t*4)*0.2);
+    for (let arc = 0; arc < 4; arc++) {
+      const startA = (arc/4)*Math.PI*2;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(startA)*s*0.8, Math.sin(startA)*s*0.8);
+      let ax = Math.cos(startA)*s*0.8;
+      let ay = Math.sin(startA)*s*0.8;
+      for (let seg = 0; seg < 4; seg++) {
+        ax += (Math.random()-0.5)*s*0.15;
+        ay += (Math.random()-0.5)*s*0.15;
+        ctx.lineTo(ax, ay);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // Draw internal structure
+  if (internal === 'core') {
+    const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.35);
+    coreG.addColorStop(0, '#fff');
+    coreG.addColorStop(0.4, hsl(hueBlend, 90, 70));
+    coreG.addColorStop(1, hsla(hueBlend, 80, 50, 0));
+    ctx.fillStyle = coreG;
+    ctx.beginPath(); ctx.arc(0, 0, s*0.35, 0, Math.PI*2); ctx.fill();
+  } else if (internal === 'eye') {
+    ctx.fillStyle = hsl(hueBlend, 80, 65);
+    ctx.beginPath(); ctx.arc(0, 0, s*0.3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(0, 0, s*0.15, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(-s*0.06, -s*0.06, s*0.05, 0, Math.PI*2); ctx.fill();
+  } else if (internal === 'lattice') {
+    for (let i = 0; i < 6; i++) {
+      const a = (i/6)*Math.PI*2;
+      ctx.strokeStyle = hsla(hueBlend, 70, 50, 0.4);
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a)*s*0.6, Math.sin(a)*s*0.6);
+      ctx.stroke();
+    }
+  } else if (internal === 'chambers') {
+    for (let i = 0; i < 5; i++) {
+      const cx = (Math.random()-0.5)*s*0.5;
+      const cy = (Math.random()-0.5)*s*0.5;
+      ctx.fillStyle = hsla(hueBlend, 50, 45, 0.25);
+      ctx.beginPath();
+      ctx.arc(cx, cy, s*0.12 + Math.sin(t+i)*s*0.04, 0, Math.PI*2);
+      ctx.fill();
+    }
+  } else if (internal === 'vortex') {
+    ctx.strokeStyle = hsla(hueBlend, 75, 55, 0.3);
+    ctx.lineWidth = 1;
+    for (let ring = 0; ring < 3; ring++) {
+      const r = s*(0.2 + ring*0.15);
+      ctx.save();
+      ctx.rotate(t*(ring%2 ? 1 : -1)*0.5);
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Damage indicator arcs at bottom
+  if (hpFrac < 1.0) {
+    const damageArc = Math.PI * 2 * (1 - hpFrac);
+    ctx.strokeStyle = hsla(20, 100, 50, 0.6);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, s*1.0, Math.PI*1.5 - damageArc/2, Math.PI*1.5 + damageArc/2);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawPolygon(x, y, r, sides) {
+  ctx.beginPath();
+  for (let i = 0; i < sides; i++) {
+    const a = (i/sides)*Math.PI*2 - Math.PI/2;
+    const px = x + Math.cos(a)*r;
+    const py = y + Math.sin(a)*r;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function drawStar(x, y, r, points) {
+  ctx.beginPath();
+  for (let i = 0; i < points*2; i++) {
+    const a = (i/(points*2))*Math.PI*2 - Math.PI/2;
+    const rad = i%2 === 0 ? r : r*0.5;
+    const px = x + Math.cos(a)*rad;
+    const py = y + Math.sin(a)*rad;
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
 
 // --- Procedural Noise for Planet/Sun Textures ---
 function hashNoise(x, y) {
@@ -1631,7 +2054,6 @@ const BOSS_ICONS = {
 function openBossRushPicker() {
   bossRushPickerVisible = true;
   const picker = document.getElementById('boss-rush-picker');
-  const variantKeys = Object.keys(BOSS_VARIANTS);
 
   let html = '<div class="rush-close" onclick="closeBossRushPicker()">[ ESC ]</div>';
   html += '<h2>⚔ BOSS RUSH ⚔</h2>';
@@ -1645,16 +2067,15 @@ function openBossRushPicker() {
   html += '</select></label>';
   html += '</div>';
   html += '<div class="boss-grid">';
-  for (const key of variantKeys) {
-    const v = BOSS_VARIANTS[key];
-    html += `<div class="boss-card" onclick="startBossRush('${key}')">`;
-    html += `<div class="boss-icon">${BOSS_ICONS[key] || '👾'}</div>`;
-    html += `<div class="boss-name">${v.name}</div>`;
-    html += `<div class="boss-desc">${v.desc}</div>`;
+  for (const def of BOSS_DEFINITIONS) {
+    html += `<div class="boss-card" onclick="startBossRush('${def.id}')">`;
+    html += `<div class="boss-icon">⚔</div>`;
+    html += `<div class="boss-name">${def.name}</div>`;
+    html += `<div class="boss-desc">${def.desc}</div>`;
     html += '</div>';
   }
   html += '</div>';
-  html += '<button class="rush-all-btn" onclick="startBossRush(\'all\')">GAUNTLET — ALL 7 BOSSES</button>';
+  html += '<button class="rush-all-btn" onclick="startBossRush(\'all\')">GAUNTLET — ALL 50 BOSSES</button>';
 
   picker.innerHTML = html;
   picker.style.display = 'flex';
@@ -1671,14 +2092,16 @@ function startBossRush(which) {
   bossRushKills = 0;
   bossRushQueue = [];
 
-  const variantKeys = Object.keys(BOSS_VARIANTS);
   if (which === 'all') {
-    // Queue all 7 bosses with escalating wave scale
-    for (let i = 0; i < variantKeys.length; i++) {
-      bossRushQueue.push({ variantKey: variantKeys[i], wave: bossRushWave + i * 5 });
+    // Queue all 50 bosses with escalating wave scale
+    for (let i = 0; i < BOSS_DEFINITIONS.length; i++) {
+      bossRushQueue.push({ bossDef: BOSS_DEFINITIONS[i], wave: bossRushWave + Math.floor(i / 10) * 5 });
     }
   } else {
-    bossRushQueue.push({ variantKey: which, wave: bossRushWave });
+    const bossDef = BOSS_DEFINITIONS.find(b => b.id === which);
+    if (bossDef) {
+      bossRushQueue.push({ bossDef: bossDef, wave: bossRushWave });
+    }
   }
 
   closeBossRushPicker();
@@ -1713,7 +2136,7 @@ function spawnNextRushBoss() {
   }
 
   const next = bossRushQueue.shift();
-  const variant = BOSS_VARIANTS[next.variantKey];
+  const bossDef = next.bossDef;
   const simWave = next.wave;
 
   // Spawn boss from off-screen
@@ -1723,15 +2146,31 @@ function spawnNextRushBoss() {
   const bossY = Math.sin(bossAngle) * bossR;
   const planet = game.planets[Math.floor(Math.random() * game.planets.length)];
   const boss = createARH(bossX, bossY, 'overlord', Math.min(Math.floor(simWave / 5), 4), planet);
-  boss.hp = 500 + simWave * 50;
+
+  // Apply tier-based scaling
+  const tierConfig = BOSS_TIERS[bossDef.tier];
+  boss.hp = tierConfig.hpBase * bossDef.hpMult * (1 + (simWave - 5) * 0.1);
   boss.maxHp = boss.hp;
-  boss.size = variant.baseSize * 2 + Math.floor(simWave / 5) * 3;
+  boss.size = (tierConfig.sizeBase + bossDef.size) * 0.5 * tierConfig.sizeMult;
   boss.aggroRange = 500;
   boss.isBoss = true;
-  boss.bossVariant = variant;
-  boss.bossName = variant.name;
-  boss.colorH = variant.colorH;
+  boss.tier = bossDef.tier;
+  boss.bossDef = bossDef;
+  boss.bossVisual = bossDef.visual;
+  boss.bossMechanics = bossDef.mechanics;
+  boss.bossName = bossDef.name;
+  boss.colorH = bossDef.colorH;
   boss.critical = false;
+  boss.assignedPlanet = planet;
+
+  // Initialize mechanic cooldowns
+  for (const mechId of bossDef.mechanics) {
+    const mechConfig = BOSS_MECHANICS[mechId];
+    if (mechConfig) {
+      boss[mechId + 'Cooldown'] = 0;
+    }
+  }
+
   // Velocity toward the system center
   const toCenter = Math.atan2(-bossY, -bossX);
   boss.vx = Math.cos(toCenter) * 60;
@@ -1741,9 +2180,9 @@ function spawnNextRushBoss() {
   game.boss = boss;
 
   const remaining = bossRushQueue.length;
-  game.bossMessage = variant.name;
+  game.bossMessage = bossDef.name;
   game.bossMessageTimer = 4;
-  game.bossSubMessage = remaining > 0 ? `${variant.desc} — ${remaining} more after this` : `${variant.desc} — FINAL BOSS`;
+  game.bossSubMessage = remaining > 0 ? `${bossDef.desc} — ${remaining} more after this` : `${bossDef.desc} — FINAL BOSS`;
   game.bossSubMessageTimer = 4;
 }
 
@@ -1929,43 +2368,9 @@ class Star {
     this.coronaPhase = 0;
     this.texture = generateSunTexture(this.radius);
     this.texRadius = this.texture.width * 0.35; // matches R in generateSunTexture
-    // Plasma arc lifecycle system
-    this.plasmaArcs = [];
-    this.arcSpawnTimer = 0;
-  }
-  spawnPlasmaArc() {
-    const R = this.radius;
-    const baseAngle = Math.random() * Math.PI * 2;
-    const maxHeight = R * (0.3 + Math.random() * 0.6); // how far it reaches
-    const lifetime = 1.5 + Math.random() * 2.5; // 1.5–4 seconds
-    const arcWidth = 0.15 + Math.random() * 0.35; // angular spread in radians
-    const curveBias = (Math.random() - 0.5) * 0.8; // which way the arc curves
-    const thickness = 1.5 + Math.random() * 2.5;
-    this.plasmaArcs.push({
-      baseAngle, maxHeight, lifetime, maxLifetime: lifetime,
-      arcWidth, curveBias, thickness, age: 0,
-      // Secondary arc properties for double-strand look
-      strand2Offset: (Math.random() - 0.5) * 0.08,
-      strand2HeightMul: 0.6 + Math.random() * 0.3,
-    });
   }
   update(dt) {
     this.coronaPhase += dt;
-    // Spawn new arcs periodically
-    this.arcSpawnTimer -= dt;
-    if (this.arcSpawnTimer <= 0) {
-      this.spawnPlasmaArc();
-      this.arcSpawnTimer = 0.4 + Math.random() * 1.2; // new arc every 0.4–1.6s
-    }
-    // Update and cull arcs
-    for (let i = this.plasmaArcs.length - 1; i >= 0; i--) {
-      this.plasmaArcs[i].age += dt;
-      if (this.plasmaArcs[i].age >= this.plasmaArcs[i].lifetime) {
-        this.plasmaArcs.splice(i, 1);
-      }
-    }
-    // Cap max arcs
-    while (this.plasmaArcs.length > 8) this.plasmaArcs.shift();
   }
   gravityAt(x, y) {
     const dx = this.x - x, dy = this.y - y;
@@ -2024,119 +2429,83 @@ class Star {
     }
     ctx.globalAlpha = 1;
 
-    // Animated plasma overlay (low alpha, adds movement)
+    // Animated convection cells — many cells with varied speeds, sizes, and colors
     ctx.save();
-    ctx.beginPath(); ctx.arc(sx, sy, R*0.97, 0, Math.PI*2); ctx.clip();
-    ctx.globalAlpha = SUN_PLASMA_INTENSITY * 0.7;
-    for (let i = 0; i < 6; i++) {
-      const pa = t*0.12 + i*1.047;
-      const pr = R*(0.2 + 0.3*Math.sin(i*2.1 + t*0.15));
+    ctx.beginPath(); ctx.arc(sx, sy, R*0.98, 0, Math.PI*2); ctx.clip();
+
+    // Layer 1: Large deep convection cells (slow-moving, dark)
+    ctx.globalAlpha = SUN_PLASMA_INTENSITY * 0.6;
+    for (let i = 0; i < 8; i++) {
+      const seed = i * 7.13;
+      const pa = t*0.04 + i*0.785 + Math.sin(t*0.08 + seed)*0.3;
+      const pr = R*(0.15 + 0.35*Math.sin(seed + t*0.06));
       const px = sx + Math.cos(pa)*pr, py = sy + Math.sin(pa)*pr;
-      const cellR = R*(0.2 + 0.08*Math.sin(i*3.7 + t*0.2));
+      const cellR = R*(0.25 + 0.1*Math.sin(seed*1.7 + t*0.1));
       const pg = ctx.createRadialGradient(px, py, 0, px, py, cellR);
-      if (i % 3 === 0) {
-        pg.addColorStop(0, 'rgba(255,180,60,0.6)');
-        pg.addColorStop(1, 'rgba(150,40,5,0)');
-      } else if (i % 3 === 1) {
-        pg.addColorStop(0, 'rgba(200,80,15,0.4)');
-        pg.addColorStop(1, 'rgba(80,15,0,0)');
-      } else {
-        pg.addColorStop(0, 'rgba(60,10,0,0.4)');
-        pg.addColorStop(1, 'rgba(20,0,0,0)');
-      }
+      pg.addColorStop(0, `rgba(${80+Math.floor(Math.sin(seed+t*0.15)*30)},${15+Math.floor(Math.sin(seed*1.3)*10)},0,0.5)`);
+      pg.addColorStop(0.6, `rgba(40,8,0,0.2)`);
+      pg.addColorStop(1, 'rgba(20,0,0,0)');
       ctx.fillStyle = pg;
       ctx.beginPath(); ctx.arc(px, py, cellR, 0, Math.PI*2); ctx.fill();
     }
+
+    // Layer 2: Medium bright granulation cells (faster, orange-yellow)
+    ctx.globalAlpha = SUN_PLASMA_INTENSITY * 0.9;
+    for (let i = 0; i < 12; i++) {
+      const seed = i * 5.37 + 2.1;
+      const speed = 0.08 + (i % 3) * 0.04;
+      const pa = t*speed + i*0.524 + Math.sin(t*0.12 + seed)*0.4;
+      const pr = R*(0.1 + 0.45*Math.sin(seed*0.9 + t*0.07));
+      const px = sx + Math.cos(pa)*pr, py = sy + Math.sin(pa)*pr;
+      const cellR = R*(0.15 + 0.08*Math.sin(seed*2.3 + t*0.18));
+      const brightness = 0.5 + Math.sin(t*0.25 + seed*1.4)*0.3;
+      const pg = ctx.createRadialGradient(px, py, 0, px, py, cellR);
+      pg.addColorStop(0, `rgba(255,${Math.floor(140+brightness*80)},${Math.floor(30+brightness*40)},${0.4+brightness*0.3})`);
+      pg.addColorStop(0.5, `rgba(220,${Math.floor(60+brightness*30)},${Math.floor(10+brightness*10)},${0.15+brightness*0.1})`);
+      pg.addColorStop(1, 'rgba(120,20,0,0)');
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(px, py, cellR, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Layer 3: Small bright hotspots (fast, white-yellow, pop in and out)
+    ctx.globalAlpha = SUN_PLASMA_INTENSITY * 1.2;
+    for (let i = 0; i < 10; i++) {
+      const seed = i * 3.91 + 5.7;
+      // These cells "breathe" — appear and fade with different rhythms
+      const lifePhase = Math.sin(t*0.3 + seed*2.1)*0.5 + 0.5; // 0→1 pulsing
+      if (lifePhase < 0.2) continue; // skip when faded out
+      const pa = t*0.1 + i*0.628 + Math.sin(t*0.15 + seed)*0.5;
+      const pr = R*(0.05 + 0.5*Math.sin(seed*1.1 + t*0.05));
+      const px = sx + Math.cos(pa)*pr, py = sy + Math.sin(pa)*pr;
+      const cellR = R*(0.06 + 0.04*Math.sin(seed*3.1 + t*0.22)) * lifePhase;
+      const pg = ctx.createRadialGradient(px, py, 0, px, py, cellR);
+      pg.addColorStop(0, `rgba(255,${Math.floor(220+lifePhase*35)},${Math.floor(100+lifePhase*80)},${0.5*lifePhase})`);
+      pg.addColorStop(0.4, `rgba(255,${Math.floor(150+lifePhase*40)},${Math.floor(30+lifePhase*20)},${0.2*lifePhase})`);
+      pg.addColorStop(1, 'rgba(200,50,0,0)');
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(px, py, cellR, 0, Math.PI*2); ctx.fill();
+    }
+
+    // Layer 4: Dark intergranular lanes (thin dark lines between cells)
+    ctx.globalAlpha = SUN_PLASMA_INTENSITY * 0.4;
+    ctx.strokeStyle = 'rgba(30,5,0,0.3)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const seed = i * 4.67 + 1.3;
+      const a1 = t*0.03 + i*1.047;
+      const a2 = a1 + 0.6 + Math.sin(t*0.1 + seed)*0.3;
+      const r1 = R*(0.2 + 0.3*Math.sin(seed + t*0.05));
+      const r2 = R*(0.15 + 0.35*Math.sin(seed*1.5 + t*0.07));
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a1)*r1, sy + Math.sin(a1)*r1);
+      const cpA = (a1+a2)/2 + Math.sin(t*0.08+seed)*0.2;
+      const cpR = R*(0.1 + 0.2*Math.sin(seed*2.1+t*0.06));
+      ctx.quadraticCurveTo(sx + Math.cos(cpA)*cpR, sy + Math.sin(cpA)*cpR, sx + Math.cos(a2)*r2, sy + Math.sin(a2)*r2);
+      ctx.stroke();
+    }
+
     ctx.globalAlpha = 1;
     ctx.restore();
-
-    // Dynamic plasma arcs — grow, arch, and subside
-    for (const arc of this.plasmaArcs) {
-      const progress = arc.age / arc.maxLifetime; // 0→1
-      // Envelope: grows fast, holds, then fades out
-      let envelope;
-      if (progress < 0.15) envelope = progress / 0.15; // quick rise
-      else if (progress < 0.65) envelope = 1.0; // sustain
-      else envelope = 1.0 - (progress - 0.65) / 0.35; // fade out
-      envelope = Math.max(0, Math.min(1, envelope));
-      if (envelope < 0.01) continue;
-
-      const height = arc.maxHeight * envelope;
-      const ba = arc.baseAngle;
-      const halfW = arc.arcWidth * 0.5;
-
-      // Arc foot positions on the sun surface
-      const foot1X = sx + Math.cos(ba - halfW) * R;
-      const foot1Y = sy + Math.sin(ba - halfW) * R;
-      const foot2X = sx + Math.cos(ba + halfW) * R;
-      const foot2Y = sy + Math.sin(ba + halfW) * R;
-
-      // Apex — arches outward from the midpoint
-      const midAngle = ba + arc.curveBias * 0.3 * Math.sin(arc.age * 1.5);
-      const apexDist = R + height;
-      const apexX = sx + Math.cos(midAngle) * apexDist;
-      const apexY = sy + Math.sin(midAngle) * apexDist;
-
-      // Control points for smooth cubic bezier arch
-      const cp1Dist = R + height * 0.7;
-      const cp1Angle = ba - halfW * 0.3 + arc.curveBias * 0.15;
-      const cp1X = sx + Math.cos(cp1Angle) * cp1Dist;
-      const cp1Y = sy + Math.sin(cp1Angle) * cp1Dist;
-      const cp2Angle = ba + halfW * 0.3 + arc.curveBias * 0.15;
-      const cp2X = sx + Math.cos(cp2Angle) * cp1Dist;
-      const cp2Y = sy + Math.sin(cp2Angle) * cp1Dist;
-
-      // Draw primary strand
-      const alpha = envelope * 0.55;
-      const g = Math.floor(80 + envelope * 100);
-      const b2 = Math.floor(10 + envelope * 30);
-      ctx.strokeStyle = `rgba(255,${g},${b2},${alpha})`;
-      ctx.lineWidth = arc.thickness * envelope;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(foot1X, foot1Y);
-      ctx.bezierCurveTo(cp1X, cp1Y, apexX, apexY, foot2X, foot2Y);
-      ctx.stroke();
-
-      // Secondary thinner strand (parallel, slightly offset)
-      const s2Height = height * arc.strand2HeightMul;
-      const s2Mid = ba + arc.strand2Offset + arc.curveBias * 0.2 * Math.sin(arc.age * 2.1 + 1);
-      const s2Apex = R + s2Height;
-      const s2ApexX = sx + Math.cos(s2Mid) * s2Apex;
-      const s2ApexY = sy + Math.sin(s2Mid) * s2Apex;
-      const s2cp1D = R + s2Height * 0.65;
-      const s2cp1X = sx + Math.cos(cp1Angle + arc.strand2Offset) * s2cp1D;
-      const s2cp1Y = sy + Math.sin(cp1Angle + arc.strand2Offset) * s2cp1D;
-      const s2cp2X = sx + Math.cos(cp2Angle + arc.strand2Offset) * s2cp1D;
-      const s2cp2Y = sy + Math.sin(cp2Angle + arc.strand2Offset) * s2cp1D;
-      ctx.strokeStyle = `rgba(255,${g+40},${b2+20},${alpha * 0.5})`;
-      ctx.lineWidth = arc.thickness * envelope * 0.5;
-      ctx.beginPath();
-      ctx.moveTo(foot1X, foot1Y);
-      ctx.bezierCurveTo(s2cp1X, s2cp1Y, s2ApexX, s2ApexY, foot2X, foot2Y);
-      ctx.stroke();
-
-      // Glow at apex
-      const glowR = height * 0.35 * envelope;
-      if (glowR > 1) {
-        const glowG = ctx.createRadialGradient(apexX, apexY, 0, apexX, apexY, glowR);
-        glowG.addColorStop(0, `rgba(255,${g+30},${b2+10},${alpha * 0.4})`);
-        glowG.addColorStop(1, 'rgba(200,40,0,0)');
-        ctx.fillStyle = glowG;
-        ctx.beginPath(); ctx.arc(apexX, apexY, glowR, 0, Math.PI*2); ctx.fill();
-      }
-
-      // Bright footpoints on surface
-      ctx.globalAlpha = alpha * 0.6;
-      for (const fx of [[foot1X, foot1Y], [foot2X, foot2Y]]) {
-        const fpG = ctx.createRadialGradient(fx[0], fx[1], 0, fx[0], fx[1], R*0.06);
-        fpG.addColorStop(0, 'rgba(255,220,100,0.7)');
-        fpG.addColorStop(1, 'rgba(255,100,20,0)');
-        ctx.fillStyle = fpG;
-        ctx.beginPath(); ctx.arc(fx[0], fx[1], R*0.06, 0, Math.PI*2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
   }
   heatDamage(entity) {
     const d = dist(this, entity);
@@ -2812,7 +3181,7 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Sun heat glow — dimmer at high speed (whipping through), brighter when lingering
+    // Sun heat glow — oriented AWAY from sun (fire trails behind ship)
     if (game && game.star) {
       const dToStar = dist(this, game.star);
       const heatZone = game.star.radius + HEAT_RANGE_OUTER;
@@ -2820,47 +3189,54 @@ class Ship {
         const heatIntensity = 1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER;
         const hi = clamp(heatIntensity, 0, 1);
         const spd = Math.hypot(this.vx, this.vy);
-        // Fast ships barely glow near sun — they're whipping through
         const speedDamp = clamp(1 - (spd - 80) / 200, 0.15, 1);
         const effectiveHi = hi * speedDamp;
 
-        // Outer heat haze — wide soft glow
+        // Direction away from sun in local ship coordinates
+        const sunWorldAngle = Math.atan2(this.y - game.star.y, this.x - game.star.x); // away from sun
+        const localAngle = sunWorldAngle - this.angle;
+        const awayX = Math.cos(localAngle);
+        const awayY = Math.sin(localAngle);
+        const offset = SHIP_SIZE * (0.8 + effectiveHi * 0.5); // glow center offset away from sun
+
+        // Outer heat haze — offset away from sun
         const outerSize = SHIP_SIZE * (3.5 + effectiveHi * 2);
+        const ox = awayX * offset, oy = awayY * offset;
         ctx.globalAlpha = effectiveHi * 0.35;
-        const outerGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.5, 0, 0, outerSize);
+        const outerGrad = ctx.createRadialGradient(ox*0.3, oy*0.3, SHIP_SIZE*0.5, ox, oy, outerSize);
         outerGrad.addColorStop(0, 'rgba(255,80,10,0.5)');
         outerGrad.addColorStop(0.4, 'rgba(255,40,0,0.2)');
         outerGrad.addColorStop(1, 'rgba(180,15,0,0)');
         ctx.fillStyle = outerGrad;
-        ctx.beginPath(); ctx.arc(0, 0, outerSize, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ox, oy, outerSize, 0, Math.PI*2); ctx.fill();
 
-        // Core fire envelope — intense orange-white close to ship
+        // Core fire envelope — offset away from sun
         const coreSize = SHIP_SIZE * (2.0 + effectiveHi * 1.5);
         ctx.globalAlpha = effectiveHi * 0.7;
-        const coreGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.15, 0, 0, coreSize);
+        const coreGrad = ctx.createRadialGradient(ox*0.2, oy*0.2, SHIP_SIZE*0.15, ox*0.7, oy*0.7, coreSize);
         coreGrad.addColorStop(0, `rgba(255,${Math.floor(240-effectiveHi*100)},${Math.floor(120-effectiveHi*100)},0.9)`);
         coreGrad.addColorStop(0.3, `rgba(255,${Math.floor(160-effectiveHi*80)},${Math.floor(30-effectiveHi*20)},0.6)`);
         coreGrad.addColorStop(0.7, `rgba(220,${Math.floor(60-effectiveHi*30)},0,0.2)`);
         coreGrad.addColorStop(1, 'rgba(180,20,0,0)');
         ctx.fillStyle = coreGrad;
-        ctx.beginPath(); ctx.arc(0, 0, coreSize, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ox*0.7, oy*0.7, coreSize, 0, Math.PI*2); ctx.fill();
 
-        // Hot white-yellow highlight at center when very close
+        // Hot white-yellow highlight when very close
         if (effectiveHi > 0.4) {
           const whiteSize = SHIP_SIZE * (0.8 + effectiveHi * 0.6);
           ctx.globalAlpha = (effectiveHi - 0.4) * 1.2;
-          const whiteGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, whiteSize);
+          const whiteGrad = ctx.createRadialGradient(0, 0, 0, ox*0.3, oy*0.3, whiteSize);
           whiteGrad.addColorStop(0, 'rgba(255,255,200,0.8)');
           whiteGrad.addColorStop(0.5, 'rgba(255,200,80,0.3)');
           whiteGrad.addColorStop(1, 'rgba(255,120,20,0)');
           ctx.fillStyle = whiteGrad;
-          ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(ox*0.3, oy*0.3, whiteSize, 0, Math.PI*2); ctx.fill();
         }
         ctx.globalAlpha = 1;
       }
     }
 
-    // Atmospheric entry glow near planets — faster = brighter (friction heating)
+    // Atmospheric entry glow near planets — oriented TOWARD the planet (atmosphere is burning)
     if (game && game.planets) {
       const spd = Math.hypot(this.vx, this.vy);
       for (const planet of game.planets) {
@@ -2868,40 +3244,47 @@ class Ship {
         const atmoZone = planet.radius * 1.8;
         if (dToPlanet < atmoZone && dToPlanet > planet.radius * 0.5) {
           const proximityFactor = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 0.8), 0, 1);
-          // Speed-dependent: slow = no glow, fast = bright glow (atmospheric friction)
           const speedFactor = clamp((spd - 40) / 150, 0, 1);
           const atmoIntensity = proximityFactor * speedFactor;
           if (atmoIntensity > 0.02) {
-            // Outer atmospheric haze — large, soft
+            // Direction toward planet in local ship coordinates
+            const toPlanetWorld = Math.atan2(planet.y - this.y, planet.x - this.x);
+            const localAngle = toPlanetWorld - this.angle;
+            const toX = Math.cos(localAngle);
+            const toY = Math.sin(localAngle);
+            const atmoOff = SHIP_SIZE * (0.6 + atmoIntensity * 0.4);
+
+            // Outer atmospheric haze — offset toward planet
             const outerGlowSize = SHIP_SIZE * (3.0 + speedFactor * 3.0);
+            const aox = toX * atmoOff, aoy = toY * atmoOff;
             ctx.globalAlpha = atmoIntensity * 0.6;
-            const outerAtmo = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.3, 0, 0, outerGlowSize);
+            const outerAtmo = ctx.createRadialGradient(aox*0.3, aoy*0.3, SHIP_SIZE*0.3, aox, aoy, outerGlowSize);
             outerAtmo.addColorStop(0, `rgba(255,${Math.floor(180-speedFactor*60)},${Math.floor(80-speedFactor*60)},0.6)`);
             outerAtmo.addColorStop(0.4, `rgba(255,${Math.floor(120-speedFactor*40)},${Math.floor(40-speedFactor*30)},0.3)`);
             outerAtmo.addColorStop(1, 'rgba(200,60,10,0)');
             ctx.fillStyle = outerAtmo;
-            ctx.beginPath(); ctx.arc(0, 0, outerGlowSize, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(aox, aoy, outerGlowSize, 0, Math.PI*2); ctx.fill();
 
-            // Inner bright core
+            // Inner bright core — offset toward planet
             const coreGlowSize = SHIP_SIZE * (1.5 + speedFactor * 1.5);
             ctx.globalAlpha = atmoIntensity * 0.9;
-            const coreAtmo = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.1, 0, 0, coreGlowSize);
+            const coreAtmo = ctx.createRadialGradient(aox*0.2, aoy*0.2, SHIP_SIZE*0.1, aox*0.7, aoy*0.7, coreGlowSize);
             coreAtmo.addColorStop(0, `rgba(255,${Math.floor(240-speedFactor*60)},${Math.floor(160-speedFactor*100)},0.9)`);
             coreAtmo.addColorStop(0.4, `rgba(255,${Math.floor(180-speedFactor*60)},${Math.floor(80-speedFactor*60)},0.5)`);
             coreAtmo.addColorStop(1, 'rgba(220,80,10,0)');
             ctx.fillStyle = coreAtmo;
-            ctx.beginPath(); ctx.arc(0, 0, coreGlowSize, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(aox*0.7, aoy*0.7, coreGlowSize, 0, Math.PI*2); ctx.fill();
 
             // White-hot center at high speed
             if (atmoIntensity > 0.4) {
               const whiteSize = SHIP_SIZE * (0.6 + atmoIntensity * 0.8);
               ctx.globalAlpha = (atmoIntensity - 0.4) * 1.5;
-              const whiteAtmo = ctx.createRadialGradient(0, 0, 0, 0, 0, whiteSize);
+              const whiteAtmo = ctx.createRadialGradient(0, 0, 0, aox*0.3, aoy*0.3, whiteSize);
               whiteAtmo.addColorStop(0, 'rgba(255,255,220,0.9)');
               whiteAtmo.addColorStop(0.5, 'rgba(255,220,120,0.4)');
               whiteAtmo.addColorStop(1, 'rgba(255,150,40,0)');
               ctx.fillStyle = whiteAtmo;
-              ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
+              ctx.beginPath(); ctx.arc(aox*0.3, aoy*0.3, whiteSize, 0, Math.PI*2); ctx.fill();
             }
             ctx.globalAlpha = 1;
           }
@@ -2991,9 +3374,9 @@ const ARH_TYPES = {
 };
 
 function getWaveTypes(wave) {
-  const types = Object.keys(ARH_TYPES);
-  // Waves 1-2: drones and scouts. Progressively more types.
-  const available = types.slice(0, Math.min(2 + Math.floor(wave/2), types.length));
+  const types = Object.keys(ARH_TYPES).filter(t => t !== 'overlord'); // bosses spawned separately
+  // Wave 1: 3 types (drone, scout, brute). New type every 2 waves after.
+  const available = types.slice(0, Math.min(3 + Math.floor((wave - 1)/2), types.length));
   return available;
 }
 
@@ -3023,7 +3406,7 @@ function createARH(x, y, typeName, generation, planet) {
     shootTimer: rng(2,5),
     shootChance: type.shootChance,
     pulsePhase: Math.random()*Math.PI*2,
-    growScale: 0.3,  // start small, grow to 1
+    growScale: 1,  // full size immediately
     alive: true
   };
 }
@@ -3106,16 +3489,53 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       game.particles.emit(inv.x + rng(-inv.size, inv.size), inv.y + rng(-inv.size, inv.size), 3, '#f84', 100, 0.5, 3);
       game.particles.emit(inv.x + rng(-inv.size, inv.size), inv.y + rng(-inv.size, inv.size), 1, '#ff0', 120, 0.2, 1);
     }
-  }
 
-  // Grow
-  inv.growScale = Math.min(1, inv.growScale + dt*0.5);
+    // Apply boss mechanics
+    if (inv.bossMechanics && inv.bossMechanics.length > 0) {
+      for (const mechId of inv.bossMechanics) {
+        const mechConfig = BOSS_MECHANICS[mechId];
+        if (mechConfig && mechConfig.apply) {
+          mechConfig.apply(inv, dt, game);
+        }
+      }
+    }
+
+    // Draw mechanic indicators for active effects
+    if (inv.shielded && inv.shielded > 0) {
+      // Shield is active
+    }
+    if (inv.chargeTime && inv.chargeTime > 0) {
+      // Charging
+    }
+    if (inv.gravityActive && inv.gravityActive > 0) {
+      // Gravity well
+    }
+  }
 
   // Gravity from all bodies
   for (const body of game.bodies) {
     const g = body.gravityAt(inv.x, inv.y);
     inv.vx += g.ax*dt; inv.vy += g.ay*dt;
   }
+
+  // Compute facing angle toward nearest planet (for visual orientation)
+  let nearestPlanetDist = Infinity, nearestPlanetAngle = 0;
+  if (game.planets) {
+    for (const p of game.planets) {
+      const pd = dist(inv, p);
+      if (pd < nearestPlanetDist) {
+        nearestPlanetDist = pd;
+        nearestPlanetAngle = Math.atan2(p.y - inv.y, p.x - inv.x);
+      }
+    }
+  }
+  // Smooth rotation toward target facing (lerp)
+  if (inv.facingAngle === undefined) inv.facingAngle = nearestPlanetAngle;
+  let angleDiff = nearestPlanetAngle - inv.facingAngle;
+  // Normalize to [-PI, PI]
+  while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
+  while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
+  inv.facingAngle += angleDiff * Math.min(1, 1.5 * dt); // smooth turn
 
   // Type-specific behavior
   if (ship.alive) {
@@ -3326,7 +3746,6 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       const pa = Math.atan2(dy, dx) + orbAngleOff;
       const child = createARH(planet.x + Math.cos(pa)*pr, planet.y + Math.sin(pa)*pr, childType, inv.generation+1, planet);
       child.vx = inv.vx; child.vy = inv.vy; // exact same orbit
-      child.growScale = 0.2; // start very small
       invaders.push(child);
       playSound('reproduce');
       particles.emit(inv.x, inv.y, 10, '#fff', 80, 0.3, 2);
@@ -3367,6 +3786,10 @@ function drawARH(ctx, inv, cam) {
   ctx.save();
   ctx.translate(sx, sy);
 
+  // Orient all enemies toward nearest planet (base faces planet)
+  const facing = inv.facingAngle !== undefined ? inv.facingAngle : 0;
+  ctx.rotate(facing);
+
   // Type-specific unique renderings
   if (inv.typeName === 'drone') {
     // Drone: spinning diamond core with flutter wings
@@ -3402,10 +3825,10 @@ function drawARH(ctx, inv, cam) {
     }
 
   } else if (inv.typeName === 'scout') {
-    // Scout: dart/arrow shape with speed trail
-    const rot = Math.atan2(inv.vy, inv.vx);
+    // Scout: velocity-oriented dart — override planet facing
+    ctx.rotate(-facing + Math.atan2(inv.vy, inv.vx));
 
-    // Speed trail
+    // Speed trail (draws backward in local coords since body points +X)
     if (Math.sqrt(inv.vx*inv.vx + inv.vy*inv.vy) > 5) {
       for (let i = 0; i < 4; i++) {
         const fadeAlpha = 0.4 * (1 - i/4);
@@ -3414,7 +3837,7 @@ function drawARH(ctx, inv, cam) {
         const trailDist = s*0.3 + i*s*0.2;
         ctx.beginPath();
         ctx.moveTo(0, 0);
-        ctx.lineTo(-Math.cos(rot)*trailDist, -Math.sin(rot)*trailDist);
+        ctx.lineTo(-trailDist, 0);
         ctx.stroke();
       }
     }
@@ -3490,8 +3913,8 @@ function drawARH(ctx, inv, cam) {
     ctx.beginPath(); ctx.arc(0, 0, s*0.25, 0, Math.PI*2); ctx.fill();
 
   } else if (inv.typeName === 'stinger') {
-    // Stinger: wasp-like body with pulsing spine
-    const rot = Math.atan2(inv.vy, inv.vx);
+    // Stinger: velocity-oriented wasp — override planet facing
+    ctx.rotate(-facing + Math.atan2(inv.vy, inv.vx));
 
     // Small oval body
     ctx.fillStyle = hsl(h, 65, 45);
@@ -3638,453 +4061,62 @@ function drawARH(ctx, inv, cam) {
   ctx.restore();
 
   // Boss-specific drawing — large, dramatic, visible at distance
-  if (inv.isBoss && inv.bossVariant) {
-    const variant = inv.bossVariant;
-    const h = inv.colorH || 200;
-    const hpFrac = (inv.maxHp > 0) ? Math.max(0, Math.min(1, inv.hp / inv.maxHp)) : 0;
+  // Undo planet-facing for bosses — they have their own presence
+  if (inv.isBoss) ctx.rotate(-facing);
+  if (inv.isBoss && inv.bossVisual) {
+    drawParameterizedBoss(inv, sx, sy, s, t);
+  }
 
-    if (variant.name === 'NEXUS PRIME') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      // Dark armored core
-      const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.8);
-      coreG.addColorStop(0, hsl(h, 30, 25));
-      coreG.addColorStop(0.7, hsl(h, 20, 12));
-      coreG.addColorStop(1, hsl(h, 15, 5));
-      ctx.fillStyle = coreG;
-      ctx.beginPath(); ctx.arc(0, 0, s*0.8, 0, Math.PI*2); ctx.fill();
-      // Central eye — large, glowing
-      const eyeG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.35);
-      eyeG.addColorStop(0, '#fff');
-      eyeG.addColorStop(0.3, hsl(h, 90, 70));
-      eyeG.addColorStop(1, hsla(h, 80, 50, 0));
-      ctx.fillStyle = eyeG;
-      ctx.beginPath(); ctx.arc(0, 0, s*0.35, 0, Math.PI*2); ctx.fill();
-      // 4 rotating shield arc segments — thick, bright
+  // Boss mechanic visual indicators
+  if (inv.isBoss) {
+    // Shield active — cyan bubble
+    if (inv.shielded && inv.shielded > 0) {
+      ctx.strokeStyle = `rgba(0,255,255,${0.4 + Math.sin(t*5)*0.2})`;
       ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sx, sy, s*1.3, 0, Math.PI*2); ctx.stroke();
+    }
+    // Charge active — spinning lines
+    if (inv.chargeTime && inv.chargeTime > 0) {
+      for (let i = 0; i < 3; i++) {
+        const a = (i/3)*Math.PI*2 + t*3;
+        ctx.strokeStyle = `rgba(255,100,0,${0.5})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(a)*s*0.6, sy + Math.sin(a)*s*0.6);
+        ctx.lineTo(sx + Math.cos(a)*s*1.0, sy + Math.sin(a)*s*1.0);
+        ctx.stroke();
+      }
+    }
+    // Gravity well — inward arrows
+    if (inv.gravityActive && inv.gravityActive > 0) {
+      ctx.fillStyle = `rgba(150,100,255,${0.4})`;
       for (let i = 0; i < 4; i++) {
-        const a = (i/4)*Math.PI*2 + t*0.5;
-        ctx.strokeStyle = hsla(h, 80, 65, 0.7 + Math.sin(t*3+i)*0.3);
-        ctx.beginPath(); ctx.arc(0, 0, s*1.1, a, a + Math.PI*0.35); ctx.stroke();
-        // Inner ring
-        ctx.strokeStyle = hsla(h, 60, 40, 0.4);
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(0, 0, s*0.95, a + 0.1, a + Math.PI*0.3); ctx.stroke();
-        ctx.lineWidth = 3;
-      }
-      // Data conduit lines radiating
-      ctx.strokeStyle = hsla(h, 70, 55, 0.3);
-      ctx.lineWidth = 1;
-      for (let i = 0; i < 8; i++) {
-        const a = (i/8)*Math.PI*2 + t*0.15;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a)*s*0.5, Math.sin(a)*s*0.5);
-        ctx.lineTo(Math.cos(a)*s*1.3, Math.sin(a)*s*1.3);
-        ctx.stroke();
-      }
-      // Outer glow ring
-      ctx.strokeStyle = hsla(h, 70, 60, 0.15);
-      ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.arc(0, 0, s*1.2, 0, Math.PI*2); ctx.stroke();
-      ctx.restore();
-
-    } else if (variant.name === 'VOID MOTHER') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      // Bloated abdomen — dark with internal glow
-      const bodyG = ctx.createRadialGradient(0, s*0.1, 0, 0, s*0.1, s*1.0);
-      bodyG.addColorStop(0, hsl(h, 40, 30));
-      bodyG.addColorStop(0.5, hsl(h, 25, 15));
-      bodyG.addColorStop(1, hsl(h, 15, 5));
-      ctx.fillStyle = bodyG;
-      ctx.beginPath(); ctx.ellipse(0, s*0.1, s*0.9, s*1.0, 0, 0, Math.PI*2); ctx.fill();
-      // Internal chambers (visible eggs)
-      ctx.fillStyle = hsla(h, 50, 45, 0.25);
-      for (let i = 0; i < 5; i++) {
-        const cx2 = rng(-s*0.3, s*0.3), cy2 = rng(-s*0.2, s*0.5);
-        ctx.beginPath(); ctx.arc(cx2, cy2, s*0.15 + Math.sin(t+i)*s*0.03, 0, Math.PI*2); ctx.fill();
-      }
-      // 6 articulated insect legs — thick, segmented
-      for (let i = 0; i < 6; i++) {
-        const side = i < 3 ? -1 : 1;
-        const idx = i % 3;
-        const baseY = -s*0.4 + idx * s*0.4;
-        const midX = side * s*0.7;
-        const midY = baseY + Math.sin(t*2 + i*1.5) * s*0.15;
-        const tipX = side * s*1.3 + Math.sin(t*1.5 + i) * s*0.1;
-        const tipY = baseY + Math.sin(t*2.5 + i*1.2) * s*0.2 + s*0.2;
-        ctx.strokeStyle = hsl(h, 35, 25);
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(side * s*0.3, baseY);
-        ctx.lineTo(midX, midY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-        // Joint dots
-        ctx.fillStyle = hsl(h, 50, 40);
-        ctx.beginPath(); ctx.arc(midX, midY, 2.5, 0, Math.PI*2); ctx.fill();
-      }
-      // Head section
-      ctx.fillStyle = hsl(h, 35, 20);
-      ctx.beginPath(); ctx.arc(0, -s*0.7, s*0.4, 0, Math.PI*2); ctx.fill();
-      // Eyes
-      ctx.fillStyle = hsl(h, 80, 60);
-      ctx.beginPath(); ctx.arc(-s*0.15, -s*0.75, s*0.1, 0, Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.arc(s*0.15, -s*0.75, s*0.1, 0, Math.PI*2); ctx.fill();
-      ctx.restore();
-
-    } else if (variant.name === 'IRON MAW') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(Math.atan2(player.y - inv.y, player.x - inv.x)); // Track player
-
-      // Dark mechanical core behind the jaws
-      const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.4);
-      coreG.addColorStop(0, hsl(h, 20, 25));
-      coreG.addColorStop(1, hsl(h, 15, 10));
-      ctx.fillStyle = coreG;
-      ctx.beginPath(); ctx.arc(0, 0, s*0.4, 0, Math.PI*2); ctx.fill();
-
-      // Rhythmically opening and closing jaws
-      const jawOpen = 0.2 + Math.sin(game.time*2)*0.3;
-      const jawGap = s*0.8*jawOpen;
-
-      // Upper jaw (trapezoid - closes from top)
-      ctx.fillStyle = hsl(h, 25, 22);
-      ctx.beginPath();
-      ctx.moveTo(-s*0.6, -s*0.3);
-      ctx.lineTo(s*0.6, -s*0.2);
-      ctx.lineTo(s*0.5, -s*0.2 - jawGap);
-      ctx.lineTo(-s*0.5, -s*0.3 - jawGap);
-      ctx.closePath();
-      ctx.fill();
-
-      // Lower jaw (trapezoid - closes from bottom)
-      ctx.beginPath();
-      ctx.moveTo(-s*0.6, s*0.3);
-      ctx.lineTo(s*0.6, s*0.2);
-      ctx.lineTo(s*0.5, s*0.2 + jawGap);
-      ctx.lineTo(-s*0.5, s*0.3 + jawGap);
-      ctx.closePath();
-      ctx.fill();
-
-      // Grinding teeth/spikes along inner jaw edges
-      ctx.fillStyle = hsl(h, 30, 60);
-      for (let i = 0; i < 8; i++) {
-        const tx = -s*0.5 + (i/7)*s*1.0;
-        // Upper teeth
-        ctx.beginPath();
-        ctx.moveTo(tx - s*0.08, -s*0.2 - jawGap);
-        ctx.lineTo(tx, -s*0.2 - jawGap - s*0.15);
-        ctx.lineTo(tx + s*0.08, -s*0.2 - jawGap);
-        ctx.closePath();
-        ctx.fill();
-        // Lower teeth (inverted)
-        ctx.beginPath();
-        ctx.moveTo(tx - s*0.08, s*0.2 + jawGap);
-        ctx.lineTo(tx, s*0.2 + jawGap + s*0.15);
-        ctx.lineTo(tx + s*0.08, s*0.2 + jawGap);
-        ctx.closePath();
-        ctx.fill();
-      }
-
-      // Orange-red molten glow between the plates (intensifies as jaws open)
-      const glowIntensity = 0.3 + jawOpen * 0.7;
-      ctx.fillStyle = hsla(h, 85, 55, glowIntensity * 0.6);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, s*0.45, jawGap*0.4 + s*0.1, 0, 0, Math.PI*2);
-      ctx.fill();
-
-      // Molten gradient glow
-      const moltenG = ctx.createLinearGradient(0, -jawGap, 0, jawGap);
-      moltenG.addColorStop(0, hsla(h, 90, 60, glowIntensity*0.4));
-      moltenG.addColorStop(0.5, hsla(h, 80, 55, glowIntensity*0.8));
-      moltenG.addColorStop(1, hsla(h, 90, 60, glowIntensity*0.4));
-      ctx.fillStyle = moltenG;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, s*0.4, jawGap*0.35, 0, 0, Math.PI*2);
-      ctx.fill();
-
-      // Riveted armor texture on jaw exteriors (small circle dots)
-      ctx.fillStyle = hsla(h, 20, 30, 0.6);
-      for (let i = 0; i < 12; i++) {
-        const angle = (i/12)*Math.PI*2;
-        const rx = Math.cos(angle)*s*0.65;
-        const ry = Math.sin(angle)*s*0.45;
-        ctx.beginPath(); ctx.arc(rx, ry, 1.5, 0, Math.PI*2); ctx.fill();
-      }
-
-      // When damaged, sparks fly from jaw hinges
-      if (hpFrac < 0.5) {
-        for (let i = 0; i < 3; i++) {
-          const sparkLife = (game.time*5 + i*0.3) % 1;
-          const sparkX = (Math.random()-0.5)*s*0.3;
-          const sparkY = (Math.random()-0.5 > 0 ? -1 : 1)*s*0.4;
-          const trailLen = sparkLife*s*0.3;
-          ctx.strokeStyle = hsla(15, 100, 50 + sparkLife*30, 1-sparkLife);
-          ctx.lineWidth = 1.5 + (1-sparkLife)*1;
-          ctx.beginPath();
-          ctx.moveTo(sparkX, sparkY);
-          ctx.lineTo(sparkX + (Math.random()-0.5)*trailLen, sparkY + (Math.random()-0.5)*trailLen);
-          ctx.stroke();
-        }
-      }
-
-      ctx.restore();
-
-    } else if (variant.name === 'STELLAR DEVOURER') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      // Translucent jellyfish dome
-      const domeG = ctx.createRadialGradient(0, -s*0.2, 0, 0, -s*0.1, s*0.9);
-      domeG.addColorStop(0, hsla(h, 70, 65, 0.5));
-      domeG.addColorStop(0.5, hsla(h, 60, 40, 0.3));
-      domeG.addColorStop(1, hsla(h, 50, 20, 0.1));
-      ctx.fillStyle = domeG;
-      ctx.beginPath(); ctx.arc(0, -s*0.2, s*0.8, 0, Math.PI*2); ctx.fill();
-      // Pulsing energy core
-      const coreR = s*0.25 + Math.sin(t*3)*s*0.05;
-      ctx.fillStyle = hsla(h, 90, 75, 0.6 + Math.sin(t*4)*0.2);
-      ctx.beginPath(); ctx.arc(0, -s*0.2, coreR, 0, Math.PI*2); ctx.fill();
-      // 8 trailing tentacles — long, sinuous
-      for (let i = 0; i < 8; i++) {
-        const baseA = (i/8)*Math.PI*2;
-        const baseX = Math.cos(baseA)*s*0.5;
-        const baseY = Math.sin(baseA)*s*0.5 + s*0.2;
-        ctx.strokeStyle = hsla(h, 65, 50, 0.5);
-        ctx.lineWidth = 2.5 - i*0.15;
-        ctx.beginPath();
-        ctx.moveTo(baseX, baseY);
-        let cx2 = baseX, cy2 = baseY;
-        for (let j = 0; j < 8; j++) {
-          cx2 += Math.cos(baseA + Math.sin(t*1.5+i+j*0.5)*0.5) * s*0.2;
-          cy2 += s*0.18 + Math.sin(t*2+i*0.7+j)*s*0.06;
-          ctx.lineTo(cx2, cy2);
-        }
-        ctx.stroke();
-      }
-      // Bioluminescent spots
-      for (let i = 0; i < 6; i++) {
-        const sa = (i/6)*Math.PI*2 + t*0.4;
-        const sr = s*0.5;
-        ctx.fillStyle = hsla(h, 80, 70, 0.3 + Math.sin(t*2+i)*0.2);
-        ctx.beginPath(); ctx.arc(Math.cos(sa)*sr, Math.sin(sa)*sr - s*0.2, s*0.08, 0, Math.PI*2); ctx.fill();
-      }
-      ctx.restore();
-
-    } else if (variant.name === 'THE ARCHON') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      const turretA = game.ship.alive ? angle(inv, game.ship) - rot : 0;
-      // Outer threat glow — pulsing red aura
-      const glowPulse = 0.4 + Math.sin(t * 3) * 0.15;
-      const grd = ctx.createRadialGradient(0, 0, s*0.3, 0, 0, s*1.6);
-      grd.addColorStop(0, `rgba(255,40,20,${glowPulse * 0.3})`);
-      grd.addColorStop(0.5, `rgba(255,20,0,${glowPulse * 0.1})`);
-      grd.addColorStop(1, 'rgba(255,0,0,0)');
-      ctx.fillStyle = grd;
-      ctx.beginPath(); ctx.arc(0, 0, s*1.6, 0, Math.PI*2); ctx.fill();
-      // 6 heavy weapon arms — thick armored limbs with glowing tips
-      for (let i = 0; i < 6; i++) {
-        const armA = (i / 6) * Math.PI * 2 + Math.sin(t * 0.8 + i * 2) * 0.12;
-        const len1 = s * 0.65, len2 = s * 1.2;
-        const wave = Math.sin(t * 1.5 + i * 1.1) * s * 0.08;
-        const elbowX = Math.cos(armA) * len1 + wave;
-        const elbowY = Math.sin(armA) * len1 - wave;
-        const tipX = Math.cos(armA) * len2 + wave * 1.5;
-        const tipY = Math.sin(armA) * len2 - wave * 0.5;
-        // Arm segments — thick with armor plating look
-        ctx.strokeStyle = hsl(h, 15, 22);
-        ctx.lineWidth = s * 0.1;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(armA) * s * 0.35, Math.sin(armA) * s * 0.35);
-        ctx.lineTo(elbowX, elbowY);
-        ctx.stroke();
-        ctx.strokeStyle = hsl(h, 20, 18);
-        ctx.lineWidth = s * 0.07;
-        ctx.beginPath();
-        ctx.moveTo(elbowX, elbowY);
-        ctx.lineTo(tipX, tipY);
-        ctx.stroke();
-        // Glowing joint
-        ctx.fillStyle = hsl(h, 80, 50 + Math.sin(t * 4 + i) * 15);
-        ctx.beginPath(); ctx.arc(elbowX, elbowY, s * 0.06, 0, Math.PI * 2); ctx.fill();
-        // Weapon tip — glowing orb
-        const tipGlow = 0.5 + Math.sin(t * 3 + i * 1.5) * 0.3;
-        ctx.fillStyle = `rgba(255,${80 + i * 20},20,${tipGlow})`;
-        ctx.beginPath(); ctx.arc(tipX, tipY, s * 0.08, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(tipX, tipY, s * 0.03, 0, Math.PI * 2); ctx.fill();
-      }
-      // Main body — heavy layered hexagonal armor
-      // Outer armor ring
-      ctx.fillStyle = hsl(h, 15, 12);
-      ctx.strokeStyle = hsl(h, 40, 35);
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-        const px = Math.cos(a) * s * 0.7, py = Math.sin(a) * s * 0.7;
-        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-      }
-      ctx.closePath(); ctx.fill(); ctx.stroke();
-      // Inner armor plate — slightly rotated for layered look
-      ctx.fillStyle = hsl(h, 20, 18);
-      ctx.strokeStyle = hsl(h, 50, 40);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2;
-        const px = Math.cos(a) * s * 0.5, py = Math.sin(a) * s * 0.5;
-        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-      }
-      ctx.closePath(); ctx.fill(); ctx.stroke();
-      // Armor panel lines — detail
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-        ctx.strokeStyle = hsl(h, 30, 28);
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * s * 0.3, Math.sin(a) * s * 0.3);
-        ctx.lineTo(Math.cos(a) * s * 0.68, Math.sin(a) * s * 0.68);
-        ctx.stroke();
-      }
-      // Central turret dome — rotating, tracks player
-      ctx.fillStyle = hsl(h, 25, 22);
-      ctx.beginPath(); ctx.arc(0, 0, s * 0.3, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = hsl(h, 50, 45);
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      // Twin cannon barrels
-      const barrelW = s * 0.05, barrelL = s * 0.65;
-      for (const offset of [-0.08, 0.08]) {
-        const bx = Math.cos(turretA + offset) * barrelL;
-        const by = Math.sin(turretA + offset) * barrelL;
-        ctx.strokeStyle = hsl(h, 30, 30);
-        ctx.lineWidth = s * 0.06;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(turretA + offset) * s * 0.15, Math.sin(turretA + offset) * s * 0.15);
-        ctx.lineTo(bx, by);
-        ctx.stroke();
-        // Muzzle glow
-        const muzzleGlow = 0.5 + Math.sin(t * 6 + offset * 50) * 0.3;
-        ctx.fillStyle = `rgba(255,100,30,${muzzleGlow})`;
-        ctx.beginPath(); ctx.arc(bx, by, s * 0.05, 0, Math.PI * 2); ctx.fill();
-      }
-      // Central eye — large, menacing, glowing
-      const eyePulse = 0.7 + Math.sin(t * 2.5) * 0.3;
-      const eyeGrd = ctx.createRadialGradient(0, 0, 0, 0, 0, s * 0.2);
-      eyeGrd.addColorStop(0, `rgba(255,255,255,${eyePulse})`);
-      eyeGrd.addColorStop(0.3, `rgba(255,60,20,${eyePulse})`);
-      eyeGrd.addColorStop(0.7, `rgba(200,0,0,${eyePulse * 0.5})`);
-      eyeGrd.addColorStop(1, 'rgba(100,0,0,0)');
-      ctx.fillStyle = eyeGrd;
-      ctx.beginPath(); ctx.arc(0, 0, s * 0.2, 0, Math.PI * 2); ctx.fill();
-      // Eye pupil — tracks player
-      const pupilDist = s * 0.05;
-      ctx.fillStyle = '#000';
-      ctx.beginPath();
-      ctx.arc(Math.cos(turretA) * pupilDist, Math.sin(turretA) * pupilDist, s * 0.06, 0, Math.PI * 2);
-      ctx.fill();
-      // Bright eye dot
-      ctx.fillStyle = '#f44';
-      ctx.beginPath();
-      ctx.arc(Math.cos(turretA) * pupilDist * 0.5, Math.sin(turretA) * pupilDist * 0.5, s * 0.025, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-    } else if (variant.name === 'OBLIVION CORE') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      // Distortion glow
-      ctx.fillStyle = hsla(h, 60, 40, 0.08);
-      ctx.beginPath(); ctx.arc(0, 0, s*1.8, 0, Math.PI*2); ctx.fill();
-      // Rotating polyhedron — double layer
-      for (let layer = 0; layer < 2; layer++) {
+        const a = (i/4)*Math.PI*2;
+        const r = s * 1.4;
         ctx.save();
-        ctx.rotate(t * (layer === 0 ? 0.3 : -0.2));
-        const r = s * (layer === 0 ? 0.8 : 0.55);
-        const sides = layer === 0 ? 6 : 5;
-        ctx.strokeStyle = hsla(h, 80, 60, layer === 0 ? 0.7 : 0.4);
-        ctx.lineWidth = layer === 0 ? 2.5 : 1.5;
+        ctx.translate(sx + Math.cos(a)*r, sy + Math.sin(a)*r);
+        ctx.rotate(a + Math.PI);
         ctx.beginPath();
-        for (let i = 0; i <= sides; i++) {
-          const a = (i/sides)*Math.PI*2;
-          i === 0 ? ctx.moveTo(Math.cos(a)*r, Math.sin(a)*r) : ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
-        }
-        ctx.stroke();
-        // Cross-braces
-        ctx.strokeStyle = hsla(h, 70, 50, 0.3);
-        ctx.lineWidth = 1;
-        for (let i = 0; i < sides; i++) {
-          const a = (i/sides)*Math.PI*2;
-          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r); ctx.stroke();
-        }
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-4, 6); ctx.lineTo(4, 6); ctx.closePath();
+        ctx.fill();
         ctx.restore();
       }
-      // Central energy core
-      const coreR2 = s*0.2 + Math.sin(t*4)*s*0.05;
-      ctx.fillStyle = hsla(h, 90, 75, 0.7);
-      ctx.beginPath(); ctx.arc(0, 0, coreR2, 0, Math.PI*2); ctx.fill();
-      // Orbiting debris — larger, more visible
-      for (let i = 0; i < 16; i++) {
-        const a = (i/16)*Math.PI*2 + t*0.8;
-        const r2 = s*1.3 + Math.sin(t*2+i)*s*0.15;
-        ctx.fillStyle = hsla(h, 50, 45, 0.6);
-        ctx.beginPath(); ctx.arc(Math.cos(a)*r2, Math.sin(a)*r2, 2 + Math.sin(i)*1, 0, Math.PI*2); ctx.fill();
+    }
+    // Heal active — green glow
+    if (inv.healActive && inv.healActive > 0) {
+      ctx.fillStyle = `rgba(0,255,0,${0.2})`;
+      ctx.beginPath(); ctx.arc(sx, sy, s*1.1, 0, Math.PI*2); ctx.fill();
+    }
+    // Deny zones from area_deny
+    if (inv.denyZones && inv.denyZones.length > 0) {
+      for (const z of inv.denyZones) {
+        const zx = (z.x - game.ship.x)*game.camera.zoom + game.canvas.width/2;
+        const zy = (z.y - game.ship.y)*game.camera.zoom + game.canvas.height/2;
+        ctx.strokeStyle = `rgba(255,50,50,${0.3})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(zx, zy, z.r*game.camera.zoom, 0, Math.PI*2); ctx.stroke();
       }
-      ctx.restore();
-
-    } else if (variant.name === 'SWARM QUEEN') {
-      ctx.save();
-      ctx.translate(sx, sy);
-      // Multi-segment centipede — longer, more detailed
-      const numSegs = 5;
-      const bodyAngle = Math.atan2(inv.vy, inv.vx);
-      for (let seg = 0; seg < numSegs; seg++) {
-        const segOffset = seg * s * 0.45;
-        const segWobble = Math.sin(t*2 + seg*0.8) * s*0.08;
-        const segX = -Math.cos(bodyAngle)*segOffset;
-        const segY = -Math.sin(bodyAngle)*segOffset + segWobble;
-        const segR = s*(0.55 - seg*0.06);
-        // Body segment
-        const segG = ctx.createRadialGradient(segX, segY, 0, segX, segY, segR);
-        segG.addColorStop(0, hsl(h, 40, 28));
-        segG.addColorStop(1, hsl(h, 25, 10));
-        ctx.fillStyle = segG;
-        ctx.beginPath(); ctx.arc(segX, segY, segR, 0, Math.PI*2); ctx.fill();
-        ctx.strokeStyle = hsl(h, 55, 45);
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        // Eye on each segment
-        ctx.fillStyle = hsl(h, 80, 65);
-        ctx.beginPath(); ctx.arc(segX, segY - segR*0.3, segR*0.2, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.arc(segX, segY - segR*0.3, segR*0.07, 0, Math.PI*2); ctx.fill();
-        // Legs per segment
-        for (let side = -1; side <= 1; side += 2) {
-          const legA = Math.PI/2 * side + Math.sin(t*2+seg+side)*0.3;
-          ctx.strokeStyle = hsl(h, 30, 22);
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(segX + side*segR*0.5, segY);
-          ctx.lineTo(segX + side*segR*1.2 + Math.sin(t*2+seg)*3, segY + s*0.2);
-          ctx.stroke();
-        }
-      }
-      // Crown/crest on head segment
-      ctx.fillStyle = hsl(h, 60, 50);
-      for (let i = 0; i < 3; i++) {
-        const ca = -Math.PI/2 + (i-1)*0.5;
-        ctx.beginPath();
-        ctx.moveTo(0, -s*0.5);
-        ctx.lineTo(Math.cos(ca)*s*0.4, -s*0.5 + Math.sin(ca)*s*0.4 - s*0.3);
-        ctx.lineTo(Math.cos(ca)*s*0.15, -s*0.5);
-        ctx.closePath(); ctx.fill();
-      }
-      ctx.restore();
     }
   }
 
@@ -4480,7 +4512,7 @@ function initGame() {
     cam: { x: ship.x, y: ship.y },
     score: 0, kills: 0, wave: 1, deaths: 0,
     lives: gameMode === 'ranked' ? 5 : Infinity,
-    waveTimer: 5, waveSpawnCount: 5,
+    waveTimer: 5, waveSpawnCount: 12,
     time: 0, respawnMsg: null,
     boss: null, bossMessage: null, bossMessageTimer: 0,
     bossSubMessage: null, bossSubMessageTimer: 0,
@@ -4534,22 +4566,38 @@ function spawnWave() {
   // Boss wave every 5 waves starting at wave 5
   if (game.wave % 5 === 0 && game.wave >= 5) {
     // Spawn boss — arrives from off-screen
-    const bossVariant = getBossVariant(game.wave);
+    const bossDef = selectBossForWave(game.wave);
     const bossAngle = Math.random() * Math.PI * 2;
     const bossR = 800; // far off-screen
     const bossX = Math.cos(bossAngle) * bossR;
     const bossY = Math.sin(bossAngle) * bossR;
     const planet = game.planets[Math.floor(Math.random()*game.planets.length)];
     const boss = createARH(bossX, bossY, 'overlord', Math.min(Math.floor(game.wave/5), 4), planet);
-    boss.hp = 500 + game.wave * 50;
+
+    // Apply tier-based scaling
+    const tierConfig = BOSS_TIERS[bossDef.tier];
+    boss.hp = tierConfig.hpBase * bossDef.hpMult * (1 + (game.wave - 5) * 0.1);
     boss.maxHp = boss.hp;
-    boss.size = bossVariant.baseSize * 2 + Math.floor(game.wave/5) * 3;
+    boss.size = (tierConfig.sizeBase + bossDef.size) * 0.5 * tierConfig.sizeMult;
     boss.aggroRange = 500;
     boss.isBoss = true;
-    boss.bossVariant = bossVariant;
-    boss.bossName = bossVariant.name;
-    boss.colorH = bossVariant.colorH;
+    boss.tier = bossDef.tier;
+    boss.bossDef = bossDef;
+    boss.bossVisual = bossDef.visual;
+    boss.bossMechanics = bossDef.mechanics;
+    boss.bossName = bossDef.name;
+    boss.colorH = bossDef.colorH;
     boss.critical = false;
+    boss.assignedPlanet = planet;
+
+    // Initialize mechanic cooldowns
+    for (const mechId of bossDef.mechanics) {
+      const mechConfig = BOSS_MECHANICS[mechId];
+      if (mechConfig) {
+        boss[mechId + 'Cooldown'] = 0;
+      }
+    }
+
     // Give it velocity toward the system
     const toCenter = Math.atan2(-bossY, -bossX);
     boss.vx = Math.cos(toCenter) * 40;
@@ -4576,10 +4624,29 @@ function spawnWave() {
   }
 }
 
-function getBossVariant(wave) {
-  const variantKeys = Object.keys(BOSS_VARIANTS);
-  const idx = Math.floor(wave/5 - 1) % variantKeys.length;
-  return BOSS_VARIANTS[variantKeys[idx]];
+// Select boss for wave with tier scaling and recent boss avoidance
+function selectBossForWave(wave) {
+  // Determine tier from wave
+  let tier = 1;
+  if (wave >= 40) tier = 3;
+  else if (wave >= 20) tier = 2;
+
+  // Get bosses for this tier
+  const tierBosses = BOSS_DEFINITIONS.filter(b => b.tier === tier);
+
+  // Avoid recently used bosses (last 3)
+  if (!game.recentBosses) game.recentBosses = [];
+  const available = tierBosses.filter(b => !game.recentBosses.includes(b.id));
+  const pool = available.length > 0 ? available : tierBosses;
+
+  // Select random
+  const selected = pool[Math.floor(Math.random() * pool.length)];
+
+  // Track recent
+  game.recentBosses.push(selected.id);
+  if (game.recentBosses.length > 3) game.recentBosses.shift();
+
+  return selected;
 }
 
 function spawnHorde(count, types) {
@@ -4676,6 +4743,17 @@ function updateGame(dt) {
     for (let j = game.invaders.length-1; j >= 0; j--) {
       const inv = game.invaders[j];
       if (dist(b, inv) < inv.size*inv.growScale + 5) {
+        // Boss shield blocks/reflects bullets
+        if (inv.isBoss && inv.shielded && inv.shielded > 0) {
+          // Bullet reflected back toward player
+          const angle = Math.atan2(b.vy, b.vx);
+          b.vx = -Math.cos(angle) * b.speed;
+          b.vy = -Math.sin(angle) * b.speed;
+          game.particles.emit(b.x, b.y, 3, '#0ff', 100, 0.1, 1);
+          playSound('ping');
+          continue;
+        }
+
         // Boss takes reduced damage unless near the sun or critical
         let dmgMult = 1;
         if (inv.isBoss && !inv.nearSun && !inv.critical) {
