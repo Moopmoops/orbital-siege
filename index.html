@@ -360,6 +360,21 @@ canvas { display: block; cursor: crosshair; }
 
 <canvas id="gameCanvas"></canvas>
 
+<!-- Mobile Touch Controls -->
+<div id="touch-controls">
+  <div id="joystick">
+    <div id="joystick-thumb"></div>
+  </div>
+  <button id="boost-btn">BOOST</button>
+  <div id="weapon-buttons">
+    <button class="weapon-btn" id="torp-btn">TORP</button>
+    <button class="weapon-btn" id="laser-btn">LASER</button>
+    <button class="weapon-btn" id="bomb-btn">BOMB</button>
+  </div>
+  <button id="scan-btn">SCAN</button>
+  <button id="mobile-pause-btn">PAUSE</button>
+</div>
+
 <div id="debug-panel"></div>
 <div id="pause-menu">
   <h1>PAUSED</h1>
@@ -2874,6 +2889,7 @@ class Ship {
     this.laserTarget = null;
     this.scanTarget = null;
     this.scanTimer = 0;
+    this.solarCharge = 0; // 0-1, builds while deep in sun heat
     this.applyType(this.shipType);
   }
 
@@ -3018,6 +3034,13 @@ class Ship {
         this.sunHeatLevel = Math.max(0, this.sunHeatLevel - 0.25 * dt); // slow 4s decay
       }
     }
+    // Solar charge: builds while deep in sun heat (sunHeatLevel > 0.5), slow decay outside
+    if (this.sunHeatLevel > 0.5) {
+      const chargeRate = (this.sunHeatLevel - 0.5) * 2; // 0-1 based on depth
+      this.solarCharge = Math.min(1, this.solarCharge + chargeRate * 0.4 * dt);
+    } else {
+      this.solarCharge = Math.max(0, this.solarCharge - 0.02 * dt); // very slow decay (~50s)
+    }
     // Atmosphere heat: ramp up while near planet at speed, slow decay out
     let maxAtmo = 0, bestAtmoAngle = 0;
     if (game.planets) {
@@ -3145,21 +3168,35 @@ class Ship {
   fireBomb(invaders, particles) {
     if (this.energy < BOMB_COST || !this.alive) return;
     this.energy -= BOMB_COST;
-    playSound('bomb'); game.shake.add(8);
-    particles.emit(this.x, this.y, 80, '#4ef', 400, 0.6, 4);
-    particles.emit(this.x, this.y, 40, '#fff', 300, 0.4, 3);
+    // Solar-charged bomb: up to 2.5x radius and 3x damage when fully charged
+    const solarMult = 1 + this.solarCharge * 1.5; // 1x to 2.5x
+    const solarDmgMult = 1 + this.solarCharge * 2; // 1x to 3x
+    const wasSolarCharged = this.solarCharge > 0.3;
+    if (wasSolarCharged) {
+      this.solarCharge = 0; // consume the charge
+      playSound('bomb'); game.shake.add(8 + this.solarCharge * 20);
+      // Solar bomb: golden-white explosion
+      particles.emit(this.x, this.y, 120, '#fff', 500 * solarMult, 0.8, 6);
+      particles.emit(this.x, this.y, 80, '#fa0', 450 * solarMult, 0.7, 5);
+      particles.emit(this.x, this.y, 60, '#ff4', 400 * solarMult, 0.6, 4);
+    } else {
+      playSound('bomb'); game.shake.add(8);
+      particles.emit(this.x, this.y, 80, '#4ef', 400, 0.6, 4);
+      particles.emit(this.x, this.y, 40, '#fff', 300, 0.4, 3);
+    }
     let bombKills = 0;
-    const effectiveRadius = BOMB_RADIUS * (this.bombRadiusMult || 1);
+    const effectiveRadius = BOMB_RADIUS * (this.bombRadiusMult || 1) * solarMult;
     for (let i = invaders.length-1; i >= 0; i--) {
       const inv = invaders[i];
       const d = dist(this, inv);
       if (d < effectiveRadius) {
         // Boss critical takes 3x knockback
         const knockbackMult = (inv.isBoss && inv.critical) ? 3 : 1;
-        inv.hp -= 80*(1 - d/effectiveRadius);
+        inv.hp -= 80 * solarDmgMult * (1 - d/effectiveRadius);
         playEnemyHitSound(inv.typeName);
         const nx = (inv.x - this.x)/Math.max(d,1), ny = (inv.y - this.y)/Math.max(d,1);
-        inv.vx += nx*150*knockbackMult; inv.vy += ny*150*knockbackMult;
+        const knockForce = 150 * solarMult;
+        inv.vx += nx*knockForce*knockbackMult; inv.vy += ny*knockForce*knockbackMult;
 
         // Boss critical state floor
         if (inv.isBoss && inv.hp < 1) {
@@ -3395,6 +3432,21 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
+    // Solar charge indicator — subtle golden aura when charged
+    if (this.solarCharge > 0.1) {
+      const sc = this.solarCharge;
+      const pulse = 0.7 + Math.sin((game.time || 0) * 3) * 0.3;
+      const glowR = SHIP_SIZE * (1.8 + sc * 1.5);
+      ctx.globalAlpha = sc * 0.25 * pulse;
+      const solarGlow = ctx.createRadialGradient(0, 0, SHIP_SIZE * 0.3, 0, 0, glowR);
+      solarGlow.addColorStop(0, 'rgba(255,220,80,0.6)');
+      solarGlow.addColorStop(0.4, 'rgba(255,180,40,0.3)');
+      solarGlow.addColorStop(1, 'rgba(255,120,0,0)');
+      ctx.fillStyle = solarGlow;
+      ctx.beginPath(); ctx.arc(0, 0, glowR, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     // Engine glow (all ship types)
     if (this.thrustOn) {
       ctx.globalAlpha = flicker;
@@ -3612,6 +3664,46 @@ function getWaveTypes(wave) {
   // Wave 1: 3 types (drone, scout, brute). New type every 2 waves after.
   const available = types.slice(0, Math.min(3 + Math.floor((wave - 1)/2), types.length));
   return available;
+}
+
+// Chain reaction: when an ARH dies in a dense cluster, nearby ARH take splash damage
+function chainReaction(deadInv, invaders, particles) {
+  // Count nearby ARH
+  let nearbyCount = 0;
+  for (const other of invaders) {
+    if (other !== deadInv && other.alive !== false && dist(deadInv, other) < 80) nearbyCount++;
+  }
+  if (nearbyCount < 4) return; // need a dense cluster for chain reaction
+
+  const chainDmg = 8 + nearbyCount * 2; // more neighbors = more splash
+  const chainRadius = 60 + nearbyCount * 3;
+  let chainKills = 0;
+
+  for (let i = invaders.length - 1; i >= 0; i--) {
+    const other = invaders[i];
+    if (other === deadInv || other.isBoss) continue;
+    const d = dist(deadInv, other);
+    if (d < chainRadius) {
+      const dmg = chainDmg * (1 - d / chainRadius);
+      other.hp -= dmg;
+      // Knockback away from explosion
+      const nx = (other.x - deadInv.x) / Math.max(d, 1);
+      const ny = (other.y - deadInv.y) / Math.max(d, 1);
+      other.vx += nx * 40; other.vy += ny * 40;
+
+      if (other.hp <= 0 && !other.isBoss) {
+        emitDeathFlash(other, particles);
+        if (game) { game.score += other.points; game.kills++; }
+        invaders.splice(i, 1);
+        chainKills++;
+      }
+    }
+  }
+  // Visual: secondary shockwave for chain reaction
+  if (chainKills > 0) {
+    particles.emit(deadInv.x, deadInv.y, 15 + chainKills * 5, '#ffa', 200, 0.5, 3);
+    if (game) game.bombRings.push({ x: deadInv.x, y: deadInv.y, radius: 0, maxRadius: chainRadius * 0.7, life: 0.3 });
+  }
 }
 
 // Contextual death flash — color depends on hidden environmental patterns
@@ -5538,6 +5630,60 @@ function drawGame() {
     ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.stroke();
   }
 
+  // ARH cluster detection and blinding light effect
+  // Find clusters: groups of 8+ ARH within 100px of each other
+  if (game.invaders.length > 7) {
+    const clusterCenters = [];
+    const checked = new Set();
+    for (let i = 0; i < game.invaders.length; i++) {
+      if (checked.has(i)) continue;
+      const inv = game.invaders[i];
+      let cx = inv.x, cy = inv.y, count = 1;
+      const members = [i];
+      for (let j = i + 1; j < game.invaders.length; j++) {
+        if (checked.has(j)) continue;
+        if (dist(inv, game.invaders[j]) < 100) {
+          cx += game.invaders[j].x; cy += game.invaders[j].y;
+          count++; members.push(j);
+        }
+      }
+      if (count >= 8) {
+        cx /= count; cy /= count;
+        clusterCenters.push({ x: cx, y: cy, count, members });
+        for (const m of members) checked.add(m);
+      }
+    }
+    // Draw cluster glow effects
+    for (const cluster of clusterCenters) {
+      const sx = cluster.x - cam.x + canvas.width / 2;
+      const sy = cluster.y - cam.y + canvas.height / 2;
+      const intensity = Math.min(1, (cluster.count - 8) / 20); // 0 at 8, 1 at 28+
+      const pulse = 0.6 + Math.sin((game.time || 0) * 2 + cluster.x * 0.01) * 0.4;
+      const glowSize = 60 + cluster.count * 5 + intensity * 80;
+      // Blinding white core
+      ctx.globalAlpha = (0.15 + intensity * 0.35) * pulse;
+      const clusterGlow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowSize);
+      clusterGlow.addColorStop(0, `rgba(255,255,255,${0.6 + intensity * 0.4})`);
+      clusterGlow.addColorStop(0.2, `rgba(255,240,220,${0.3 + intensity * 0.3})`);
+      clusterGlow.addColorStop(0.5, `rgba(255,200,150,${0.1 + intensity * 0.1})`);
+      clusterGlow.addColorStop(1, 'rgba(255,150,80,0)');
+      ctx.fillStyle = clusterGlow;
+      ctx.beginPath(); ctx.arc(sx, sy, glowSize, 0, Math.PI * 2); ctx.fill();
+      // Synchronized pulse ring
+      const ringPhase = ((game.time || 0) * 1.5 + cluster.x * 0.005) % 1;
+      const ringR = glowSize * 0.3 + ringPhase * glowSize * 0.8;
+      ctx.globalAlpha = (1 - ringPhase) * 0.2 * (0.5 + intensity);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx, sy, ringR, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // Store clusters for chain reaction use
+    game._clusters = clusterCenters;
+  } else {
+    game._clusters = [];
+  }
+
   // Invaders
   for (const inv of game.invaders) drawARH(ctx, inv, cam);
 
@@ -5923,7 +6069,8 @@ function updateHUD() {
   const laserWave = (SHIP_TYPES[game.ship.shipType] && SHIP_TYPES[game.ship.shipType].laserWave) || 3;
   const laserStatus = game.wave >= laserWave ? (game.ship.laserActive ? 'FIRING' : 'READY') : `LOCKED (Wave ${laserWave})`;
   const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
-  document.getElementById('hud-weapons').innerHTML = `TORPEDOES: ${torpStatus} | LASER: ${laserStatus}${swapInfo}`;
+  const solarInfo = game.ship.solarCharge > 0.3 ? ` | <span style="color:#fa0">☀ SOLAR BOMB ${Math.round(game.ship.solarCharge * 100)}%</span>` : '';
+  document.getElementById('hud-weapons').innerHTML = `TORPEDOES: ${torpStatus} | LASER: ${laserStatus}${swapInfo}${solarInfo}`;
 }
 
 // --- Firebase Configuration ---
@@ -6635,21 +6782,6 @@ canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false }
 
 requestAnimationFrame(gameLoop);
 </script>
-
-<!-- Mobile Touch Controls -->
-<div id="touch-controls">
-  <div id="joystick">
-    <div id="joystick-thumb"></div>
-  </div>
-  <button id="boost-btn">BOOST</button>
-  <div id="weapon-buttons">
-    <button class="weapon-btn" id="torp-btn">TORP</button>
-    <button class="weapon-btn" id="laser-btn">LASER</button>
-    <button class="weapon-btn" id="bomb-btn">BOMB</button>
-  </div>
-  <button id="scan-btn">SCAN</button>
-  <button id="mobile-pause-btn">PAUSE</button>
-</div>
 
 </body>
 </html>
