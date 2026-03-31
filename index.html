@@ -4728,6 +4728,7 @@ function expandSystem(wave) {
       // Show announcement
       game.bossMessage = `NEW CELESTIAL BODY DETECTED: ${expansion.name}`;
       game.bossMessageTimer = 3.5;
+      game.bossMessageColor = '#4ef'; // cyan for discovery, not enemy red
     }
   }
 }
@@ -5564,8 +5565,9 @@ function drawGame() {
     ctx.globalAlpha = alpha;
     ctx.font = 'bold 32px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#f44';
-    ctx.shadowColor = '#f00';
+    const msgColor = game.bossMessageColor || '#f44';
+    ctx.fillStyle = msgColor;
+    ctx.shadowColor = msgColor;
     ctx.shadowBlur = 20;
     ctx.fillText(game.bossMessage || '', canvas.width/2, canvas.height/2 - 60);
     ctx.shadowBlur = 0;
