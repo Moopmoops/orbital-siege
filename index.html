@@ -237,6 +237,30 @@ canvas { display: block; cursor: crosshair; }
 }
 #name-entry .submit-btn:hover { background: rgba(0,255,255,0.15); box-shadow: 0 0 20px rgba(0,255,255,0.3); }
 #game-over .leaderboard-section { margin-top: 20px; }
+/* ===== TOUCH CONTROLS ===== */
+#touch-controls { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 90; pointer-events: none; }
+#touch-controls.show { display: block; }
+#touch-controls * { pointer-events: all; touch-action: none; user-select: none; }
+/* Joystick */
+#joystick { position: fixed; bottom: 30px; left: 30px; width: 120px; height: 120px; background: rgba(0,255,255,0.1); border: 2px solid rgba(0,255,255,0.4); border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+#joystick:active { background: rgba(0,255,255,0.2); border-color: rgba(0,255,255,0.6); }
+#joystick-thumb { width: 40px; height: 40px; background: rgba(0,255,255,0.3); border: 2px solid rgba(0,255,255,0.6); border-radius: 50%; position: absolute; }
+/* Boost Button */
+#boost-btn { position: fixed; bottom: 160px; left: 30px; width: 120px; height: 50px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; cursor: pointer; letter-spacing: 2px; border-radius: 4px; }
+#boost-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
+/* Weapon Buttons */
+#weapon-buttons { position: fixed; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 12px; }
+.weapon-btn { width: 90px; height: 44px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 4px; transition: all 0.2s; }
+.weapon-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
+.weapon-btn.active { background: rgba(0,255,255,0.15); border-color: #0ff; box-shadow: 0 0 10px rgba(0,255,255,0.5); }
+/* Scan Button */
+#scan-btn { position: fixed; bottom: 125px; right: 30px; width: 90px; height: 44px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 4px; }
+#scan-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
+/* Pause Button */
+#mobile-pause-btn { position: fixed; top: 15px; right: 20px; width: 50px; height: 44px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 4px; }
+#mobile-pause-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
+/* Mobile controls note on start screen */
+.touch-controls-note { font-size: 12px; color: #8cf; margin-bottom: 15px; letter-spacing: 2px; }
 </style>
 </head>
 <body>
@@ -247,7 +271,7 @@ canvas { display: block; cursor: crosshair; }
   <div id="version-display" style="color:#4af;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;margin-bottom:4px;opacity:0.7;cursor:pointer;" onclick="toggleChangelog()" title="Click for changelog"></div>
   <div id="changelog-panel" style="display:none;max-width:500px;margin:0 auto 10px;padding:10px 16px;background:rgba(0,20,40,0.9);border:1px solid #4af;border-radius:6px;text-align:left;font-family:'Courier New',monospace;font-size:10px;color:#8cf;max-height:200px;overflow-y:auto;"></div>
   <div class="subtitle">DEFEND THE SYSTEM FROM THE ARH SWARM</div>
-  <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;">
+  <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;justify-items:start;">
     <div><span>W</span><span>S</span> or <span>↑</span><span>↓</span> &mdash; Speed up / Slow down</div>
     <div><span>A</span><span>D</span> or <span>←</span><span>→</span> &mdash; Radial in / out</div>
     <div><span>CLICK</span> &mdash; Fire cannons</div>
@@ -259,9 +283,11 @@ canvas { display: block; cursor: crosshair; }
     <div><span>V</span> &mdash; Ship swap</div>
     <div><span>P</span> &mdash; Pause / Controls</div>
   </div>
-  <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
-  <button class="start-btn" id="leaderboard-btn" onclick="toggleStartLeaderboard()" style="margin-left:20px;">LEADERBOARD</button>
-  <button class="start-btn" id="fullscreen-btn" onclick="toggleFullscreen()" style="margin-left:20px;font-size:10px;padding:8px 16px;">⛶ FULLSCREEN</button>
+  <div style="display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;">
+    <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
+    <button class="start-btn" id="leaderboard-btn" onclick="toggleStartLeaderboard()">LEADERBOARD</button>
+    <button class="start-btn" id="fullscreen-btn" onclick="toggleFullscreen()" style="font-size:10px;padding:8px 16px;">⛶ FULLSCREEN</button>
+  </div>
   <div id="checkpoint-section" style="margin-top:15px;font-family:'Courier New',monospace;font-size:11px;">
     <div style="color:#4af;letter-spacing:2px;margin-bottom:8px;">CHECKPOINTS</div>
     <div id="checkpoint-list"></div>
@@ -290,8 +316,8 @@ canvas { display: block; cursor: crosshair; }
         <div class="mode-desc">5 Lives<br>Leaderboard</div>
       </button>
       <button class="mode-btn freeplay" onclick="selectGameMode('freeplay')">
-        FREE PLAY
-        <div class="mode-desc">Unlimited Lives<br>No Leaderboard</div>
+        UNLIMITED
+        <div class="mode-desc">Infinite Lives<br>No Leaderboard</div>
       </button>
     </div>
   </div>
@@ -396,7 +422,7 @@ const GAME_CHANGELOG = [
   ]},
   { version: '0.8.0', date: '2026-03-29', changes: [
     'NEW: Solar system expansion — 6 planets, moons, and rings appear as you progress',
-    'NEW: Ranked mode (5 lives + leaderboard) and Free Play mode',
+    'NEW: Ranked mode (5 lives + leaderboard) and Unlimited mode',
     'NEW: Firebase-powered global leaderboard',
     'NEW: Boss Rush debug mode',
     'NEW: Pause menu with P key',
@@ -1395,13 +1421,16 @@ const ACHIEVEMENTS = {
 let G = 390;
 const PLANET_RADIUS = 40;
 const STAR_RADIUS = 70;
-// Random star color variance — warm star colors (yellow, orange, red-orange, white-yellow)
+// Random star color variance — multi-toned warm star colors
+// Each variant has a base color PLUS a secondary hue that shows through in granulation/bright cells
 const STAR_COLOR_VARIANTS = [
-  { rBase: 180, gBase: 40, bBase: 5, name: 'red-orange' },     // default red-orange
-  { rBase: 200, gBase: 100, bBase: 10, name: 'orange' },        // more orange
-  { rBase: 220, gBase: 160, bBase: 30, name: 'yellow' },        // yellow star
-  { rBase: 210, gBase: 130, bBase: 20, name: 'amber' },         // amber
-  { rBase: 230, gBase: 200, bBase: 100, name: 'white-yellow' }, // hot white-yellow
+  { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0, name: 'red-orange' },
+  { rBase: 200, gBase: 100, bBase: 10, rBright: 255, gBright: 220, bBright: 80, rDark: 140, gDark: 40, bDark: 0, name: 'orange' },
+  { rBase: 220, gBase: 160, bBase: 30, rBright: 255, gBright: 255, bBright: 140, rDark: 160, gDark: 90, bDark: 5, name: 'yellow' },
+  { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5, name: 'amber' },
+  { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60, name: 'white-yellow' },
+  { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10, name: 'deep-red' },
+  { rBase: 215, gBase: 140, bBase: 50, rBright: 255, gBright: 230, bBright: 160, rDark: 155, gDark: 70, bDark: 10, name: 'peach' },
 ];
 const STAR_COLOR = STAR_COLOR_VARIANTS[Math.floor(Math.random() * STAR_COLOR_VARIANTS.length)];
 const SHIP_SIZE = 10;
@@ -1591,12 +1620,29 @@ function drawParameterizedBoss(inv, sx, sy, s, t) {
     ctx.fillStyle = coreG;
     ctx.beginPath(); ctx.arc(0, 0, s*0.35, 0, Math.PI*2); ctx.fill();
   } else if (internal === 'eye') {
-    ctx.fillStyle = hsl(hueBlend, 80, 65);
-    ctx.beginPath(); ctx.arc(0, 0, s*0.3, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#000';
-    ctx.beginPath(); ctx.arc(0, 0, s*0.15, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(-s*0.06, -s*0.06, s*0.05, 0, Math.PI*2); ctx.fill();
+    // Pulsing reactor core — concentric energy rings
+    const pulse = 0.6 + Math.sin(t * 3) * 0.4;
+    const coreR = s * 0.28;
+    // Outer energy ring
+    ctx.strokeStyle = hsla(hueBlend, 80, 60, 0.4 + pulse * 0.3);
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, coreR, 0, Math.PI * 2); ctx.stroke();
+    // Inner energy ring (counter-rotates visually via dashes)
+    ctx.save();
+    ctx.rotate(t * 1.5);
+    ctx.strokeStyle = hsla(hueBlend, 90, 70, 0.5 + pulse * 0.3);
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([s * 0.08, s * 0.06]);
+    ctx.beginPath(); ctx.arc(0, 0, coreR * 0.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    // Bright core dot
+    const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, coreR * 0.4);
+    coreG.addColorStop(0, `rgba(255,255,255,${0.7 + pulse * 0.3})`);
+    coreG.addColorStop(0.5, hsla(hueBlend, 85, 70, 0.5 * pulse));
+    coreG.addColorStop(1, hsla(hueBlend, 80, 50, 0));
+    ctx.fillStyle = coreG;
+    ctx.beginPath(); ctx.arc(0, 0, coreR * 0.4, 0, Math.PI * 2); ctx.fill();
   } else if (internal === 'lattice') {
     for (let i = 0; i < 6; i++) {
       const a = (i/6)*Math.PI*2;
@@ -1794,25 +1840,26 @@ function generateSunTexture(radius) {
         // Sun surface — deep red/orange plasma with granulation
         const granulation = plasma * 0.6 + turbulence * 0.3 + fineDetail * 0.1;
 
-        // Base: star color with variance
-        let r = STAR_COLOR.rBase + granulation * 75;
-        let g = STAR_COLOR.gBase + granulation * 60;
-        let b = STAR_COLOR.bBase + granulation * 15;
+        // Base: star color with variance — blend base and secondary tones
+        const sc = STAR_COLOR;
+        let r = sc.rBase + granulation * (sc.rBright - sc.rBase) * 0.6;
+        let g = sc.gBase + granulation * (sc.gBright - sc.gBase) * 0.6;
+        let b = sc.bBase + granulation * (sc.bBright - sc.bBase) * 0.4;
 
-        // Bright granulation cells
+        // Bright granulation cells — shift toward bright secondary tone
         if (granulation > 0.55) {
           const bright = (granulation - 0.55) * 4;
-          r = r + (255-r)*bright*0.7;
-          g = g + (180-g)*bright*0.5;
-          b = b + (60-b)*bright*0.3;
+          r = r + (sc.rBright - r) * bright * 0.7;
+          g = g + (sc.gBright - g) * bright * 0.6;
+          b = b + (sc.bBright - b) * bright * 0.4;
         }
 
-        // Dark intergranular lanes
+        // Dark intergranular lanes — shift toward dark secondary tone
         if (granulation < 0.35) {
           const darkF = (0.35 - granulation) * 3;
-          r *= (1 - darkF*0.5);
-          g *= (1 - darkF*0.6);
-          b *= (1 - darkF*0.7);
+          r = r + (sc.rDark - r) * darkF * 0.6;
+          g = g + (sc.gDark - g) * darkF * 0.7;
+          b = b + (sc.bDark - b) * darkF * 0.5;
         }
 
         // Sunspots
@@ -1844,9 +1891,10 @@ function generateSunTexture(radius) {
         const coronaFade = Math.pow(Math.max(0, 1 - coronaDist / 1.5), 2.5);
         const coronaNoise = plasma * 0.5 + turbulence * 0.5;
 
-        let r = (200 + coronaNoise * 55) * coronaFade;
-        let g = (50 + coronaNoise * 40) * coronaFade;
-        let b = (10 + coronaNoise * 15) * coronaFade;
+        const sc = STAR_COLOR;
+        let r = (sc.rBase * 1.1 + coronaNoise * 55) * coronaFade;
+        let g = (sc.gBase * 1.2 + coronaNoise * 40) * coronaFade;
+        let b = (sc.bBase * 2 + coronaNoise * 15) * coronaFade;
 
         data[idx] = clamp(r, 0, 255);
         data[idx+1] = clamp(g, 0, 255);
@@ -2508,9 +2556,9 @@ class Star {
       const cLen = R*(0.5 + 0.25*Math.sin(i*2.3 + t*0.15));
       const cx2 = sx + Math.cos(cAngle)*R*0.3, cy2 = sy + Math.sin(cAngle)*R*0.3;
       const cg2 = ctx.createRadialGradient(cx2, cy2, R*0.2, cx2, cy2, R + cLen);
-      cg2.addColorStop(0, 'rgba(255,120,30,0.15)');
-      cg2.addColorStop(0.5, 'rgba(220,60,10,0.06)');
-      cg2.addColorStop(1, 'rgba(150,20,0,0)');
+      cg2.addColorStop(0, `rgba(255,${Math.floor(sc.gBase*3)},${Math.floor(sc.bBase*6)},0.15)`);
+      cg2.addColorStop(0.5, `rgba(${Math.min(255,sc.rBase+40)},${Math.floor(sc.gBase*1.5)},${Math.floor(sc.bBase*2)},0.06)`);
+      cg2.addColorStop(1, `rgba(${Math.floor(sc.rBase*0.8)},${Math.floor(sc.gBase*0.5)},0,0)`);
       ctx.fillStyle = cg2;
       ctx.beginPath(); ctx.arc(cx2, cy2, R + cLen, 0, Math.PI*2); ctx.fill();
     }
@@ -2529,9 +2577,9 @@ class Star {
       const px = sx + Math.cos(pa)*pr, py = sy + Math.sin(pa)*pr;
       const cellR = R*(0.25 + 0.1*Math.sin(seed*1.7 + t*0.1));
       const pg = ctx.createRadialGradient(px, py, 0, px, py, cellR);
-      pg.addColorStop(0, `rgba(${80+Math.floor(Math.sin(seed+t*0.15)*30)},${15+Math.floor(Math.sin(seed*1.3)*10)},0,0.5)`);
-      pg.addColorStop(0.6, `rgba(40,8,0,0.2)`);
-      pg.addColorStop(1, 'rgba(20,0,0,0)');
+      pg.addColorStop(0, `rgba(${Math.floor(sc.rDark*0.7+Math.sin(seed+t*0.15)*30)},${Math.floor(sc.gDark*0.7+Math.sin(seed*1.3)*10)},${Math.floor(sc.bDark*0.5)},0.5)`);
+      pg.addColorStop(0.6, `rgba(${Math.floor(sc.rDark*0.33)},${Math.floor(sc.gDark*0.3)},0,0.2)`);
+      pg.addColorStop(1, `rgba(${Math.floor(sc.rDark*0.15)},0,0,0)`);
       ctx.fillStyle = pg;
       ctx.beginPath(); ctx.arc(px, py, cellR, 0, Math.PI*2); ctx.fill();
     }
@@ -2547,9 +2595,9 @@ class Star {
       const cellR = R*(0.15 + 0.08*Math.sin(seed*2.3 + t*0.18));
       const brightness = 0.5 + Math.sin(t*0.25 + seed*1.4)*0.3;
       const pg = ctx.createRadialGradient(px, py, 0, px, py, cellR);
-      pg.addColorStop(0, `rgba(255,${Math.floor(140+brightness*80)},${Math.floor(30+brightness*40)},${0.4+brightness*0.3})`);
-      pg.addColorStop(0.5, `rgba(220,${Math.floor(60+brightness*30)},${Math.floor(10+brightness*10)},${0.15+brightness*0.1})`);
-      pg.addColorStop(1, 'rgba(120,20,0,0)');
+      pg.addColorStop(0, `rgba(${sc.rBright},${Math.floor(sc.gBright*0.7+brightness*sc.gBright*0.3)},${Math.floor(sc.bBright*0.5+brightness*sc.bBright*0.3)},${0.4+brightness*0.3})`);
+      pg.addColorStop(0.5, `rgba(${Math.floor(sc.rBase*1.1)},${Math.floor(sc.gBase*0.6+brightness*sc.gBase*0.3)},${Math.floor(sc.bBase+brightness*sc.bBase*0.5)},${0.15+brightness*0.1})`);
+      pg.addColorStop(1, `rgba(${Math.floor(sc.rDark*0.9)},${Math.floor(sc.gDark*0.5)},0,0)`);
       ctx.fillStyle = pg;
       ctx.beginPath(); ctx.arc(px, py, cellR, 0, Math.PI*2); ctx.fill();
     }
@@ -2566,9 +2614,9 @@ class Star {
       const px = sx + Math.cos(pa)*pr, py = sy + Math.sin(pa)*pr;
       const cellR = R*(0.06 + 0.04*Math.sin(seed*3.1 + t*0.22)) * lifePhase;
       const pg = ctx.createRadialGradient(px, py, 0, px, py, cellR);
-      pg.addColorStop(0, `rgba(255,${Math.floor(220+lifePhase*35)},${Math.floor(100+lifePhase*80)},${0.5*lifePhase})`);
-      pg.addColorStop(0.4, `rgba(255,${Math.floor(150+lifePhase*40)},${Math.floor(30+lifePhase*20)},${0.2*lifePhase})`);
-      pg.addColorStop(1, 'rgba(200,50,0,0)');
+      pg.addColorStop(0, `rgba(${sc.rBright},${Math.floor(sc.gBright*0.9+lifePhase*35)},${Math.floor(sc.bBright*0.8+lifePhase*40)},${0.5*lifePhase})`);
+      pg.addColorStop(0.4, `rgba(${sc.rBright},${Math.floor(sc.gBright*0.6+lifePhase*40)},${Math.floor(sc.bBright*0.3+lifePhase*20)},${0.2*lifePhase})`);
+      pg.addColorStop(1, `rgba(${sc.rBase},${Math.floor(sc.gBase*0.5)},0,0)`);
       ctx.fillStyle = pg;
       ctx.beginPath(); ctx.arc(px, py, cellR, 0, Math.PI*2); ctx.fill();
     }
@@ -3186,7 +3234,7 @@ class Ship {
       // No score penalty in ranked mode
       game.respawnMsg = { text: `RESPAWNED  (${game.lives} LIVES LEFT)`, timer: 2.5 };
     } else {
-      // Free play: escalating penalty
+      // Unlimited mode: escalating penalty
       const penalty = game.deaths === 1 ? 0.10 : game.deaths === 2 ? 0.20 : 0.30;
       game.score = Math.max(0, Math.floor(game.score * (1 - penalty)));
       // Flash message showing actual penalty
@@ -3569,6 +3617,7 @@ function getWaveTypes(wave) {
 // Contextual death flash — color depends on hidden environmental patterns
 function emitDeathFlash(inv, particles) {
   const x = inv.x, y = inv.y;
+  const sz = inv.size || 8; // scale effect to enemy size
 
   // Check proximity to ringed planet (gas giant) — white crystalline burst
   let nearRingedPlanet = false;
@@ -3596,32 +3645,39 @@ function emitDeathFlash(inv, particles) {
   const nearSun = game.star && dist(inv, game.star) < game.star.radius + 150;
 
   // Apply patterns (priority: density > gas giant > old > sun > default)
+  // All effects are bold and dramatic — big particle counts, large sizes, bright colors
   if (isHighDensity) {
-    // Rainbow sparkle burst — multiple colors, many particles
-    const colors = ['#f44', '#fa0', '#ff0', '#4f4', '#4ef', '#44f', '#c4f', '#f4f'];
+    // Rainbow sparkle burst — prismatic explosion, very flashy
+    const colors = ['#f55', '#fa0', '#ff4', '#4f4', '#4ef', '#55f', '#c4f', '#f4f'];
     for (let c = 0; c < colors.length; c++) {
-      particles.emit(x, y, 4, colors[c], 180 + c*20, 0.5, 2.5);
+      particles.emit(x, y, 8, colors[c], 250 + c*25, 0.8, 4);
     }
-    particles.emit(x, y, 12, '#fff', 250, 0.6, 1.5); // white sparkle core
+    particles.emit(x, y, 25, '#fff', 300, 0.7, 3); // bright white sparkle core
+    particles.emit(x, y, 15, '#ffa', 200, 1.0, 5); // lingering golden glow
+    game.shake.add(3);
   } else if (nearRingedPlanet) {
-    // White crystalline flash with icy blue sparkles
-    particles.emit(x, y, 20, '#fff', 220, 0.5, 3);
-    particles.emit(x, y, 10, '#adf', 160, 0.4, 2);
-    particles.emit(x, y, 5, '#8cf', 120, 0.3, 1.5);
+    // White crystalline flash — bright icy explosion
+    particles.emit(x, y, 40, '#fff', 280, 0.8, 4);
+    particles.emit(x, y, 25, '#cef', 220, 0.6, 3.5);
+    particles.emit(x, y, 15, '#8bf', 160, 0.5, 2.5);
+    particles.emit(x, y, 8, '#aef', 320, 1.0, 5); // lingering icy wisps
   } else if (isOld) {
-    // Blue spectral fade — deep blue with violet wisps
-    particles.emit(x, y, 18, '#48f', 200, 0.6, 3);
-    particles.emit(x, y, 8, '#a4f', 150, 0.4, 2);
-    particles.emit(x, y, 4, '#fff', 100, 0.2, 1);
+    // Blue spectral burst — deep blue/violet, ethereal
+    particles.emit(x, y, 35, '#48f', 260, 0.9, 4);
+    particles.emit(x, y, 20, '#a4f', 200, 0.7, 3.5);
+    particles.emit(x, y, 15, '#ccf', 160, 0.5, 2.5);
+    particles.emit(x, y, 8, '#fff', 280, 0.4, 2); // white flash core
   } else if (nearSun) {
-    // Solar gold flash — hot gold and white
-    particles.emit(x, y, 16, '#fa0', 220, 0.5, 3);
-    particles.emit(x, y, 10, '#ff0', 180, 0.4, 2);
-    particles.emit(x, y, 5, '#fff', 130, 0.3, 1.5);
+    // Solar gold flash — hot gold/white flare
+    particles.emit(x, y, 35, '#fa0', 280, 0.8, 4);
+    particles.emit(x, y, 20, '#ff4', 240, 0.6, 3.5);
+    particles.emit(x, y, 12, '#fff', 200, 0.5, 2.5);
+    particles.emit(x, y, 8, '#f80', 320, 1.0, 5); // lingering embers
   } else {
-    // Default — standard explosion in enemy color
-    particles.emit(x, y, 18, inv.color, 200, 0.4, 2.5);
-    particles.emit(x, y, 6, '#fff', 140, 0.3, 1.5);
+    // Default — punchy explosion in enemy color with bright flash
+    particles.emit(x, y, 30, inv.color, 260, 0.7, 3.5);
+    particles.emit(x, y, 15, '#fff', 200, 0.4, 2.5);
+    particles.emit(x, y, 8, '#faa', 180, 0.5, 2);
   }
 }
 
@@ -5857,7 +5913,7 @@ function updateHUD() {
   if (gameMode === 'ranked') {
     livesEl.textContent = `LIVES: ${'♦'.repeat(Math.max(0, game.lives))}${'♢'.repeat(Math.max(0, 5-game.lives))}`;
   } else {
-    livesEl.textContent = 'FREE PLAY';
+    livesEl.textContent = 'UNLIMITED';
   }
 
   document.getElementById('hud-hp').innerHTML = `<span style="color:${hpColor}">HULL: ${'█'.repeat(hpBars)}${'░'.repeat(20-hpBars)} ${Math.round(hpPct*100)}%</span>`;
@@ -6340,7 +6396,260 @@ document.addEventListener('DOMContentLoaded', () => {
   updateCheckpointList();
 });
 
+// ===== MOBILE TOUCH CONTROLS =====
+const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+if (isMobile) {
+  // Show touch controls and hide keyboard controls on start screen
+  const origStartBtn = document.getElementById('launch-btn');
+  const origStartBtnOld = origStartBtn.onclick;
+  origStartBtn.addEventListener('click', () => {
+    document.getElementById('touch-controls').classList.add('show');
+    document.querySelector('#start-screen .controls').style.display = 'none';
+    const touchNote = document.createElement('div');
+    touchNote.className = 'touch-controls-note';
+    touchNote.textContent = 'TOUCH CONTROLS ACTIVE';
+    document.querySelector('#start-screen .subtitle').parentNode.insertBefore(touchNote, document.querySelector('#start-screen .controls').nextSibling);
+  });
+}
+
+// Touch state tracking
+let joystickTouchId = null;
+let shootTouchId = null;
+let boostTouchId = null;
+
+// Joystick configuration
+const joystickEl = document.getElementById('joystick');
+const joystickThumb = document.getElementById('joystick-thumb');
+const JOYSTICK_RADIUS = 60; // outer radius
+const JOYSTICK_DEAD_ZONE = 15;
+let joystickCenterX = 0, joystickCenterY = 0;
+
+// Update joystick center when resized or on load
+function updateJoystickCenter() {
+  const rect = joystickEl.getBoundingClientRect();
+  joystickCenterX = rect.left + rect.width / 2;
+  joystickCenterY = rect.top + rect.height / 2;
+}
+updateJoystickCenter();
+window.addEventListener('resize', updateJoystickCenter);
+
+// Joystick touch handlers
+joystickEl.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const dist = Math.hypot(touch.clientX - joystickCenterX, touch.clientY - joystickCenterY);
+    if (dist < JOYSTICK_RADIUS + 20) {
+      joystickTouchId = touch.identifier;
+      updateJoystick(touch);
+    }
+  }
+});
+
+joystickEl.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    if (touch.identifier === joystickTouchId) {
+      updateJoystick(touch);
+    }
+  }
+});
+
+joystickEl.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    if (touch.identifier === joystickTouchId) {
+      joystickTouchId = null;
+      keys['w'] = false;
+      keys['s'] = false;
+      keys['a'] = false;
+      keys['d'] = false;
+      joystickThumb.style.transform = 'translate(0, 0)';
+    }
+  }
+});
+
+function updateJoystick(touch) {
+  const dx = touch.clientX - joystickCenterX;
+  const dy = touch.clientY - joystickCenterY;
+  const dist = Math.hypot(dx, dy);
+
+  // Visual feedback
+  const maxThumbDist = JOYSTICK_RADIUS - 20;
+  const thumbDist = Math.min(dist, maxThumbDist);
+  const thumbAngle = Math.atan2(dy, dx);
+  joystickThumb.style.transform = `translate(${Math.cos(thumbAngle) * thumbDist}px, ${Math.sin(thumbAngle) * thumbDist}px)`;
+
+  // Key states based on dead zone
+  const isActive = dist > JOYSTICK_DEAD_ZONE;
+  if (isActive) {
+    const angle = Math.atan2(dy, dx);
+    // Determine cardinal directions
+    const up = dy < -Math.abs(dx) * 0.5;
+    const down = dy > Math.abs(dx) * 0.5;
+    const left = dx < -Math.abs(dy) * 0.5;
+    const right = dx > Math.abs(dy) * 0.5;
+
+    keys['w'] = up;
+    keys['s'] = down;
+    keys['a'] = left;
+    keys['d'] = right;
+  } else {
+    keys['w'] = false;
+    keys['s'] = false;
+    keys['a'] = false;
+    keys['d'] = false;
+  }
+}
+
+// Boost button
+const boostBtn = document.getElementById('boost-btn');
+boostBtn.addEventListener('touchstart', e => {
+  e.preventDefault();
+  keys['shift'] = true;
+  boostBtn.style.background = 'rgba(0,255,255,0.2)';
+  boostBtn.style.borderColor = '#0ff';
+});
+boostBtn.addEventListener('touchend', e => {
+  e.preventDefault();
+  keys['shift'] = false;
+  boostBtn.style.background = 'rgba(0,10,30,0.5)';
+  boostBtn.style.borderColor = 'rgba(0,255,255,0.3)';
+});
+
+// Weapon buttons
+const torpBtn = document.getElementById('torp-btn');
+const laserBtn = document.getElementById('laser-btn');
+const bombBtn = document.getElementById('bomb-btn');
+let torpActive = false, laserActive = false;
+
+function setupWeaponButton(btn, keyCode, toggle = false) {
+  btn.addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (toggle) {
+      const isActive = btn.classList.contains('active');
+      if (isActive) {
+        keys[keyCode] = false;
+        btn.classList.remove('active');
+      } else {
+        keys[keyCode] = true;
+        btn.classList.add('active');
+      }
+    } else {
+      keys[keyCode] = true;
+    }
+  });
+  btn.addEventListener('touchend', e => {
+    e.preventDefault();
+    if (!toggle) {
+      keys[keyCode] = false;
+    }
+  });
+}
+
+setupWeaponButton(torpBtn, 'e', true);
+setupWeaponButton(laserBtn, 'q', true);
+setupWeaponButton(bombBtn, ' ', false);
+
+// Scan button
+const scanBtn = document.getElementById('scan-btn');
+scanBtn.addEventListener('touchstart', e => {
+  e.preventDefault();
+  keys['tab'] = true;
+  scanBtn.style.background = 'rgba(0,255,255,0.2)';
+  scanBtn.style.borderColor = '#0ff';
+});
+scanBtn.addEventListener('touchend', e => {
+  e.preventDefault();
+  keys['tab'] = false;
+  scanBtn.style.background = 'rgba(0,10,30,0.5)';
+  scanBtn.style.borderColor = 'rgba(0,255,255,0.3)';
+});
+
+// Pause button
+const pauseBtn = document.getElementById('mobile-pause-btn');
+pauseBtn.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (gameRunning) {
+    gamePaused = !gamePaused;
+    document.getElementById('pause-menu').style.display = gamePaused ? 'flex' : 'none';
+    if (gamePaused) {
+      stopTorpedoSound();
+      stopLaserSound();
+      updatePauseAchievements();
+    }
+  }
+});
+
+// Canvas touch handlers for shooting (right side)
+const canvasRect = canvas.getBoundingClientRect();
+const JOYSTICK_ZONE_WIDTH = window.innerWidth * 0.35;
+const BUTTON_ZONE_HEIGHT = window.innerHeight * 0.5;
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    const x = touch.clientX;
+    const y = touch.clientY;
+
+    // Check if touch is in joystick zone (bottom-left)
+    if (x < JOYSTICK_ZONE_WIDTH && y > BUTTON_ZONE_HEIGHT) {
+      continue; // Joystick handles this
+    }
+
+    // Check if touch is on weapon/scan buttons (bottom-right)
+    if (x > window.innerWidth * 0.65 && y > BUTTON_ZONE_HEIGHT) {
+      continue; // Buttons handle this
+    }
+
+    // Shoot zone
+    shootTouchId = touch.identifier;
+    mouseX = x;
+    mouseY = y;
+    mouseDown = true;
+  }
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    if (touch.identifier === shootTouchId) {
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    }
+  }
+});
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (const touch of e.changedTouches) {
+    if (touch.identifier === shootTouchId) {
+      mouseDown = false;
+      shootTouchId = null;
+    }
+  }
+});
+
+// Prevent default browser touch behaviors
+canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
 requestAnimationFrame(gameLoop);
 </script>
+
+<!-- Mobile Touch Controls -->
+<div id="touch-controls">
+  <div id="joystick">
+    <div id="joystick-thumb"></div>
+  </div>
+  <button id="boost-btn">BOOST</button>
+  <div id="weapon-buttons">
+    <button class="weapon-btn" id="torp-btn">TORP</button>
+    <button class="weapon-btn" id="laser-btn">LASER</button>
+    <button class="weapon-btn" id="bomb-btn">BOMB</button>
+  </div>
+  <button id="scan-btn">SCAN</button>
+  <button id="mobile-pause-btn">PAUSE</button>
+</div>
+
 </body>
 </html>
