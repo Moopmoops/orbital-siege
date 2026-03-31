@@ -1005,18 +1005,7 @@ function playSound(type) {
     // Signal the ambient drone that we're firing
     if (!weaponDrone.active) initWeaponDrone();
     weaponDrone.lastShootTime = audioCtx.currentTime;
-    // Also play a quick per-shot tick for satisfying feedback
-    const tickOsc = audioCtx.createOscillator();
-    const tickGain = audioCtx.createGain();
-    tickOsc.type = 'square';
-    tickOsc.frequency.setValueAtTime(900, audioCtx.currentTime);
-    tickOsc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.04);
-    tickGain.gain.setValueAtTime(0.03, audioCtx.currentTime);
-    tickGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
-    tickOsc.connect(tickGain);
-    tickGain.connect(audioCtx.destination);
-    tickOsc.start();
-    tickOsc.stop(audioCtx.currentTime + 0.06);
+    // Bullets are silent — ambient drone provides atmosphere
   } else if (type === 'missile') {
     // Handled by startTorpedoSound/stopTorpedoSound
     startTorpedoSound();
@@ -1390,7 +1379,9 @@ const BOSS_DEFINITIONS = [
 
 const ACHIEVEMENTS = {
   first_blood:    { name: 'First Blood',    desc: 'Destroy your first ARH',              icon: '⚔' },
-  orbit_all:      { name: 'Grand Tour',     desc: 'Orbit all 3 celestial bodies',         icon: '◎' },
+  orbit_3:        { name: 'Triad Navigator', desc: 'Orbit 3 different celestial bodies',    icon: '◎' },
+  orbit_5:        { name: 'Grand Tour',     desc: 'Orbit 5 different celestial bodies',    icon: '◉' },
+  orbit_all:      { name: 'System Mapper',  desc: 'Orbit every body in the system',       icon: '⊛' },
   ship_swap:      { name: 'Refit Complete',  desc: 'Swap ships during gameplay',           icon: '⚙' },
   sun_kill:       { name: 'Solar Furnace',   desc: 'Push a boss into the sun',             icon: '☀' },
   wave_10:        { name: 'Holding the Line', desc: 'Survive to wave 10',                  icon: '▣' },
@@ -2922,10 +2913,32 @@ class Ship {
     // Gravity naturally provides slingshot effect near the surface
     // Only the star deals heat damage (handled separately below)
 
-    // Star heat damage
+    // Star heat damage — continuous burn, no invulnerability flash
     if (game.star) {
       const hd = game.star.heatDamage(this);
-      if (hd > 0) this.takeDamage(hd*dt, particles);
+      if (hd > 0) {
+        this.hp -= hd * dt;
+        // Single warning flash once per 10 seconds at most
+        if (!this.lastSunFlash) this.lastSunFlash = 0;
+        const now = Date.now();
+        if (now - this.lastSunFlash > 10000) {
+          this.lastSunFlash = now;
+          this.sunFlashTimer = 0.15; // brief single flash
+          game.shake.add(2);
+          playSound('hit');
+        }
+        // Spark/ember particles to show damage without flashing
+        if (Math.random() < 0.3) {
+          particles.emit(this.x, this.y, 2, '#f80', 80, 0.2, 1.5);
+        }
+        if (this.hp <= 0) {
+          particles.emit(this.x, this.y, 80, '#f84', 350, 0.9, 4);
+          particles.emit(this.x, this.y, 50, '#ff0', 280, 0.7, 3);
+          playSound('explode_big'); game.shake.add(12);
+          stopLaserSound(); stopTorpedoSound();
+          this.respawn();
+        }
+      }
     }
 
     this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * (this.energyRegenMult || 1) * dt);
@@ -2988,7 +3001,6 @@ class Ship {
     }
     this.energy -= LASER_ENERGY_COST*dt;
     this.laserActive = true;
-    startLaserSound();
     // Find invader nearest to crosshair (wide catch radius), fallback to nearest in range
     const wmx = mouseX - canvas.width/2 + game.cam.x;
     const wmy = mouseY - canvas.height/2 + game.cam.y;
@@ -3008,6 +3020,7 @@ class Ship {
     }
     this.laserTarget = nearest;
     if (nearest) {
+      startLaserSound(); // Only play sound when actually hitting a target
       const laserResist = (nearest.isBoss && !nearest.nearSun) ? 0.15 : 1;
       nearest.hp -= LASER_DPS * (this.laserMult || 1) * dt * laserResist;
       playEnemyHitSound(nearest.typeName);
@@ -3021,6 +3034,8 @@ class Ship {
         nearest.hp = 1;
         nearest.critical = true;
       }
+    } else {
+      stopLaserSound(); // No target — silence
     }
   }
   fireBomb(invaders, particles) {
@@ -3057,6 +3072,19 @@ class Ship {
       }
     }
     game.achievementTracking.bombKills = bombKills;
+    // Push back enemy projectiles within bomb radius
+    if (game.enemyBullets) {
+      for (const eb of game.enemyBullets) {
+        const d = Math.hypot(eb.x - this.x, eb.y - this.y);
+        if (d < effectiveRadius) {
+          const nx = (eb.x - this.x) / Math.max(d, 1);
+          const ny = (eb.y - this.y) / Math.max(d, 1);
+          const pushForce = 300 * (1 - d / effectiveRadius);
+          eb.vx = nx * pushForce;
+          eb.vy = ny * pushForce;
+        }
+      }
+    }
     game.bombRings.push({ x: this.x, y: this.y, radius: 0, maxRadius: effectiveRadius, life: 0.5 });
   }
   scan(invaders) {
@@ -3135,6 +3163,14 @@ class Ship {
     }
     ctx.globalAlpha = 1;
     if (this.invulnTimer > 0 && Math.sin(Date.now()*0.04) > 0) return;
+    // Sun flash — single brief flash, not constant flickering
+    if (this.sunFlashTimer > 0) {
+      this.sunFlashTimer -= 1/60;
+      if (Math.sin(Date.now()*0.02) > 0) {
+        // Draw a brief white overlay flash then continue drawing normally
+        // (the flash is handled below after ship is drawn)
+      }
+    }
 
     const sx = this.x - cam.x + canvas.width/2, sy = this.y - cam.y + canvas.height/2;
     ctx.save(); ctx.translate(sx, sy); ctx.rotate(this.angle);
@@ -3267,7 +3303,7 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Sun heat glow — oriented AWAY from sun (fire trails behind ship)
+    // Sun heat glow — oriented AWAY from sun, fire + white-hot lingering around craft
     if (game && game.star) {
       const dToStar = dist(this, game.star);
       const heatZone = game.star.radius + HEAT_RANGE_OUTER;
@@ -3279,98 +3315,115 @@ class Ship {
         const effectiveHi = hi * speedDamp;
 
         // Direction away from sun in local ship coordinates
-        const sunWorldAngle = Math.atan2(this.y - game.star.y, this.x - game.star.x); // away from sun
+        const sunWorldAngle = Math.atan2(this.y - game.star.y, this.x - game.star.x);
         const localAngle = sunWorldAngle - this.angle;
         const awayX = Math.cos(localAngle);
         const awayY = Math.sin(localAngle);
-        const offset = SHIP_SIZE * (0.8 + effectiveHi * 0.5); // glow center offset away from sun
-
-        // Outer heat haze — offset away from sun
-        const outerSize = SHIP_SIZE * (3.5 + effectiveHi * 2);
+        const offset = SHIP_SIZE * (0.6 + effectiveHi * 0.5);
         const ox = awayX * offset, oy = awayY * offset;
-        ctx.globalAlpha = effectiveHi * 0.35;
-        const outerGrad = ctx.createRadialGradient(ox*0.3, oy*0.3, SHIP_SIZE*0.5, ox, oy, outerSize);
-        outerGrad.addColorStop(0, 'rgba(255,80,10,0.5)');
-        outerGrad.addColorStop(0.4, 'rgba(255,40,0,0.2)');
-        outerGrad.addColorStop(1, 'rgba(180,15,0,0)');
-        ctx.fillStyle = outerGrad;
-        ctx.beginPath(); ctx.arc(ox, oy, outerSize, 0, Math.PI*2); ctx.fill();
+
+        // Wide lingering heat haze around craft (centered on ship, not just offset)
+        const hazeSize = SHIP_SIZE * (5.0 + effectiveHi * 3);
+        ctx.globalAlpha = effectiveHi * 0.4;
+        const hazeGrad = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.5, ox*0.3, oy*0.3, hazeSize);
+        hazeGrad.addColorStop(0, 'rgba(255,200,100,0.4)');
+        hazeGrad.addColorStop(0.3, 'rgba(255,100,30,0.2)');
+        hazeGrad.addColorStop(0.6, 'rgba(200,40,0,0.08)');
+        hazeGrad.addColorStop(1, 'rgba(120,10,0,0)');
+        ctx.fillStyle = hazeGrad;
+        ctx.beginPath(); ctx.arc(ox*0.2, oy*0.2, hazeSize, 0, Math.PI*2); ctx.fill();
 
         // Core fire envelope — offset away from sun
-        const coreSize = SHIP_SIZE * (2.0 + effectiveHi * 1.5);
-        ctx.globalAlpha = effectiveHi * 0.7;
-        const coreGrad = ctx.createRadialGradient(ox*0.2, oy*0.2, SHIP_SIZE*0.15, ox*0.7, oy*0.7, coreSize);
-        coreGrad.addColorStop(0, `rgba(255,${Math.floor(240-effectiveHi*100)},${Math.floor(120-effectiveHi*100)},0.9)`);
-        coreGrad.addColorStop(0.3, `rgba(255,${Math.floor(160-effectiveHi*80)},${Math.floor(30-effectiveHi*20)},0.6)`);
-        coreGrad.addColorStop(0.7, `rgba(220,${Math.floor(60-effectiveHi*30)},0,0.2)`);
+        const coreSize = SHIP_SIZE * (2.5 + effectiveHi * 2);
+        ctx.globalAlpha = effectiveHi * 0.8;
+        const coreGrad = ctx.createRadialGradient(ox*0.1, oy*0.1, SHIP_SIZE*0.1, ox*0.7, oy*0.7, coreSize);
+        coreGrad.addColorStop(0, `rgba(255,${Math.floor(240-effectiveHi*80)},${Math.floor(140-effectiveHi*80)},0.9)`);
+        coreGrad.addColorStop(0.25, `rgba(255,${Math.floor(180-effectiveHi*60)},${Math.floor(60-effectiveHi*30)},0.7)`);
+        coreGrad.addColorStop(0.5, `rgba(240,${Math.floor(80-effectiveHi*30)},10,0.3)`);
         coreGrad.addColorStop(1, 'rgba(180,20,0,0)');
         ctx.fillStyle = coreGrad;
-        ctx.beginPath(); ctx.arc(ox*0.7, oy*0.7, coreSize, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(ox*0.5, oy*0.5, coreSize, 0, Math.PI*2); ctx.fill();
 
-        // Hot white-yellow highlight when very close
-        if (effectiveHi > 0.4) {
-          const whiteSize = SHIP_SIZE * (0.8 + effectiveHi * 0.6);
-          ctx.globalAlpha = (effectiveHi - 0.4) * 1.2;
-          const whiteGrad = ctx.createRadialGradient(0, 0, 0, ox*0.3, oy*0.3, whiteSize);
-          whiteGrad.addColorStop(0, 'rgba(255,255,200,0.8)');
-          whiteGrad.addColorStop(0.5, 'rgba(255,200,80,0.3)');
-          whiteGrad.addColorStop(1, 'rgba(255,120,20,0)');
+        // White-hot center lingering around ship body (always visible near sun)
+        if (effectiveHi > 0.15) {
+          const whiteSize = SHIP_SIZE * (1.5 + effectiveHi * 1.2);
+          ctx.globalAlpha = Math.min(1, (effectiveHi - 0.15) * 1.5);
+          const whiteGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, whiteSize);
+          whiteGrad.addColorStop(0, 'rgba(255,255,230,0.9)');
+          whiteGrad.addColorStop(0.3, 'rgba(255,240,180,0.5)');
+          whiteGrad.addColorStop(0.6, 'rgba(255,180,80,0.15)');
+          whiteGrad.addColorStop(1, 'rgba(255,100,20,0)');
           ctx.fillStyle = whiteGrad;
-          ctx.beginPath(); ctx.arc(ox*0.3, oy*0.3, whiteSize, 0, Math.PI*2); ctx.fill();
+          ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
+        }
+
+        // Spark ember particles (drawn as small bright dots in local coords)
+        ctx.globalAlpha = effectiveHi * 0.8;
+        const t = game.time || 0;
+        for (let sp = 0; sp < 5; sp++) {
+          const sparkAngle = localAngle + Math.sin(t*3 + sp*1.7) * 0.8;
+          const sparkR = SHIP_SIZE * (0.8 + sp*0.4 + Math.sin(t*5+sp)*0.3);
+          const spx = Math.cos(sparkAngle) * sparkR;
+          const spy = Math.sin(sparkAngle) * sparkR;
+          const sparkAlpha = 0.5 + Math.sin(t*8+sp*2)*0.3;
+          ctx.fillStyle = `rgba(255,${Math.floor(200+Math.sin(t*4+sp)*55)},${Math.floor(80+Math.sin(t*6+sp)*40)},${sparkAlpha})`;
+          ctx.beginPath(); ctx.arc(spx, spy, 1.5 + Math.sin(t*3+sp)*0.5, 0, Math.PI*2); ctx.fill();
         }
         ctx.globalAlpha = 1;
       }
     }
 
-    // Atmospheric entry glow near planets — oriented TOWARD the planet (atmosphere is burning)
+    // Atmospheric entry glow near planets — bright white/blue glow, oriented TOWARD planet
     if (game && game.planets) {
       const spd = Math.hypot(this.vx, this.vy);
       for (const planet of game.planets) {
         const dToPlanet = dist(this, planet);
-        const atmoZone = planet.radius * 1.8;
+        const atmoZone = planet.radius * 2.2; // wider detection zone
         if (dToPlanet < atmoZone && dToPlanet > planet.radius * 0.5) {
-          const proximityFactor = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 0.8), 0, 1);
-          const speedFactor = clamp((spd - 40) / 150, 0, 1);
+          const proximityFactor = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 1.2), 0, 1);
+          const speedFactor = clamp((spd - 30) / 120, 0, 1); // triggers at lower speed
           const atmoIntensity = proximityFactor * speedFactor;
           if (atmoIntensity > 0.02) {
-            // Direction toward planet in local ship coordinates
             const toPlanetWorld = Math.atan2(planet.y - this.y, planet.x - this.x);
             const localAngle = toPlanetWorld - this.angle;
             const toX = Math.cos(localAngle);
             const toY = Math.sin(localAngle);
-            const atmoOff = SHIP_SIZE * (0.6 + atmoIntensity * 0.4);
+            const atmoOff = SHIP_SIZE * (0.5 + atmoIntensity * 0.5);
 
-            // Outer atmospheric haze — offset toward planet
-            const outerGlowSize = SHIP_SIZE * (3.0 + speedFactor * 3.0);
+            // Outer atmospheric haze — white/blue toned, lingering around craft
+            const outerGlowSize = SHIP_SIZE * (4.0 + speedFactor * 3.5);
             const aox = toX * atmoOff, aoy = toY * atmoOff;
-            ctx.globalAlpha = atmoIntensity * 0.6;
-            const outerAtmo = ctx.createRadialGradient(aox*0.3, aoy*0.3, SHIP_SIZE*0.3, aox, aoy, outerGlowSize);
-            outerAtmo.addColorStop(0, `rgba(255,${Math.floor(180-speedFactor*60)},${Math.floor(80-speedFactor*60)},0.6)`);
-            outerAtmo.addColorStop(0.4, `rgba(255,${Math.floor(120-speedFactor*40)},${Math.floor(40-speedFactor*30)},0.3)`);
-            outerAtmo.addColorStop(1, 'rgba(200,60,10,0)');
+            ctx.globalAlpha = atmoIntensity * 0.7;
+            const outerAtmo = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.5, aox*0.6, aoy*0.6, outerGlowSize);
+            outerAtmo.addColorStop(0, `rgba(255,255,255,0.5)`);
+            outerAtmo.addColorStop(0.3, `rgba(200,220,255,0.3)`);
+            outerAtmo.addColorStop(0.6, `rgba(160,180,220,0.1)`);
+            outerAtmo.addColorStop(1, 'rgba(100,120,180,0)');
             ctx.fillStyle = outerAtmo;
-            ctx.beginPath(); ctx.arc(aox, aoy, outerGlowSize, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(aox*0.4, aoy*0.4, outerGlowSize, 0, Math.PI*2); ctx.fill();
 
-            // Inner bright core — offset toward planet
-            const coreGlowSize = SHIP_SIZE * (1.5 + speedFactor * 1.5);
+            // Inner bright core — white with slight blue tint
+            const coreGlowSize = SHIP_SIZE * (2.0 + speedFactor * 2.0);
             ctx.globalAlpha = atmoIntensity * 0.9;
-            const coreAtmo = ctx.createRadialGradient(aox*0.2, aoy*0.2, SHIP_SIZE*0.1, aox*0.7, aoy*0.7, coreGlowSize);
-            coreAtmo.addColorStop(0, `rgba(255,${Math.floor(240-speedFactor*60)},${Math.floor(160-speedFactor*100)},0.9)`);
-            coreAtmo.addColorStop(0.4, `rgba(255,${Math.floor(180-speedFactor*60)},${Math.floor(80-speedFactor*60)},0.5)`);
-            coreAtmo.addColorStop(1, 'rgba(220,80,10,0)');
+            const coreAtmo = ctx.createRadialGradient(0, 0, SHIP_SIZE*0.1, aox*0.5, aoy*0.5, coreGlowSize);
+            coreAtmo.addColorStop(0, `rgba(255,255,255,0.95)`);
+            coreAtmo.addColorStop(0.3, `rgba(230,240,255,0.6)`);
+            coreAtmo.addColorStop(0.6, `rgba(180,200,240,0.2)`);
+            coreAtmo.addColorStop(1, 'rgba(140,160,200,0)');
             ctx.fillStyle = coreAtmo;
-            ctx.beginPath(); ctx.arc(aox*0.7, aoy*0.7, coreGlowSize, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(aox*0.4, aoy*0.4, coreGlowSize, 0, Math.PI*2); ctx.fill();
 
-            // White-hot center at high speed
-            if (atmoIntensity > 0.4) {
-              const whiteSize = SHIP_SIZE * (0.6 + atmoIntensity * 0.8);
-              ctx.globalAlpha = (atmoIntensity - 0.4) * 1.5;
-              const whiteAtmo = ctx.createRadialGradient(0, 0, 0, aox*0.3, aoy*0.3, whiteSize);
-              whiteAtmo.addColorStop(0, 'rgba(255,255,220,0.9)');
-              whiteAtmo.addColorStop(0.5, 'rgba(255,220,120,0.4)');
-              whiteAtmo.addColorStop(1, 'rgba(255,150,40,0)');
+            // White-hot center around ship body
+            if (atmoIntensity > 0.2) {
+              const whiteSize = SHIP_SIZE * (1.2 + atmoIntensity * 1.0);
+              ctx.globalAlpha = Math.min(1, (atmoIntensity - 0.2) * 1.8);
+              const whiteAtmo = ctx.createRadialGradient(0, 0, 0, 0, 0, whiteSize);
+              whiteAtmo.addColorStop(0, 'rgba(255,255,255,0.9)');
+              whiteAtmo.addColorStop(0.4, 'rgba(240,245,255,0.5)');
+              whiteAtmo.addColorStop(0.7, 'rgba(200,210,240,0.15)');
+              whiteAtmo.addColorStop(1, 'rgba(160,170,200,0)');
               ctx.fillStyle = whiteAtmo;
-              ctx.beginPath(); ctx.arc(aox*0.3, aoy*0.3, whiteSize, 0, Math.PI*2); ctx.fill();
+              ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
             }
             ctx.globalAlpha = 1;
           }
@@ -4514,15 +4567,18 @@ function checkAchievements() {
     }
   }
 
-  // orbit_all (orbit 3+ different celestial bodies)
-  if (!game.achievements.orbit_all && game.ship.alive) {
+  // Orbit achievements (3, 5, all bodies)
+  if (game.ship.alive) {
     if (!game.achievementTracking.bodiesOrbited) game.achievementTracking.bodiesOrbited = new Set();
     for (const body of game.bodies) {
       if (dist(game.ship, body) < body.radius * 3) {
         game.achievementTracking.bodiesOrbited.add(body.name || 'Star');
       }
     }
-    if (game.achievementTracking.bodiesOrbited.size >= 3) unlockAchievement('orbit_all');
+    const orbited = game.achievementTracking.bodiesOrbited.size;
+    if (orbited >= 3 && !game.achievements.orbit_3) unlockAchievement('orbit_3');
+    if (orbited >= 5 && !game.achievements.orbit_5) unlockAchievement('orbit_5');
+    if (orbited >= game.bodies.length && !game.achievements.orbit_all) unlockAchievement('orbit_all');
   }
 }
 
