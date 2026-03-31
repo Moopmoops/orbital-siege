@@ -1430,8 +1430,8 @@ let SHIP_CLOCKWORK_THRUST = 0.01;
 let ORBIT_PERIOD = 15;
 let SUN_CORONA_SIZE = 5;
 let SUN_PLASMA_INTENSITY = 0.14;
-let HEAT_DAMAGE_INNER = 50;
-let HEAT_DAMAGE_OUTER = 15;
+let HEAT_DAMAGE_INNER = 1.0;
+let HEAT_DAMAGE_OUTER = 0.4;
 let HEAT_RANGE_INNER = 40;
 let HEAT_RANGE_OUTER = 130;
 
@@ -2941,6 +2941,48 @@ class Ship {
       }
     }
 
+    // Residual heat tracking — lingers after leaving hot zones
+    if (!this.sunHeatLevel) this.sunHeatLevel = 0;
+    if (!this.atmoHeatLevel) this.atmoHeatLevel = 0;
+    if (!this.sunHeatAngle) this.sunHeatAngle = 0;
+    if (!this.atmoHeatAngle) this.atmoHeatAngle = 0;
+    // Sun heat: ramp up while in zone, slow decay out
+    if (game.star) {
+      const dToStar = dist(this, game.star);
+      const heatZone = game.star.radius + HEAT_RANGE_OUTER;
+      if (dToStar < heatZone) {
+        const hi = clamp(1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER, 0, 1);
+        this.sunHeatLevel = Math.min(1, this.sunHeatLevel + hi * 2 * dt); // ramp up
+        this.sunHeatAngle = Math.atan2(this.y - game.star.y, this.x - game.star.x);
+      } else {
+        this.sunHeatLevel = Math.max(0, this.sunHeatLevel - 0.25 * dt); // slow 4s decay
+      }
+    }
+    // Atmosphere heat: ramp up while near planet at speed, slow decay out
+    let maxAtmo = 0, bestAtmoAngle = 0;
+    if (game.planets) {
+      const spd = Math.hypot(this.vx, this.vy);
+      for (const planet of game.planets) {
+        const dToPlanet = dist(this, planet);
+        const atmoZone = planet.radius * 2.2;
+        if (dToPlanet < atmoZone && dToPlanet > planet.radius * 0.5) {
+          const proximityFactor = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 1.2), 0, 1);
+          const speedFactor = clamp((spd - 30) / 120, 0, 1);
+          const ai = proximityFactor * speedFactor;
+          if (ai > maxAtmo) {
+            maxAtmo = ai;
+            bestAtmoAngle = Math.atan2(planet.y - this.y, planet.x - this.x);
+          }
+        }
+      }
+    }
+    if (maxAtmo > 0.02) {
+      this.atmoHeatLevel = Math.min(1, this.atmoHeatLevel + maxAtmo * 2.5 * dt);
+      this.atmoHeatAngle = bestAtmoAngle;
+    } else {
+      this.atmoHeatLevel = Math.max(0, this.atmoHeatLevel - 0.3 * dt); // ~3.3s decay
+    }
+
     this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * (this.energyRegenMult || 1) * dt);
     this.fireTimer -= dt;
     this.invulnTimer -= dt;
@@ -3064,7 +3106,7 @@ class Ship {
         }
 
         if (inv.hp <= 0) {
-          particles.emit(inv.x, inv.y, 15, inv.color, 200, 0.4, 2);
+          emitDeathFlash(inv, particles);
           playSound('explode'); game.score += inv.points; game.kills++;
           bombKills++;
           invaders.splice(i, 1);
@@ -3303,20 +3345,12 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Sun heat glow — oriented AWAY from sun, fire + white-hot lingering around craft
-    if (game && game.star) {
-      const dToStar = dist(this, game.star);
-      const heatZone = game.star.radius + HEAT_RANGE_OUTER;
-      if (dToStar < heatZone) {
-        const heatIntensity = 1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER;
-        const hi = clamp(heatIntensity, 0, 1);
-        const spd = Math.hypot(this.vx, this.vy);
-        const speedDamp = clamp(1 - (spd - 80) / 200, 0.15, 1);
-        const effectiveHi = hi * speedDamp;
+    // Sun heat glow — uses residual sunHeatLevel that lingers after leaving
+    if (this.sunHeatLevel > 0.01) {
+        const effectiveHi = this.sunHeatLevel;
 
         // Direction away from sun in local ship coordinates
-        const sunWorldAngle = Math.atan2(this.y - game.star.y, this.x - game.star.x);
-        const localAngle = sunWorldAngle - this.angle;
+        const localAngle = this.sunHeatAngle - this.angle;
         const awayX = Math.cos(localAngle);
         const awayY = Math.sin(localAngle);
         const offset = SHIP_SIZE * (0.6 + effectiveHi * 0.5);
@@ -3370,24 +3404,15 @@ class Ship {
           ctx.beginPath(); ctx.arc(spx, spy, 1.5 + Math.sin(t*3+sp)*0.5, 0, Math.PI*2); ctx.fill();
         }
         ctx.globalAlpha = 1;
-      }
     }
 
-    // Atmospheric entry glow near planets — bright white/blue glow, oriented TOWARD planet
-    if (game && game.planets) {
-      const spd = Math.hypot(this.vx, this.vy);
-      for (const planet of game.planets) {
-        const dToPlanet = dist(this, planet);
-        const atmoZone = planet.radius * 2.2; // wider detection zone
-        if (dToPlanet < atmoZone && dToPlanet > planet.radius * 0.5) {
-          const proximityFactor = clamp(1 - (dToPlanet - planet.radius) / (planet.radius * 1.2), 0, 1);
-          const speedFactor = clamp((spd - 30) / 120, 0, 1); // triggers at lower speed
-          const atmoIntensity = proximityFactor * speedFactor;
-          if (atmoIntensity > 0.02) {
-            const toPlanetWorld = Math.atan2(planet.y - this.y, planet.x - this.x);
-            const localAngle = toPlanetWorld - this.angle;
+    // Atmospheric entry glow — uses residual atmoHeatLevel that lingers after leaving
+    if (this.atmoHeatLevel > 0.01) {
+            const atmoIntensity = this.atmoHeatLevel;
+            const localAngle = this.atmoHeatAngle - this.angle;
             const toX = Math.cos(localAngle);
             const toY = Math.sin(localAngle);
+            const speedFactor = atmoIntensity; // use intensity directly
             const atmoOff = SHIP_SIZE * (0.5 + atmoIntensity * 0.5);
 
             // Outer atmospheric haze — white/blue toned, lingering around craft
@@ -3426,9 +3451,6 @@ class Ship {
               ctx.beginPath(); ctx.arc(0, 0, whiteSize, 0, Math.PI*2); ctx.fill();
             }
             ctx.globalAlpha = 1;
-          }
-        }
-      }
     }
 
     ctx.restore();
@@ -3519,6 +3541,65 @@ function getWaveTypes(wave) {
   return available;
 }
 
+// Contextual death flash — color depends on hidden environmental patterns
+function emitDeathFlash(inv, particles) {
+  const x = inv.x, y = inv.y;
+
+  // Check proximity to ringed planet (gas giant) — white crystalline burst
+  let nearRingedPlanet = false;
+  if (game.planets) {
+    for (const p of game.planets) {
+      if (p.hasRings && dist(inv, p) < p.radius * 4) {
+        nearRingedPlanet = true;
+        break;
+      }
+    }
+  }
+
+  // Check age — how long the enemy has been alive (older = blue spectral flash)
+  const age = (game.time || 0) - (inv.spawnTime || 0);
+  const isOld = age > 30; // survived 30+ seconds
+
+  // Check local density — count nearby allies
+  let nearbyCount = 0;
+  for (const other of game.invaders) {
+    if (other !== inv && other.alive && dist(inv, other) < 80) nearbyCount++;
+  }
+  const isHighDensity = nearbyCount >= 5;
+
+  // Check proximity to sun — solar flare gold
+  const nearSun = game.star && dist(inv, game.star) < game.star.radius + 150;
+
+  // Apply patterns (priority: density > gas giant > old > sun > default)
+  if (isHighDensity) {
+    // Rainbow sparkle burst — multiple colors, many particles
+    const colors = ['#f44', '#fa0', '#ff0', '#4f4', '#4ef', '#44f', '#c4f', '#f4f'];
+    for (let c = 0; c < colors.length; c++) {
+      particles.emit(x, y, 4, colors[c], 180 + c*20, 0.5, 2.5);
+    }
+    particles.emit(x, y, 12, '#fff', 250, 0.6, 1.5); // white sparkle core
+  } else if (nearRingedPlanet) {
+    // White crystalline flash with icy blue sparkles
+    particles.emit(x, y, 20, '#fff', 220, 0.5, 3);
+    particles.emit(x, y, 10, '#adf', 160, 0.4, 2);
+    particles.emit(x, y, 5, '#8cf', 120, 0.3, 1.5);
+  } else if (isOld) {
+    // Blue spectral fade — deep blue with violet wisps
+    particles.emit(x, y, 18, '#48f', 200, 0.6, 3);
+    particles.emit(x, y, 8, '#a4f', 150, 0.4, 2);
+    particles.emit(x, y, 4, '#fff', 100, 0.2, 1);
+  } else if (nearSun) {
+    // Solar gold flash — hot gold and white
+    particles.emit(x, y, 16, '#fa0', 220, 0.5, 3);
+    particles.emit(x, y, 10, '#ff0', 180, 0.4, 2);
+    particles.emit(x, y, 5, '#fff', 130, 0.3, 1.5);
+  } else {
+    // Default — standard explosion in enemy color
+    particles.emit(x, y, 18, inv.color, 200, 0.4, 2.5);
+    particles.emit(x, y, 6, '#fff', 140, 0.3, 1.5);
+  }
+}
+
 function createARH(x, y, typeName, generation, planet) {
   const type = ARH_TYPES[typeName] || ARH_TYPES.drone;
   const gen = Math.min(generation, 4);
@@ -3537,6 +3618,7 @@ function createARH(x, y, typeName, generation, planet) {
     typeName, type,
     shape: type.shape, baseHue: type.colorH,
     color: hsl(type.colorH, 50, 40),
+    spawnTime: game ? game.time : 0,
     reproduceTimer: REPRODUCE_TIME_BASE + rng(-3,4),
     reproduceProgress: 0,
     points: 10 + gen*15 + (type.hpBase > 30 ? 20 : 0),
@@ -3871,6 +3953,10 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
           game.boss = null;
           // Unlock sun_kill achievement
           unlockAchievement('sun_kill');
+        }
+        if (!inv.isBoss || !inv.critical) {
+          emitDeathFlash(inv, game.particles);
+          playSound('explode');
         }
         inv.hp = -1000;
         return;
@@ -4936,8 +5022,7 @@ function updateGame(dt) {
         }
 
         if (inv.hp <= 0) {
-          game.particles.emit(inv.x, inv.y, 20, inv.color, 250, 0.5, 3);
-          game.particles.emit(inv.x, inv.y, 8, '#fff', 180, 0.3, 2);
+          emitDeathFlash(inv, game.particles);
           playSound('explode'); game.score += inv.points; game.kills++;
           if (inv.isBoss) {
             game.boss = null;
@@ -5014,7 +5099,7 @@ function updateGame(dt) {
           }
 
           if (inv.hp <= 0) {
-            game.particles.emit(inv.x, inv.y, 18, inv.color, 220, 0.4, 3);
+            emitDeathFlash(inv, game.particles);
             game.score += inv.points; game.kills++;
             game.invaders.splice(j, 1);
           }
