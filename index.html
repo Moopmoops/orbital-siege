@@ -1394,7 +1394,16 @@ const ACHIEVEMENTS = {
 
 let G = 390;
 const PLANET_RADIUS = 40;
-const STAR_RADIUS = 55;
+const STAR_RADIUS = 70;
+// Random star color variance — warm star colors (yellow, orange, red-orange, white-yellow)
+const STAR_COLOR_VARIANTS = [
+  { rBase: 180, gBase: 40, bBase: 5, name: 'red-orange' },     // default red-orange
+  { rBase: 200, gBase: 100, bBase: 10, name: 'orange' },        // more orange
+  { rBase: 220, gBase: 160, bBase: 30, name: 'yellow' },        // yellow star
+  { rBase: 210, gBase: 130, bBase: 20, name: 'amber' },         // amber
+  { rBase: 230, gBase: 200, bBase: 100, name: 'white-yellow' }, // hot white-yellow
+];
+const STAR_COLOR = STAR_COLOR_VARIANTS[Math.floor(Math.random() * STAR_COLOR_VARIANTS.length)];
 const SHIP_SIZE = 10;
 let BULLET_SPEED = 200;
 let BULLET_LIFE = 15;
@@ -1785,10 +1794,10 @@ function generateSunTexture(radius) {
         // Sun surface — deep red/orange plasma with granulation
         const granulation = plasma * 0.6 + turbulence * 0.3 + fineDetail * 0.1;
 
-        // Base: deep red-orange
-        let r = 180 + granulation * 75;
-        let g = 40 + granulation * 60;
-        let b = 5 + granulation * 15;
+        // Base: star color with variance
+        let r = STAR_COLOR.rBase + granulation * 75;
+        let g = STAR_COLOR.gBase + granulation * 60;
+        let b = STAR_COLOR.bBase + granulation * 15;
 
         // Bright granulation cells
         if (granulation > 0.55) {
@@ -2463,22 +2472,23 @@ class Star {
     const R = this.radius;
 
     // Draw vast soft corona (procedural, animated)
+    const sc = STAR_COLOR;
     const cg = ctx.createRadialGradient(sx, sy, R*0.5, sx, sy, R*SUN_CORONA_SIZE);
-    cg.addColorStop(0, 'rgba(200,60,20,0.12)');
-    cg.addColorStop(0.1, 'rgba(180,40,10,0.08)');
-    cg.addColorStop(0.25, 'rgba(150,30,5,0.04)');
-    cg.addColorStop(0.5, 'rgba(100,15,0,0.02)');
-    cg.addColorStop(0.75, 'rgba(60,5,0,0.008)');
-    cg.addColorStop(1, 'rgba(30,0,0,0)');
+    cg.addColorStop(0, `rgba(${Math.min(255,sc.rBase+20)},${Math.floor(sc.gBase*1.5)},${Math.floor(sc.bBase*4)},0.12)`);
+    cg.addColorStop(0.1, `rgba(${sc.rBase},${Math.floor(sc.gBase)},${Math.floor(sc.bBase*2)},0.08)`);
+    cg.addColorStop(0.25, `rgba(${Math.floor(sc.rBase*0.83)},${Math.floor(sc.gBase*0.75)},${Math.floor(sc.bBase)},0.04)`);
+    cg.addColorStop(0.5, `rgba(${Math.floor(sc.rBase*0.55)},${Math.floor(sc.gBase*0.37)},0,0.02)`);
+    cg.addColorStop(0.75, `rgba(${Math.floor(sc.rBase*0.33)},${Math.floor(sc.gBase*0.12)},0,0.008)`);
+    cg.addColorStop(1, `rgba(${Math.floor(sc.rBase*0.17)},0,0,0)`);
     ctx.fillStyle = cg;
     ctx.beginPath(); ctx.arc(sx, sy, R*SUN_CORONA_SIZE, 0, Math.PI*2); ctx.fill();
 
     // Warm edge glow
     const eg = ctx.createRadialGradient(sx, sy, R*0.7, sx, sy, R*2.0);
-    eg.addColorStop(0, 'rgba(255,120,30,0.25)');
-    eg.addColorStop(0.25, 'rgba(220,60,10,0.12)');
-    eg.addColorStop(0.5, 'rgba(180,30,5,0.05)');
-    eg.addColorStop(1, 'rgba(100,10,0,0)');
+    eg.addColorStop(0, `rgba(255,${Math.floor(sc.gBase*3)},${Math.floor(sc.bBase*6)},0.25)`);
+    eg.addColorStop(0.25, `rgba(${Math.min(255,sc.rBase+40)},${Math.floor(sc.gBase*1.5)},${Math.floor(sc.bBase*2)},0.12)`);
+    eg.addColorStop(0.5, `rgba(${sc.rBase},${Math.floor(sc.gBase*0.75)},${Math.floor(sc.bBase)},0.05)`);
+    eg.addColorStop(1, `rgba(${Math.floor(sc.rBase*0.55)},${Math.floor(sc.gBase*0.25)},0,0)`);
     ctx.fillStyle = eg;
     ctx.beginPath(); ctx.arc(sx, sy, R*2.0, 0, Math.PI*2); ctx.fill();
 
@@ -2954,7 +2964,9 @@ class Ship {
         const hi = clamp(1 - (dToStar - game.star.radius) / HEAT_RANGE_OUTER, 0, 1);
         this.sunHeatLevel = Math.min(1, this.sunHeatLevel + hi * 2 * dt); // ramp up
         this.sunHeatAngle = Math.atan2(this.y - game.star.y, this.x - game.star.x);
+        this._sunHeatDropped = false;
       } else {
+        if (!this._sunHeatDropped && this.sunHeatLevel > 0.05) { this.sunHeatLevel *= 0.6; this._sunHeatDropped = true; }
         this.sunHeatLevel = Math.max(0, this.sunHeatLevel - 0.25 * dt); // slow 4s decay
       }
     }
@@ -2979,7 +2991,9 @@ class Ship {
     if (maxAtmo > 0.02) {
       this.atmoHeatLevel = Math.min(1, this.atmoHeatLevel + maxAtmo * 2.5 * dt);
       this.atmoHeatAngle = bestAtmoAngle;
+      this._atmoHeatDropped = false;
     } else {
+      if (!this._atmoHeatDropped && this.atmoHeatLevel > 0.05) { this.atmoHeatLevel *= 0.6; this._atmoHeatDropped = true; }
       this.atmoHeatLevel = Math.max(0, this.atmoHeatLevel - 0.3 * dt); // ~3.3s decay
     }
 
@@ -3320,6 +3334,17 @@ class Ship {
       ctx.beginPath();
       ctx.arc(SHIP_SIZE*0.8, 0, SHIP_SIZE*0.35, 0, Math.PI*2);
       ctx.fill(); ctx.globalAlpha = 1;
+    }
+
+    // White-hot ship body tint when lingering near sun
+    if (this.sunHeatLevel > 0.1) {
+      const whiteness = Math.min(1, (this.sunHeatLevel - 0.1) / 0.6);
+      ctx.globalAlpha = whiteness * 0.7;
+      ctx.fillStyle = `rgb(${255},${Math.floor(240 + whiteness * 15)},${Math.floor(200 + whiteness * 55)})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, SHIP_SIZE * 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
 
     // Engine glow (all ship types)
@@ -4680,11 +4705,20 @@ function unlockAchievement(key) {
 }
 
 // --- System Expansion Data ---
+const EXPANSION_COLOR_POOL = [
+  { c1: '#dda040', c2: '#604010' }, // amber
+  { c1: '#5a4a6a', c2: '#1a1520' }, // dark violet
+  { c1: '#8ac8e8', c2: '#203848' }, // pale ice
+  { c1: '#cc3020', c2: '#401008' }, // deep red
+  { c1: '#d0a070', c2: '#504020' }, // sandy
+  { c1: '#60a0c0', c2: '#1a3a50' }, // cerulean
+];
+const shuffledExpColors = EXPANSION_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
 const SYSTEM_EXPANSION = [
-  { wave: 8, name: 'Luminara', radius: PLANET_RADIUS * 0.7, color1: '#dda040', color2: '#604010', orbitR: 420, orbitSpeed: 0.028, moons: 1 },
-  { wave: 15, name: 'Umbra', radius: PLANET_RADIUS * 1.4, color1: '#5a4a6a', color2: '#1a1520', orbitR: 900, orbitSpeed: 0.009, rings: true, moons: 2 },
-  { wave: 25, name: 'Glacius', radius: PLANET_RADIUS * 1.1, color1: '#8ac8e8', color2: '#203848', orbitR: 1050, orbitSpeed: 0.007, rings: true },
-  { wave: 35, name: 'Pyraxis', radius: PLANET_RADIUS * 0.95, color1: '#cc3020', color2: '#401008', orbitR: 850, orbitSpeed: 0.011, moons: 2 },
+  { wave: 8, name: 'Luminara', radius: PLANET_RADIUS * 0.7, color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, orbitR: 420, orbitSpeed: 0.028, moons: 1 },
+  { wave: 15, name: 'Umbra', radius: PLANET_RADIUS * 1.4, color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, orbitR: 900, orbitSpeed: 0.009, rings: true, moons: 2 },
+  { wave: 25, name: 'Glacius', radius: PLANET_RADIUS * 1.1, color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, orbitR: 1050, orbitSpeed: 0.007, rings: true },
+  { wave: 35, name: 'Pyraxis', radius: PLANET_RADIUS * 0.95, color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, orbitR: 850, orbitSpeed: 0.011, moons: 2 },
 ];
 
 function expandSystem(wave) {
@@ -4735,16 +4769,30 @@ function expandSystem(wave) {
 
 function initGame() {
   const star = new Star(0, 0);
-  const planet1 = new Planet(320, 0, PLANET_RADIUS, '#4a8fc7', '#1a3050', 'Kepler');
+  // Randomized planet color pool — no two planets share the same base color
+  const PLANET_COLOR_POOL = [
+    { c1: '#4a8fc7', c2: '#1a3050' }, // blue ocean
+    { c1: '#8a5a3a', c2: '#3a2010' }, // brown rocky
+    { c1: '#3a9a6a', c2: '#1a4030' }, // green lush
+    { c1: '#6a8aaa', c2: '#2a3a4a' }, // ice blue
+    { c1: '#aa4a2a', c2: '#3a1a0a' }, // red volcanic
+    { c1: '#c89a40', c2: '#504010' }, // golden desert
+    { c1: '#7a5aaa', c2: '#2a1a4a' }, // purple gas
+    { c1: '#5aaa8a', c2: '#1a4a3a' }, // teal aquatic
+    { c1: '#aa7a5a', c2: '#4a3020' }, // tan dusty
+    { c1: '#8aaa5a', c2: '#3a4a1a' }, // lime verdant
+  ];
+  const shuffledColors = PLANET_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
+  const planet1 = new Planet(320, 0, PLANET_RADIUS, shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler');
   planet1.orbitRadius = 320; planet1.orbitAngle = 0; planet1.orbitSpeed = 0.04;
-  const planet2 = new Planet(-240, 280, PLANET_RADIUS * 0.75, '#8a5a3a', '#3a2010', 'Rustica');
+  const planet2 = new Planet(-240, 280, PLANET_RADIUS * 0.75, shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica');
   planet2.orbitRadius = 480; planet2.orbitAngle = Math.PI*0.7; planet2.orbitSpeed = 0.025;
-  const planet3 = new Planet(0, -550, PLANET_RADIUS * 1.1, '#3a9a6a', '#1a4030', 'Verdania');
+  const planet3 = new Planet(0, -550, PLANET_RADIUS * 1.1, shuffledColors[2].c1, shuffledColors[2].c2, 'Verdania');
   planet3.orbitRadius = 550; planet3.orbitAngle = Math.PI*1.5; planet3.orbitSpeed = 0.02;
-  const planet4 = new Planet(400, 400, PLANET_RADIUS * 0.65, '#6a8aaa', '#2a3a4a', 'Cryos');
+  const planet4 = new Planet(400, 400, PLANET_RADIUS * 0.65, shuffledColors[3].c1, shuffledColors[3].c2, 'Cryos');
   planet4.orbitRadius = 650; planet4.orbitAngle = Math.PI*0.25; planet4.orbitSpeed = 0.015;
   planet4.hasRings = true; planet4.ringTilt = 0.35;
-  const planet5 = new Planet(-600, -100, PLANET_RADIUS * 0.85, '#aa4a2a', '#3a1a0a', 'Magmos');
+  const planet5 = new Planet(-600, -100, PLANET_RADIUS * 0.85, shuffledColors[4].c1, shuffledColors[4].c2, 'Magmos');
   planet5.orbitRadius = 720; planet5.orbitAngle = Math.PI*1.1; planet5.orbitSpeed = 0.012;
   const planets = [planet1, planet2, planet3, planet4, planet5];
   const bodies = [star, planet1, planet2, planet3, planet4, planet5];
