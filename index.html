@@ -405,6 +405,10 @@ canvas { display: block; cursor: crosshair; }
   <div style="margin-top:8px;">
     <button onclick="toggleFullscreen()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">⛶ FULLSCREEN</button>
   </div>
+  <div style="margin-top:8px;">
+    <button onclick="togglePauseLeaderboard()" style="pointer-events:all;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;color:#0ff;background:none;border:1px solid #0ff;padding:6px 16px;letter-spacing:2px;">LEADERBOARD</button>
+  </div>
+  <div id="pause-leaderboard" style="display:none;margin-top:10px;max-height:250px;overflow-y:auto;"></div>
   <div class="resume-hint">PRESS P TO RESUME</div>
   <div id="pause-achievements" style="margin-top:20px;"></div>
 </div>
@@ -1483,8 +1487,8 @@ let SHIP_CLOCKWORK_THRUST = 0.01;
 let ORBIT_PERIOD = 15;
 let SUN_CORONA_SIZE = 5;
 let SUN_PLASMA_INTENSITY = 0.14;
-let HEAT_DAMAGE_INNER = 1.0;
-let HEAT_DAMAGE_OUTER = 0.4;
+let HEAT_DAMAGE_INNER = 0;
+let HEAT_DAMAGE_OUTER = 0;
 let HEAT_RANGE_INNER = 40;
 let HEAT_RANGE_OUTER = 130;
 
@@ -2832,6 +2836,21 @@ class Moon {
     this.moonOrbitRadius = orbitRadius;
     this.moonOrbitAngle = Math.random() * Math.PI * 2;
     this.moonOrbitSpeed = orbitSpeed;
+
+    // Derive lighter and darker variants of parent color for texture depth
+    const lighten = (hex, amt) => {
+      const r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16);
+      return '#' + [r,g,b].map(c => Math.min(255, c + amt).toString(16).padStart(2,'0')).join('');
+    };
+    const darken = (hex, amt) => {
+      const r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16);
+      return '#' + [r,g,b].map(c => Math.max(0, c - amt).toString(16).padStart(2,'0')).join('');
+    };
+    const moonColor1 = lighten(color, 30 + Math.floor(Math.random() * 20));
+    const moonColor2 = darken(color, 30 + Math.floor(Math.random() * 20));
+    this.moonSeed = Math.random() * 100;
+    this.texture = generatePlanetTexture(Math.max(radius, 12), moonColor1, moonColor2, this.moonSeed);
+    this.texRadius = this.texture.width * 0.45;
   }
 
   gravityAt(x, y) {
@@ -2843,22 +2862,48 @@ class Moon {
   }
 
   draw(ctx, cam) {
-    const sx = this.x - cam.x + canvas.width / 2, sy = this.y - cam.y + canvas.height / 2;
+    const sx = this.x - cam.x + canvas.width/2, sy = this.y - cam.y + canvas.height/2;
     const R = this.radius;
 
-    // Simple moon rendering — a small glowing sphere
-    const gradient = ctx.createRadialGradient(sx - R * 0.3, sy - R * 0.3, 0, sx, sy, R);
-    gradient.addColorStop(0, this.color);
-    gradient.addColorStop(0.7, this.color + '80');
-    gradient.addColorStop(1, this.color + '00');
-    ctx.fillStyle = gradient;
-    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.fill();
+    // Atmospheric glow (subtle, smaller than planets)
+    const ag = ctx.createRadialGradient(sx, sy, R*0.8, sx, sy, R*1.6);
+    ag.addColorStop(0, this.color + '20');
+    ag.addColorStop(1, this.color + '00');
+    ctx.fillStyle = ag;
+    ctx.beginPath(); ctx.arc(sx, sy, R*1.6, 0, Math.PI*2); ctx.fill();
 
-    // Subtle rim
-    ctx.globalAlpha = 0.2;
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.stroke();
+    // Texture — clipped to moon body
+    ctx.save();
+    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.clip();
+    const texScale = R / this.texRadius;
+    ctx.drawImage(this.texture, sx - this.texture.width/2 * texScale, sy - this.texture.height/2 * texScale, this.texture.width * texScale, this.texture.height * texScale);
+    ctx.restore();
+
+    // Shadow terminator (day/night effect facing star)
+    if (game && game.star) {
+      const sunAngle = Math.atan2(game.star.y - this.y, game.star.x - this.x);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.clip();
+      const shadowOffset = R * 0.3;
+      const shx = sx - Math.cos(sunAngle) * shadowOffset;
+      const shy = sy - Math.sin(sunAngle) * shadowOffset;
+      const sg = ctx.createRadialGradient(shx, shy, R*0.2, shx, shy, R*1.2);
+      sg.addColorStop(0, 'rgba(0,0,0,0)');
+      sg.addColorStop(0.6, 'rgba(0,0,0,0.15)');
+      sg.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Specular highlight
+    ctx.globalAlpha = 0.25;
+    const hlG = ctx.createRadialGradient(sx - R*0.3, sy - R*0.3, 0, sx, sy, R);
+    hlG.addColorStop(0, '#fff');
+    hlG.addColorStop(0.4, 'rgba(255,255,255,0.1)');
+    hlG.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hlG;
+    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
   }
 }
@@ -3037,9 +3082,9 @@ class Ship {
     // Solar charge: builds while deep in sun heat (sunHeatLevel > 0.5), slow decay outside
     if (this.sunHeatLevel > 0.5) {
       const chargeRate = (this.sunHeatLevel - 0.5) * 2; // 0-1 based on depth
-      this.solarCharge = Math.min(1, this.solarCharge + chargeRate * 0.4 * dt);
+      this.solarCharge = Math.min(1, this.solarCharge + chargeRate * 0.7 * dt);
     } else {
-      this.solarCharge = Math.max(0, this.solarCharge - 0.02 * dt); // very slow decay (~50s)
+      this.solarCharge = Math.max(0, this.solarCharge - 0.01 * dt); // very slow decay (~100s)
     }
     // Atmosphere heat: ramp up while near planet at speed, slow decay out
     let maxAtmo = 0, bestAtmoAngle = 0;
@@ -3217,6 +3262,12 @@ class Ship {
       }
     }
     game.achievementTracking.bombKills = bombKills;
+    // Mass kill feedback
+    if (bombKills >= 5) {
+      game.bossMessage = bombKills >= 15 ? 'ANNIHILATION!' : bombKills >= 10 ? 'DEVASTATION!' : 'MULTI-KILL!';
+      game.bossMessageTimer = 2;
+      game.bossMessageColor = wasSolarCharged ? '#fa0' : '#4ef';
+    }
     // Push back enemy projectiles within bomb radius
     if (game.enemyBullets) {
       for (const eb of game.enemyBullets) {
@@ -3436,18 +3487,45 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Solar charge indicator — subtle golden aura when charged
+    // Solar charge indicator — golden aura persists while charged, pulses stronger at high charge
     if (this.solarCharge > 0.1) {
       const sc = this.solarCharge;
-      const pulse = 0.7 + Math.sin((game.time || 0) * 3) * 0.3;
-      const glowR = SHIP_SIZE * (1.8 + sc * 1.5);
-      ctx.globalAlpha = sc * 0.25 * pulse;
-      const solarGlow = ctx.createRadialGradient(0, 0, SHIP_SIZE * 0.3, 0, 0, glowR);
-      solarGlow.addColorStop(0, 'rgba(255,220,80,0.6)');
-      solarGlow.addColorStop(0.4, 'rgba(255,180,40,0.3)');
-      solarGlow.addColorStop(1, 'rgba(255,120,0,0)');
-      ctx.fillStyle = solarGlow;
+      const pulse = 0.6 + Math.sin((game.time || 0) * 2.5) * 0.4;
+      const glowR = SHIP_SIZE * (2.5 + sc * 2.0);
+      // Outer warm haze — always visible when charged
+      ctx.globalAlpha = (0.15 + sc * 0.3) * pulse;
+      const outerGlow = ctx.createRadialGradient(0, 0, SHIP_SIZE * 0.2, 0, 0, glowR);
+      outerGlow.addColorStop(0, 'rgba(255,200,60,0.7)');
+      outerGlow.addColorStop(0.3, 'rgba(255,160,30,0.4)');
+      outerGlow.addColorStop(0.6, 'rgba(255,100,10,0.15)');
+      outerGlow.addColorStop(1, 'rgba(200,60,0,0)');
+      ctx.fillStyle = outerGlow;
       ctx.beginPath(); ctx.arc(0, 0, glowR, 0, Math.PI * 2); ctx.fill();
+      // Inner bright core when highly charged (>50%)
+      if (sc > 0.5) {
+        const innerPulse = 0.5 + Math.sin((game.time || 0) * 4) * 0.5;
+        const innerR = SHIP_SIZE * (1.2 + sc * 0.8);
+        ctx.globalAlpha = (sc - 0.5) * 1.2 * innerPulse;
+        const innerGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, innerR);
+        innerGlow.addColorStop(0, 'rgba(255,255,200,0.9)');
+        innerGlow.addColorStop(0.4, 'rgba(255,220,100,0.5)');
+        innerGlow.addColorStop(1, 'rgba(255,160,40,0)');
+        ctx.fillStyle = innerGlow;
+        ctx.beginPath(); ctx.arc(0, 0, innerR, 0, Math.PI * 2); ctx.fill();
+      }
+      // Orbiting ember sparks when charged
+      if (sc > 0.3) {
+        const t = game.time || 0;
+        ctx.globalAlpha = sc * 0.6;
+        for (let sp = 0; sp < 4; sp++) {
+          const sparkA = t * 2 + sp * Math.PI / 2;
+          const sparkR = SHIP_SIZE * (1.5 + Math.sin(t * 3 + sp) * 0.3);
+          const spx = Math.cos(sparkA) * sparkR;
+          const spy = Math.sin(sparkA) * sparkR;
+          ctx.fillStyle = `rgba(255,${Math.floor(180 + Math.sin(t * 4 + sp) * 60)},${Math.floor(40 + Math.sin(t * 5 + sp) * 30)},0.8)`;
+          ctx.beginPath(); ctx.arc(spx, spy, 1.5 + sc, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.globalAlpha = 1;
     }
 
@@ -3819,8 +3897,8 @@ function createARH(x, y, typeName, generation, planet) {
     vy: Math.sin(a2c + Math.PI/2)*orbV*dir,
     size, hp, maxHp: hp, generation: gen,
     typeName, type,
-    shape: type.shape, baseHue: type.colorH,
-    color: hsl(type.colorH, 50, 40),
+    shape: type.shape, baseHue: type.colorH + Math.floor(Math.random() * 16 - 8),
+    color: hsl(type.colorH + Math.floor(Math.random() * 16 - 8), 45 + Math.floor(Math.random() * 15), 35 + Math.floor(Math.random() * 12)),
     spawnTime: game ? game.time : 0,
     reproduceTimer: REPRODUCE_TIME_BASE + rng(-3,4),
     reproduceProgress: 0,
@@ -3886,7 +3964,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
           game.enemyBullets.push({
             x: inv.x, y: inv.y,
             vx: inv.vx + Math.cos(sa)*120, vy: inv.vy + Math.sin(sa)*120,
-            life: 3.0, damage: 8 + Math.floor(wave/3)
+            life: 3.0, damage: 8 + Math.floor(wave/3),
+            color: '#f84'
           });
         }
         playSound('enemy_shoot');
@@ -4061,10 +4140,15 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
         const a = angle(inv, ship);
         const spread = (1 - accuracy) * 1.0;
         const sa = a + (Math.random()-0.5)*spread;
+        let bulletColor = '#f66';
+        if (inv.typeName === 'stinger') bulletColor = '#f4f';
+        else if (inv.typeName === 'phantom') bulletColor = '#a4f';
+        else if (inv.typeName === 'titan') bulletColor = '#fa4';
         game.enemyBullets.push({
           x: inv.x, y: inv.y,
           vx: inv.vx + Math.cos(sa)*150, vy: inv.vy + Math.sin(sa)*150,
-          life: 2.0, damage: 5 + Math.floor(wave/3)
+          life: 2.0, damage: 5 + Math.floor(wave/3),
+          color: bulletColor
         });
         playSound('enemy_shoot');
         particles.emitDir(inv.x, inv.y, 3, '#f44', a, 0.3, 100, 0.15, 1);
@@ -5237,7 +5321,7 @@ function updateGame(dt) {
         if (inv.isBoss && !inv.nearSun && !inv.critical) {
           dmgMult = 0.15;
         }
-        inv.hp -= b.damage * dmgMult;
+        inv.hp -= b.damage * dmgMult * (1 - (inv._clusterArmor || 0));
         playEnemyHitSound(inv.typeName);
         const a = Math.atan2(b.vy, b.vx);
         inv.vx += Math.cos(a)*25; inv.vy += Math.sin(a)*25;
@@ -5316,7 +5400,7 @@ function updateGame(dt) {
         const sd = dist(m, inv);
         if (sd < TORPEDO_SPLASH) {
           const dmg = m.damage * (1 - sd/TORPEDO_SPLASH);
-          inv.hp -= dmg;
+          inv.hp -= dmg * (1 - (inv._clusterArmor || 0));
           playEnemyHitSound(inv.typeName);
           const nx = (inv.x - m.x)/Math.max(sd,1), ny = (inv.y - m.y)/Math.max(sd,1);
           inv.vx += nx*25; inv.vy += ny*25;
@@ -5362,35 +5446,114 @@ function updateGame(dt) {
   const planet1 = game.planets[0];
   for (const inv of game.invaders) updateARH(inv, dt, planet1, game.ship, game.invaders, game.particles, game.wave);
 
-  // Cluster swarm behavior: densely packed ARH push outward and pulse in sync
-  // This makes clusters expand slowly, giving the player openings to exploit
+  // Cluster swarm behavior: densely packed ARH form emergent "machines"
   if (game.invaders.length > 7) {
+    // Build cluster map
+    const clusterMap = new Map(); // invader index -> cluster id
+    let clusterId = 0;
+    const clusters = []; // { members: [indices], cx, cy, count }
+
     for (let i = 0; i < game.invaders.length; i++) {
+      if (clusterMap.has(i) || game.invaders[i].isBoss) continue;
       const inv = game.invaders[i];
-      if (inv.isBoss) continue;
-      let nearCount = 0, pushX = 0, pushY = 0;
-      for (let j = 0; j < game.invaders.length; j++) {
-        if (i === j) continue;
-        const other = game.invaders[j];
-        const d = dist(inv, other);
-        if (d < 60 && d > 0.1) {
-          nearCount++;
-          // Repulsion force — push apart
-          const nx = (inv.x - other.x) / d;
-          const ny = (inv.y - other.y) / d;
-          pushX += nx * (60 - d) * 0.3;
-          pushY += ny * (60 - d) * 0.3;
+      const members = [i];
+      let cx = inv.x, cy = inv.y;
+
+      for (let j = i + 1; j < game.invaders.length; j++) {
+        if (clusterMap.has(j) || game.invaders[j].isBoss) continue;
+        if (dist(inv, game.invaders[j]) < 80) {
+          members.push(j);
+          cx += game.invaders[j].x;
+          cy += game.invaders[j].y;
         }
       }
-      if (nearCount >= 4) {
-        // Apply gentle expansion force
-        inv.vx += pushX * dt;
-        inv.vy += pushY * dt;
-        // Mark as part of cluster for visual sync
+
+      if (members.length >= 6) {
+        cx /= members.length; cy /= members.length;
+        const id = clusterId++;
+        for (const m of members) clusterMap.set(m, id);
+        clusters.push({ members, cx, cy, count: members.length, id });
+      }
+    }
+
+    for (const cluster of clusters) {
+      const t = game.time || 0;
+
+      // All clusters: gentle expansion pressure
+      for (const idx of cluster.members) {
+        const inv = game.invaders[idx];
+        let pushX = 0, pushY = 0, pushN = 0;
+        for (const jdx of cluster.members) {
+          if (idx === jdx) continue;
+          const other = game.invaders[jdx];
+          const d = dist(inv, other);
+          if (d < 50 && d > 0.1) {
+            pushX += (inv.x - other.x) / d * (50 - d) * 0.2;
+            pushY += (inv.y - other.y) / d * (50 - d) * 0.2;
+            pushN++;
+          }
+        }
+        if (pushN > 0) {
+          inv.vx += pushX * dt;
+          inv.vy += pushY * dt;
+        }
         inv._inCluster = true;
-        inv._clusterSize = nearCount;
-      } else {
-        inv._inCluster = false;
+        inv._clusterSize = cluster.count;
+      }
+
+      // Formation behaviors based on cluster size
+      if (cluster.count >= 12 && game.ship.alive) {
+        // "Siege Ring" — large clusters slowly orbit toward the player's position
+        // The cluster center drifts toward the ship, creating pressure
+        const toShipAngle = Math.atan2(game.ship.y - cluster.cy, game.ship.x - cluster.cx);
+        const driftForce = 8 + cluster.count * 0.5;
+        for (const idx of cluster.members) {
+          const inv = game.invaders[idx];
+          inv.vx += Math.cos(toShipAngle) * driftForce * dt;
+          inv.vy += Math.sin(toShipAngle) * driftForce * dt;
+        }
+      }
+
+      if (cluster.count >= 8) {
+        // "Pulse Shield" — clustered ARH gain a small damage reduction
+        // (marked on each invader, applied in damage code)
+        for (const idx of cluster.members) {
+          game.invaders[idx]._clusterArmor = Math.min(0.3, cluster.count * 0.02); // up to 30% reduction
+        }
+      }
+
+      if (cluster.count >= 15) {
+        // "Hive Volley" — very large clusters occasionally fire a synchronized burst
+        // Track per-cluster timer via first member
+        const leader = game.invaders[cluster.members[0]];
+        if (!leader._hiveVolleyTimer) leader._hiveVolleyTimer = 5 + Math.random() * 3;
+        leader._hiveVolleyTimer -= dt;
+        if (leader._hiveVolleyTimer <= 0 && game.ship.alive) {
+          leader._hiveVolleyTimer = 6 + Math.random() * 4; // 6-10 second cooldown
+          // 3-5 members fire toward player
+          const shooters = cluster.members.slice(0, Math.min(5, cluster.members.length));
+          for (const idx of shooters) {
+            const inv = game.invaders[idx];
+            const a = Math.atan2(game.ship.y - inv.y, game.ship.x - inv.x);
+            const spread = (Math.random() - 0.5) * 0.3;
+            game.enemyBullets.push({
+              x: inv.x, y: inv.y,
+              vx: inv.vx + Math.cos(a + spread) * 130,
+              vy: inv.vy + Math.sin(a + spread) * 130,
+              life: 2.5, damage: 6, color: '#fff' // white volley bullets — distinct
+            });
+          }
+          // Visual: brief flash at cluster center
+          game.particles.emit(cluster.cx, cluster.cy, 10, '#fff', 100, 0.3, 2);
+        }
+      }
+    }
+
+    // Clear cluster armor for non-clustered
+    for (let i = 0; i < game.invaders.length; i++) {
+      if (!clusterMap.has(i)) {
+        game.invaders[i]._inCluster = false;
+        game.invaders[i]._clusterArmor = 0;
       }
     }
   }
@@ -5777,11 +5940,13 @@ function drawGame() {
   // Enemy bullets
   for (const b of game.enemyBullets) {
     const sx = b.x - cam.x + canvas.width/2, sy = b.y - cam.y + canvas.height/2;
-    ctx.fillStyle = getPalette().enemyBullet;
-    ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI*2); ctx.fill();
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = 'rgba(100,0,0,1)';
-    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI*2); ctx.fill();
+    const ebColor = b.color || getPalette().enemyBullet;
+    ctx.fillStyle = ebColor;
+    ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI*2); ctx.fill();
+    // Bright glow halo for visibility
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = ebColor;
+    ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
   }
 
@@ -6270,6 +6435,41 @@ function toggleStartLeaderboard() {
     if (lb.classList.contains('show')) {
       loadLeaderboard();
     }
+  }
+}
+
+function togglePauseLeaderboard() {
+  const el = document.getElementById('pause-leaderboard');
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    // Reuse the leaderboard rendering
+    let html = '<table style="font-size:11px;color:#8cf;font-family:\'Courier New\',monospace;border-collapse:collapse;width:100%;max-width:500px;margin:0 auto;">';
+    html += '<thead><tr><th style="color:#fa8;text-align:left;padding:4px;">RANK</th><th style="color:#fa8;text-align:left;padding:4px;">NAME</th><th style="color:#fa8;text-align:right;padding:4px;">SCORE</th><th style="color:#fa8;text-align:center;padding:4px;">WAVE</th></tr></thead><tbody>';
+    const scores = JSON.parse(localStorage.getItem('orbital_siege_scores') || '[]');
+    if (scores.length === 0) {
+      html += '<tr><td colspan="4" style="color:#666;padding:8px;text-align:center;">No scores yet</td></tr>';
+    } else {
+      scores.slice(0, 10).forEach((s, i) => {
+        html += `<tr><td style="padding:3px;color:#fa8;">${i+1}</td><td style="padding:3px;">${s.name || '???'}</td><td style="padding:3px;text-align:right;">${s.score || 0}</td><td style="padding:3px;text-align:center;">${s.wave || '?'}</td></tr>`;
+      });
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+    // Also try Firebase scores
+    if (typeof fetchLeaderboard === 'function') fetchLeaderboard().then(fbScores => {
+      if (fbScores && fbScores.length > 0) {
+        let fbHtml = '<div style="color:#4af;margin-top:8px;font-size:10px;letter-spacing:2px;">GLOBAL RANKINGS</div>';
+        fbHtml += '<table style="font-size:11px;color:#8cf;font-family:\'Courier New\',monospace;border-collapse:collapse;width:100%;max-width:500px;margin:4px auto 0;">';
+        fbHtml += '<thead><tr><th style="color:#fa8;text-align:left;padding:4px;">RANK</th><th style="color:#fa8;text-align:left;padding:4px;">NAME</th><th style="color:#fa8;text-align:right;padding:4px;">SCORE</th><th style="color:#fa8;text-align:center;padding:4px;">WAVE</th></tr></thead><tbody>';
+        fbScores.slice(0, 10).forEach((s, i) => {
+          fbHtml += `<tr><td style="padding:3px;color:#fa8;">${i+1}</td><td style="padding:3px;">${s.name || '???'}</td><td style="padding:3px;text-align:right;">${s.score || 0}</td><td style="padding:3px;text-align:center;">${s.wave || '?'}</td></tr>`;
+        });
+        fbHtml += '</tbody></table>';
+        el.innerHTML += fbHtml;
+      }
+    }).catch(() => {});
+  } else {
+    el.style.display = 'none';
   }
 }
 
