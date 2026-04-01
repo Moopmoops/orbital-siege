@@ -1165,7 +1165,7 @@ const BOSS_TIERS = {
 const MECHANIC_LABELS = {
   dash: 'DASH',
   minion_spawn: 'SPAWN MINIONS',
-  gravity_well: 'GRAVITY WELL',
+  // gravity_well removed
   charge: 'CHARGE',
   shield: 'SHIELD',
   split: 'MITOSIS',
@@ -1179,7 +1179,7 @@ const MECHANIC_LABELS = {
 function isMechanicActive(boss, mechId) {
   if (mechId === 'dash' && boss.dashCooldown > 3.0) return true; // just dashed
   if (mechId === 'minion_spawn' && boss.minionCooldown > 5.0) return true; // just spawned
-  if (mechId === 'gravity_well' && boss.gravityActive > 0) return true;
+  // gravity_well removed
   if (mechId === 'charge' && boss.chargeTime > 0) return true;
   if (mechId === 'shield' && boss.shielded > 0) return true;
   if (mechId === 'split' && boss.hasSplit) return true;
@@ -1221,27 +1221,7 @@ const BOSS_MECHANICS = {
       }
     }
   },
-  gravity_well: {
-    cooldown: 5.0,
-    apply(boss, dt, game) {
-      if (!boss.gravityCooldown) boss.gravityCooldown = 0;
-      boss.gravityCooldown -= dt;
-      if (boss.gravityCooldown <= 0 && Math.random() < 0.015) {
-        boss.gravityActive = 1.5;
-        boss.gravityCooldown = this.cooldown;
-      }
-      if (boss.gravityActive) {
-        const dx = game.ship.x - boss.x;
-        const dy = game.ship.y - boss.y;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < 250) {
-          game.ship.vx *= 0.95;
-          game.ship.vy *= 0.95;
-        }
-        boss.gravityActive -= dt;
-      }
-    }
-  },
+  // gravity_well mechanic removed
   charge: {
     cooldown: 5.0,
     apply(boss, dt, game) {
@@ -1405,39 +1385,39 @@ const BOSS_DEFINITIONS = [
 
   // TIER 2 (18 bosses) - waves 20-35
   { id: 'obliterator', name: 'OBLITERATOR', tier: 2, hpMult: 1.3, size: 40, colorH: 20, colorH2: 30, mechanics: ['charge', 'minion_spawn'], visual: { shape: 'octagon', aura: 'flame', internal: 'core' }, desc: 'Siege Hammer' },
-  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['gravity_well', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
+  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['area_deny', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
   { id: 'vortex_lord', name: 'VORTEX LORD', tier: 2, hpMult: 1.4, size: 41, colorH: 270, colorH2: 280, mechanics: ['dash', 'laser_sweep'], visual: { shape: 'hex', aura: 'electric', internal: 'vortex' }, desc: 'Reality Ripper' },
   { id: 'doomcaller', name: 'DOOMCALLER', tier: 2, hpMult: 1.2, size: 39, colorH: 0, colorH2: 10, mechanics: ['minion_spawn', 'area_deny'], visual: { shape: 'star6', aura: 'rings', internal: 'lattice' }, desc: 'Herald of Ruin' },
   { id: 'sovereign', name: 'SOVEREIGN', tier: 2, hpMult: 1.6, size: 43, colorH: 200, colorH2: 210, mechanics: ['shield', 'charge'], visual: { shape: 'octagon', aura: 'glow', internal: 'eye' }, desc: 'Absolute Ruler' },
   { id: 'ravager', name: 'RAVAGER', tier: 2, hpMult: 1.4, size: 40, colorH: 30, colorH2: 40, mechanics: ['dash', 'minion_spawn'], visual: { shape: 'diamond', aura: 'spiky', internal: 'vortex' }, desc: 'World Eater' },
-  { id: 'null_entity', name: 'NULL ENTITY', tier: 2, hpMult: 1.3, size: 40, colorH: 240, colorH2: 260, mechanics: ['gravity_well', 'laser_sweep'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Consuming Void' },
+  { id: 'null_entity', name: 'NULL ENTITY', tier: 2, hpMult: 1.3, size: 40, colorH: 240, colorH2: 260, mechanics: ['shield', 'laser_sweep'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Consuming Void' },
   { id: 'tyrant', name: 'TYRANT', tier: 2, hpMult: 1.5, size: 42, colorH: 10, colorH2: 20, mechanics: ['charge', 'area_deny'], visual: { shape: 'hex', aura: 'flame', internal: 'core' }, desc: 'Iron Despot' },
   { id: 'incinerator', name: 'INCINERATOR', tier: 2, hpMult: 1.35, size: 41, colorH: 20, colorH2: 25, mechanics: ['minion_spawn', 'laser_sweep'], visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Infernal Engine' },
   { id: 'apex', name: 'APEX PREDATOR', tier: 2, hpMult: 1.45, size: 41, colorH: 50, colorH2: 60, mechanics: ['dash', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Evolutionary Peak' },
-  { id: 'scream', name: 'SCREAM', tier: 2, hpMult: 1.2, size: 39, colorH: 280, colorH2: 290, mechanics: ['gravity_well', 'minion_spawn'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Psychic Horror' },
+  { id: 'scream', name: 'SCREAM', tier: 2, hpMult: 1.2, size: 39, colorH: 280, colorH2: 290, mechanics: ['laser_sweep', 'minion_spawn'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Psychic Horror' },
   { id: 'nightmare', name: 'NIGHTMARE', tier: 2, hpMult: 1.3, size: 40, colorH: 260, colorH2: 270, mechanics: ['charge', 'laser_sweep'], visual: { shape: 'octagon', aura: 'pulse', internal: 'chambers' }, desc: 'Terror Manifest' },
   { id: 'cataclysm', name: 'CATACLYSM', tier: 2, hpMult: 1.55, size: 42, colorH: 0, colorH2: 15, mechanics: ['area_deny', 'shield'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'World Ender' },
-  { id: 'eclipse', name: 'ECLIPSE', tier: 2, hpMult: 1.4, size: 40, colorH: 270, colorH2: 280, mechanics: ['dash', 'gravity_well'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Darkness Bringer' },
+  { id: 'eclipse', name: 'ECLIPSE', tier: 2, hpMult: 1.4, size: 40, colorH: 270, colorH2: 280, mechanics: ['dash', 'area_deny'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Darkness Bringer' },
   { id: 'colossus', name: 'COLOSSUS', tier: 2, hpMult: 1.65, size: 43, colorH: 30, colorH2: 35, mechanics: ['shield', 'minion_spawn'], visual: { shape: 'circle', aura: 'glow', internal: 'eye' }, desc: 'Titanic Abomination' },
   { id: 'venom_lord', name: 'VENOM LORD', tier: 2, hpMult: 1.35, size: 40, colorH: 120, colorH2: 135, mechanics: ['minion_spawn', 'laser_sweep'], visual: { shape: 'diamond', aura: 'spiky', internal: 'chambers' }, desc: 'Toxin Master' },
   { id: 'spectral_king', name: 'SPECTRAL KING', tier: 2, hpMult: 1.25, size: 39, colorH: 240, colorH2: 255, mechanics: ['dash', 'area_deny'], visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Phantom Monarch' },
-  { id: 'storm', name: 'STORM', tier: 2, hpMult: 1.4, size: 41, colorH: 200, colorH2: 215, mechanics: ['charge', 'gravity_well'], visual: { shape: 'hex', aura: 'electric', internal: 'lattice' }, desc: 'Tempest Force' },
+  { id: 'storm', name: 'STORM', tier: 2, hpMult: 1.4, size: 41, colorH: 200, colorH2: 215, mechanics: ['charge', 'laser_sweep'], visual: { shape: 'hex', aura: 'electric', internal: 'lattice' }, desc: 'Tempest Force' },
 
   // TIER 3 (16 bosses) - waves 40+
   { id: 'apocalypse', name: 'APOCALYPSE', tier: 3, hpMult: 2.0, size: 50, colorH: 0, colorH2: 20, mechanics: ['charge', 'minion_spawn', 'area_deny'], visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'End Times Incarnate' },
-  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['gravity_well', 'laser_sweep', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
+  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['area_deny', 'laser_sweep', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
   { id: 'entropy', name: 'ENTROPY', tier: 3, hpMult: 2.1, size: 51, colorH: 240, colorH2: 260, mechanics: ['split', 'minion_spawn', 'area_deny'], visual: { shape: 'hex', aura: 'electric', internal: 'core' }, desc: 'Decay Absolute' },
   { id: 'nemesis', name: 'NEMESIS', tier: 3, hpMult: 2.3, size: 53, colorH: 30, colorH2: 40, mechanics: ['charge', 'laser_sweep', 'shield'], visual: { shape: 'star6', aura: 'glow', internal: 'lattice' }, desc: 'Ultimate Adversary' },
-  { id: 'abomination', name: 'ABOMINATION', tier: 3, hpMult: 2.0, size: 50, colorH: 120, colorH2: 140, mechanics: ['minion_spawn', 'area_deny', 'gravity_well'], visual: { shape: 'diamond', aura: 'spiky', internal: 'eye' }, desc: 'Twisted Flesh' },
+  { id: 'abomination', name: 'ABOMINATION', tier: 3, hpMult: 2.0, size: 50, colorH: 120, colorH2: 140, mechanics: ['minion_spawn', 'area_deny', 'dash'], visual: { shape: 'diamond', aura: 'spiky', internal: 'eye' }, desc: 'Twisted Flesh' },
   { id: 'omega', name: 'OMEGA', tier: 3, hpMult: 2.4, size: 54, colorH: 200, colorH2: 220, mechanics: ['shield', 'charge', 'laser_sweep'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Final Threat' },
-  { id: 'devourer_prime', name: 'DEVOURER PRIME', tier: 3, hpMult: 2.15, size: 51, colorH: 20, colorH2: 30, mechanics: ['dash', 'minion_spawn', 'gravity_well'], visual: { shape: 'octagon', aura: 'flame', internal: 'chambers' }, desc: 'Insatiable Hunger' },
+  { id: 'devourer_prime', name: 'DEVOURER PRIME', tier: 3, hpMult: 2.15, size: 51, colorH: 20, colorH2: 30, mechanics: ['dash', 'minion_spawn', 'area_deny'], visual: { shape: 'octagon', aura: 'flame', internal: 'chambers' }, desc: 'Insatiable Hunger' },
   { id: 'nightmare_lord', name: 'NIGHTMARE LORD', tier: 3, hpMult: 2.2, size: 52, colorH: 270, colorH2: 290, mechanics: ['laser_sweep', 'area_deny', 'shield'], visual: { shape: 'hex', aura: 'pulse', internal: 'lattice' }, desc: 'Endless Terror' },
-  { id: 'world_breaker', name: 'WORLD BREAKER', tier: 3, hpMult: 2.25, size: 52, colorH: 10, colorH2: 25, mechanics: ['charge', 'minion_spawn', 'gravity_well'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Planetary Destroyer' },
+  { id: 'world_breaker', name: 'WORLD BREAKER', tier: 3, hpMult: 2.25, size: 52, colorH: 10, colorH2: 25, mechanics: ['charge', 'minion_spawn', 'shield'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Planetary Destroyer' },
   { id: 'infinity_core', name: 'INFINITY CORE', tier: 3, hpMult: 2.3, size: 53, colorH: 240, colorH2: 265, mechanics: ['split', 'laser_sweep', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Boundless Power' },
-  { id: 'dark_sovereign', name: 'DARK SOVEREIGN', tier: 3, hpMult: 2.35, size: 53, colorH: 290, colorH2: 310, mechanics: ['gravity_well', 'minion_spawn', 'area_deny'], visual: { shape: 'circle', aura: 'rings', internal: 'chambers' }, desc: 'Supreme Evil' },
+  { id: 'dark_sovereign', name: 'DARK SOVEREIGN', tier: 3, hpMult: 2.35, size: 53, colorH: 290, colorH2: 310, mechanics: ['laser_sweep', 'minion_spawn', 'area_deny'], visual: { shape: 'circle', aura: 'rings', internal: 'chambers' }, desc: 'Supreme Evil' },
   { id: 'cosmic_terror', name: 'COSMIC TERROR', tier: 3, hpMult: 2.1, size: 51, colorH: 200, colorH2: 215, mechanics: ['dash', 'laser_sweep', 'shield'], visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Universe Threat' },
-  { id: 'infernal_tyrant', name: 'INFERNAL TYRANT', tier: 3, hpMult: 2.2, size: 52, colorH: 20, colorH2: 35, mechanics: ['charge', 'area_deny', 'gravity_well'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'Burning Despot' },
-  { id: 'genesis_killer', name: 'GENESIS KILLER', tier: 3, hpMult: 2.25, size: 52, colorH: 100, colorH2: 120, mechanics: ['minion_spawn', 'laser_sweep', 'gravity_well'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Life Extinguisher' },
+  { id: 'infernal_tyrant', name: 'INFERNAL TYRANT', tier: 3, hpMult: 2.2, size: 52, colorH: 20, colorH2: 35, mechanics: ['charge', 'area_deny', 'shield'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'Burning Despot' },
+  { id: 'genesis_killer', name: 'GENESIS KILLER', tier: 3, hpMult: 2.25, size: 52, colorH: 100, colorH2: 120, mechanics: ['minion_spawn', 'laser_sweep', 'dash'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Life Extinguisher' },
   { id: 'void_lord', name: 'VOID LORD', tier: 3, hpMult: 2.4, size: 54, colorH: 260, colorH2: 280, mechanics: ['split', 'area_deny', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Abyssal Master' },
   { id: 'harbinger', name: 'HARBINGER', tier: 3, hpMult: 2.3, size: 53, colorH: 270, colorH2: 290, mechanics: ['charge', 'laser_sweep', 'minion_spawn'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Doom\'s Herald' },
 ];
@@ -3282,17 +3262,19 @@ class Ship {
         if (inv.hp <= 0) {
           emitDeathFlash(inv, particles);
           playSound('explode'); game.score += inv.points; game.kills++;
+          registerKill(inv.x, inv.y, inv.points, inv);
           bombKills++;
           invaders.splice(i, 1);
         }
       }
     }
     game.achievementTracking.bombKills = bombKills;
-    // Mass kill feedback
-    if (bombKills >= 5) {
-      game.bossMessage = bombKills >= 15 ? 'ANNIHILATION!' : bombKills >= 10 ? 'DEVASTATION!' : 'MULTI-KILL!';
+    // Mass kill feedback — overrides combo messages for big bombs
+    if (bombKills >= 4) {
+      game.bossMessage = bombKills >= 15 ? 'ANNIHILATION!' : bombKills >= 10 ? 'DEVASTATION!' : bombKills >= 7 ? 'MULTI-KILL!' : 'QUAD KILL!';
       game.bossMessageTimer = 2;
       game.bossMessageColor = wasSolarCharged ? '#fa0' : '#4ef';
+      if (bombKills >= 7) game.hitStop = 0.06;
     }
     // Push back enemy projectiles within bomb radius
     if (game.enemyBullets) {
@@ -3803,7 +3785,7 @@ function chainReaction(deadInv, invaders, particles) {
 
       if (other.hp <= 0 && !other.isBoss) {
         emitDeathFlash(other, particles);
-        if (game) { game.score += other.points; game.kills++; }
+        if (game) { game.score += other.points; game.kills++; registerKill(other.x, other.y, other.points, other); }
         invaders.splice(i, 1);
         chainKills++;
         // Chain kills do NOT trigger further chains — prevents cascade wipeout
@@ -4049,9 +4031,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     if (inv.chargeTime && inv.chargeTime > 0) {
       // Charging
     }
-    if (inv.gravityActive && inv.gravityActive > 0) {
-      // Gravity well
-    }
+    // gravity_well visual removed
   }
 
   // Gravity from all bodies
@@ -4641,22 +4621,7 @@ function drawARH(ctx, inv, cam) {
         ctx.stroke();
       }
     }
-    // Gravity well — inward arrows
-    if (inv.gravityActive && inv.gravityActive > 0) {
-      ctx.fillStyle = `rgba(150,100,255,${0.4})`;
-      for (let i = 0; i < 4; i++) {
-        const a = (i/4)*Math.PI*2;
-        const r = s * 1.4;
-        ctx.save();
-        ctx.translate(Math.cos(a)*r, Math.sin(a)*r);
-        ctx.rotate(a + Math.PI);
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(-4, 6); ctx.lineTo(4, 6); ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-      }
-    }
+    // gravity_well visual removed
     // Heal active — green glow
     if (inv.healActive && inv.healActive > 0) {
       ctx.fillStyle = `rgba(0,255,0,${0.2})`;
@@ -5102,7 +5067,7 @@ function initGame() {
     cam: { x: ship.x, y: ship.y },
     score: 0, kills: 0, wave: 1, deaths: 0,
     lives: gameMode === 'ranked' ? 5 : Infinity,
-    waveTimer: 5, waveSpawnCount: 18,
+    waveTimer: 5, waveSpawnCount: 30,
     time: 0, respawnMsg: null,
     boss: null, bossMessage: null, bossMessageTimer: 0,
     bossSubMessage: null, bossSubMessageTimer: 0,
@@ -5121,6 +5086,10 @@ function initGame() {
       bodiesOrbited: new Set(),
     },
     unlockedAchievements: [],
+    // Kill combo system
+    combo: 0, comboTimer: 0, comboMax: 0,
+    scorePopups: [], // { x, y, text, color, life, vy }
+    hitStop: 0, // brief time slowdown for big moments
     hintState: {
       orbitStuckTimer: 0, orbitStuckBody: null,
       thrustAccumTimer: 0, unstableTimer: 0,
@@ -5130,6 +5099,88 @@ function initGame() {
   };
   spawnWave();
 }
+
+// --- Kill combo & score popup system ---
+function registerKill(x, y, basePoints, inv) {
+  game.combo++;
+  game.comboTimer = 2.0; // 2 seconds to chain
+  if (game.combo > game.comboMax) game.comboMax = game.combo;
+
+  // Combo multiplier: 1x for first, scaling up
+  const mult = game.combo >= 20 ? 4.0 : game.combo >= 10 ? 3.0 : game.combo >= 5 ? 2.0 : game.combo >= 3 ? 1.5 : 1.0;
+  const bonusPoints = Math.floor(basePoints * (mult - 1));
+  game.score += bonusPoints; // base points already added at kill site
+
+  // Floating score popup
+  let text = `+${basePoints}`;
+  let color = '#fff';
+  if (game.combo >= 3) {
+    text = `+${basePoints + bonusPoints}`;
+    color = game.combo >= 20 ? '#f4f' : game.combo >= 10 ? '#fa0' : game.combo >= 5 ? '#4ef' : '#ff4';
+  }
+  game.scorePopups.push({ x, y, text, color, life: 1.2, vy: -60 });
+
+  // Combo milestone messages (small satisfying moments)
+  if (game.combo === 5) {
+    game.bossMessage = 'KILL STREAK!';
+    game.bossMessageTimer = 1.5;
+    game.bossMessageColor = '#4ef';
+  } else if (game.combo === 10) {
+    game.bossMessage = 'RAMPAGE!';
+    game.bossMessageTimer = 1.8;
+    game.bossMessageColor = '#fa0';
+    game.shake.add(3);
+  } else if (game.combo === 20) {
+    game.bossMessage = 'UNSTOPPABLE!';
+    game.bossMessageTimer = 2.0;
+    game.bossMessageColor = '#f4f';
+    game.shake.add(5);
+  } else if (game.combo === 30) {
+    game.bossMessage = 'GODLIKE!';
+    game.bossMessageTimer = 2.5;
+    game.bossMessageColor = '#fff';
+    game.shake.add(8);
+  } else if (game.combo > 0 && game.combo % 25 === 0 && game.combo > 30) {
+    game.bossMessage = `${game.combo}x COMBO!`;
+    game.bossMessageTimer = 2.0;
+    game.bossMessageColor = '#f4f';
+    game.shake.add(6);
+  }
+
+  // Brief hitstop on every 5th combo kill (subtle slow-mo)
+  if (game.combo >= 5 && game.combo % 5 === 0) {
+    game.hitStop = 0.04; // 40ms freeze
+  }
+}
+
+function updateScorePopups(dt) {
+  for (let i = game.scorePopups.length - 1; i >= 0; i--) {
+    const p = game.scorePopups[i];
+    p.life -= dt;
+    p.y += p.vy * dt;
+    p.vy *= 0.97; // slow down
+    if (p.life <= 0) game.scorePopups.splice(i, 1);
+  }
+}
+
+function drawScorePopups(ctx, cam) {
+  for (const p of game.scorePopups) {
+    const sx = p.x - cam.x + ctx.canvas.width / 2;
+    const sy = p.y - cam.y + ctx.canvas.height / 2;
+    const alpha = Math.min(1, p.life / 0.3);
+    const scale = 1 + (1 - Math.min(1, p.life / 1.0)) * 0.3;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = `bold ${Math.floor(12 * scale)}px 'Courier New',monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 6;
+    ctx.fillText(p.text, sx, sy);
+    ctx.restore();
+  }
+}
+// --- End kill combo system ---
 
 function spawnWave() {
   // Track max wave for palette unlocks
@@ -5150,7 +5201,7 @@ function spawnWave() {
 
   expandSystem(game.wave);
 
-  const count = game.waveSpawnCount + game.wave*2;
+  const count = game.waveSpawnCount + game.wave*4;
   const types = getWaveTypes(game.wave);
 
   // Boss wave every 5 waves starting at wave 5
@@ -5278,6 +5329,15 @@ function updateGame(dt) {
   if (!gameRunning || !game) return;
   game.time += dt;
   game.star.update(dt);
+
+  // Kill combo timer
+  if (game.comboTimer > 0) {
+    game.comboTimer -= dt;
+    if (game.comboTimer <= 0) {
+      game.combo = 0;
+    }
+  }
+  updateScorePopups(dt);
   updateWeaponDrone(dt);
 
   // Planets orbit the star
@@ -5366,14 +5426,15 @@ function updateGame(dt) {
           emitDeathFlash(inv, game.particles);
           if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
           playSound('explode'); game.score += inv.points; game.kills++;
+          registerKill(inv.x, inv.y, inv.points, inv);
           if (inv.isBoss) {
             game.boss = null;
             game.bossMessage = `${inv.bossName || 'OVERLORD'} DESTROYED!`;
             game.bossMessageTimer = 3;
             game.shake.add(15);
             playSound('explode_big');
-            // Bonus score
             game.score += 500;
+            game.hitStop = 0.12; // satisfying boss kill freeze
           }
           game.shake.add(3.5); game.invaders.splice(j, 1);
         }
@@ -5444,6 +5505,7 @@ function updateGame(dt) {
             emitDeathFlash(inv, game.particles);
             if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
             game.score += inv.points; game.kills++;
+            registerKill(inv.x, inv.y, inv.points, inv);
             game.invaders.splice(j, 1);
           }
         }
@@ -5593,6 +5655,7 @@ function updateGame(dt) {
       const inv = game.invaders[i];
       game.particles.emit(inv.x, inv.y, 20, inv.color, 250, 0.5, 3);
       playSound('explode'); game.score += inv.points; game.kills++;
+      registerKill(inv.x, inv.y, inv.points, inv);
       // Track achievement progress
       if (!game.achievementTracking.firstKill) {
         game.achievementTracking.firstKill = true;
@@ -5638,7 +5701,7 @@ function updateGame(dt) {
         if (swapOverlayVisible) { swapOverlayVisible = false; document.getElementById('ship-swap-overlay').classList.remove('show'); }
       }
       game.wave++;
-      game.waveTimer = 8;
+      game.waveTimer = 5;
       spawnWave();
       game.ship.hp = Math.min(game.ship.maxHp, game.ship.hp + 25);
     }
@@ -6114,6 +6177,31 @@ function drawGame() {
     ctx.restore();
   }
 
+  // Score popups (floating +score at kill locations)
+  const drawCam = { x: game.cam.x + game.shake.offsetX, y: game.cam.y + game.shake.offsetY };
+  drawScorePopups(ctx, drawCam);
+
+  // Combo counter HUD
+  if (game.combo >= 3) {
+    ctx.save();
+    const comboAlpha = Math.min(1, game.comboTimer / 0.5);
+    ctx.globalAlpha = comboAlpha;
+    const comboColor = game.combo >= 20 ? '#f4f' : game.combo >= 10 ? '#fa0' : game.combo >= 5 ? '#4ef' : '#ff4';
+    ctx.font = `bold ${18 + Math.min(game.combo, 30)}px 'Courier New',monospace`;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = comboColor;
+    ctx.shadowColor = comboColor;
+    ctx.shadowBlur = 12;
+    ctx.fillText(`${game.combo}x COMBO`, canvas.width - 20, canvas.height * 0.35);
+    // Combo multiplier
+    const mult = game.combo >= 20 ? '4.0' : game.combo >= 10 ? '3.0' : game.combo >= 5 ? '2.0' : '1.5';
+    ctx.font = `14px 'Courier New',monospace`;
+    ctx.fillStyle = '#aaa';
+    ctx.shadowBlur = 0;
+    ctx.fillText(`${mult}x SCORE`, canvas.width - 20, canvas.height * 0.35 + 22);
+    ctx.restore();
+  }
+
   // Achievement popups — celebratory style
   if (game.unlockedAchievements && game.unlockedAchievements.length > 0) {
     for (let i = game.unlockedAchievements.length - 1; i >= 0; i--) {
@@ -6554,10 +6642,15 @@ function submitHighScore() {
 // --- Loop ---
 let lastTime = 0;
 function gameLoop(time) {
-  const dt = Math.min((time - lastTime)/1000, 0.05);
+  let dt = Math.min((time - lastTime)/1000, 0.05);
   lastTime = time;
   if (gameRunning) {
     if (!gamePaused) {
+      // Hitstop — brief time freeze for big moments
+      if (game && game.hitStop > 0) {
+        game.hitStop -= dt;
+        dt *= 0.05; // near-freeze during hitstop
+      }
       try { updateGame(dt); } catch(e) { console.error('updateGame error:', e); }
     }
     try { drawGame(); } catch(e) {
