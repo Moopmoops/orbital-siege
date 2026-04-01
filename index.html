@@ -4129,6 +4129,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
         }
         if (!inv.isBoss || !inv.critical) {
           emitDeathFlash(inv, game.particles);
+          if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
           playSound('explode');
         }
         inv.hp = -1000;
@@ -5220,6 +5221,7 @@ function updateGame(dt) {
 
         if (inv.hp <= 0) {
           emitDeathFlash(inv, game.particles);
+          if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
           playSound('explode'); game.score += inv.points; game.kills++;
           if (inv.isBoss) {
             game.boss = null;
@@ -5297,6 +5299,7 @@ function updateGame(dt) {
 
           if (inv.hp <= 0) {
             emitDeathFlash(inv, game.particles);
+            if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
             game.score += inv.points; game.kills++;
             game.invaders.splice(j, 1);
           }
@@ -5328,6 +5331,40 @@ function updateGame(dt) {
   // Invaders
   const planet1 = game.planets[0];
   for (const inv of game.invaders) updateARH(inv, dt, planet1, game.ship, game.invaders, game.particles, game.wave);
+
+  // Cluster swarm behavior: densely packed ARH push outward and pulse in sync
+  // This makes clusters expand slowly, giving the player openings to exploit
+  if (game.invaders.length > 7) {
+    for (let i = 0; i < game.invaders.length; i++) {
+      const inv = game.invaders[i];
+      if (inv.isBoss) continue;
+      let nearCount = 0, pushX = 0, pushY = 0;
+      for (let j = 0; j < game.invaders.length; j++) {
+        if (i === j) continue;
+        const other = game.invaders[j];
+        const d = dist(inv, other);
+        if (d < 60 && d > 0.1) {
+          nearCount++;
+          // Repulsion force — push apart
+          const nx = (inv.x - other.x) / d;
+          const ny = (inv.y - other.y) / d;
+          pushX += nx * (60 - d) * 0.3;
+          pushY += ny * (60 - d) * 0.3;
+        }
+      }
+      if (nearCount >= 4) {
+        // Apply gentle expansion force
+        inv.vx += pushX * dt;
+        inv.vy += pushY * dt;
+        // Mark as part of cluster for visual sync
+        inv._inCluster = true;
+        inv._clusterSize = nearCount;
+      } else {
+        inv._inCluster = false;
+      }
+    }
+  }
+
   // Remove dead
   for (let i = game.invaders.length-1; i >= 0; i--) {
     if (game.invaders[i].hp <= 0) {
