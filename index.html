@@ -1248,7 +1248,20 @@ const BOSS_MECHANICS = {
       if (!boss.chargeCooldown) boss.chargeCooldown = 0;
       boss.chargeCooldown -= dt;
       if (boss.chargeCooldown <= 0 && Math.random() < 0.015) {
-        const angle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        let angle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        // Sun avoidance: don't charge if path goes through the sun
+        if (game.star) {
+          const chargeEndX = boss.x + Math.cos(angle) * 200 * 0.8;
+          const chargeEndY = boss.y + Math.sin(angle) * 200 * 0.8;
+          const dToStar = Math.hypot(chargeEndX - game.star.x, chargeEndY - game.star.y);
+          if (dToStar < game.star.radius + 150) {
+            // Deflect charge angle away from sun
+            const sunAngle = Math.atan2(game.star.y - boss.y, game.star.x - boss.x);
+            const diff = angle - sunAngle;
+            const normalDiff = ((diff + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+            angle = sunAngle + (normalDiff >= 0 ? Math.PI / 2 : -Math.PI / 2);
+          }
+        }
         boss.chargeVx = Math.cos(angle) * 200;
         boss.chargeVy = Math.sin(angle) * 200;
         boss.chargeTime = 0.8;
@@ -1258,6 +1271,13 @@ const BOSS_MECHANICS = {
         boss.chargeTime -= dt;
         boss.vx = boss.chargeVx;
         boss.vy = boss.chargeVy;
+        // Emergency sun brake during charge
+        if (game.star) {
+          const dToStar = Math.hypot(boss.x - game.star.x, boss.y - game.star.y);
+          if (dToStar < game.star.radius + 100) {
+            boss.chargeTime = 0; // abort charge
+          }
+        }
       }
     }
   },
@@ -2865,12 +2885,12 @@ class Moon {
     const sx = this.x - cam.x + canvas.width/2, sy = this.y - cam.y + canvas.height/2;
     const R = this.radius;
 
-    // Atmospheric glow (subtle, smaller than planets)
-    const ag = ctx.createRadialGradient(sx, sy, R*0.8, sx, sy, R*1.6);
-    ag.addColorStop(0, this.color + '20');
+    // Atmospheric glow (very subtle for moons)
+    const ag = ctx.createRadialGradient(sx, sy, R*0.9, sx, sy, R*1.3);
+    ag.addColorStop(0, this.color + '10');
     ag.addColorStop(1, this.color + '00');
     ctx.fillStyle = ag;
-    ctx.beginPath(); ctx.arc(sx, sy, R*1.6, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx, sy, R*1.3, 0, Math.PI*2); ctx.fill();
 
     // Texture — clipped to moon body
     ctx.save();
@@ -2889,21 +2909,21 @@ class Moon {
       const shy = sy - Math.sin(sunAngle) * shadowOffset;
       const sg = ctx.createRadialGradient(shx, shy, R*0.2, shx, shy, R*1.2);
       sg.addColorStop(0, 'rgba(0,0,0,0)');
-      sg.addColorStop(0.6, 'rgba(0,0,0,0.15)');
-      sg.addColorStop(1, 'rgba(0,0,0,0.5)');
+      sg.addColorStop(0.5, 'rgba(0,0,0,0.3)');
+      sg.addColorStop(1, 'rgba(0,0,0,0.65)');
       ctx.fillStyle = sg;
       ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.fill();
       ctx.restore();
     }
 
-    // Specular highlight
-    ctx.globalAlpha = 0.25;
-    const hlG = ctx.createRadialGradient(sx - R*0.3, sy - R*0.3, 0, sx, sy, R);
+    // Specular highlight (subtle)
+    ctx.globalAlpha = 0.1;
+    const hlG = ctx.createRadialGradient(sx - R*0.25, sy - R*0.25, 0, sx, sy, R*0.8);
     hlG.addColorStop(0, '#fff');
-    hlG.addColorStop(0.4, 'rgba(255,255,255,0.1)');
+    hlG.addColorStop(0.5, 'rgba(255,255,255,0.05)');
     hlG.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = hlG;
-    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx, sy, R*0.8, 0, Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
   }
 }
@@ -3083,6 +3103,8 @@ class Ship {
     if (this.sunHeatLevel > 0.5) {
       const chargeRate = (this.sunHeatLevel - 0.5) * 2; // 0-1 based on depth
       this.solarCharge = Math.min(1, this.solarCharge + chargeRate * 0.7 * dt);
+      // Sun slowly restores health
+      this.hp = Math.min(this.maxHp, this.hp + 3 * dt); // 3 HP per second while near sun
     } else {
       this.solarCharge = Math.max(0, this.solarCharge - 0.01 * dt); // very slow decay (~100s)
     }
@@ -3221,13 +3243,17 @@ class Ship {
     if (wasSolarCharged) {
       this.solarCharge = 0; // consume the charge
       playSound('bomb'); game.shake.add(8 + savedCharge * 25);
-      // Solar bomb: deep orange/magenta/white — visually distinct from normal cyan bomb
-      const sc = savedCharge;
+      // Solar bomb: uses star's color palette for map-specific flair
+      const stc = STAR_COLOR;
+      const starMain = `rgb(${stc.rBright},${stc.gBright},${stc.bBright})`;
+      const starMid = `rgb(${stc.rBase},${Math.floor(stc.gBase*1.2)},${Math.floor(stc.bBase*2)})`;
+      const starDark = `rgb(${stc.rDark},${stc.gDark},${stc.bDark})`;
       particles.emit(this.x, this.y, 150, '#fff', 550 * solarMult, 1.0, 7);
-      particles.emit(this.x, this.y, 100, '#f84', 500 * solarMult, 0.9, 6);
-      particles.emit(this.x, this.y, 80, '#fa0', 450 * solarMult, 0.8, 5);
-      particles.emit(this.x, this.y, 50, '#f4a', 400 * solarMult, 1.2, 8); // hot pink lingering embers
-      particles.emit(this.x, this.y, 30, '#ff4', 350 * solarMult, 0.7, 4);
+      particles.emit(this.x, this.y, 100, starMain, 500 * solarMult, 0.9, 6);
+      particles.emit(this.x, this.y, 80, starMid, 450 * solarMult, 0.8, 5);
+      particles.emit(this.x, this.y, 50, '#f4a', 400 * solarMult, 1.2, 8); // pink embers for contrast
+      particles.emit(this.x, this.y, 40, starDark, 380 * solarMult, 0.7, 4);
+      particles.emit(this.x, this.y, 30, '#ff4', 350 * solarMult, 0.6, 3); // golden sparkle
     } else {
       playSound('bomb'); game.shake.add(8);
       particles.emit(this.x, this.y, 80, '#4ef', 400, 0.6, 4);
@@ -6071,14 +6097,14 @@ function drawGame() {
     ctx.fillStyle = msgColor;
     ctx.shadowColor = msgColor;
     ctx.shadowBlur = 20;
-    ctx.fillText(game.bossMessage || '', canvas.width/2, canvas.height/2 - 60);
+    ctx.fillText(game.bossMessage || '', canvas.width/2, canvas.height * 0.2);
     ctx.shadowBlur = 0;
     // Boss sub-message
     if (game.bossSubMessageTimer > 0) {
       ctx.globalAlpha = Math.min(1, game.bossSubMessageTimer / 0.5);
       ctx.font = '14px Courier New';
       ctx.fillStyle = '#fa0';
-      ctx.fillText(game.bossSubMessage || '', canvas.width/2, canvas.height/2 - 20);
+      ctx.fillText(game.bossSubMessage || '', canvas.width/2, canvas.height * 0.2 + 40);
     }
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
@@ -6442,32 +6468,26 @@ function togglePauseLeaderboard() {
   const el = document.getElementById('pause-leaderboard');
   if (el.style.display === 'none') {
     el.style.display = 'block';
-    // Reuse the leaderboard rendering
-    let html = '<table style="font-size:11px;color:#8cf;font-family:\'Courier New\',monospace;border-collapse:collapse;width:100%;max-width:500px;margin:0 auto;">';
-    html += '<thead><tr><th style="color:#fa8;text-align:left;padding:4px;">RANK</th><th style="color:#fa8;text-align:left;padding:4px;">NAME</th><th style="color:#fa8;text-align:right;padding:4px;">SCORE</th><th style="color:#fa8;text-align:center;padding:4px;">WAVE</th></tr></thead><tbody>';
-    const scores = JSON.parse(localStorage.getItem('orbital_siege_scores') || '[]');
-    if (scores.length === 0) {
-      html += '<tr><td colspan="4" style="color:#666;padding:8px;text-align:center;">No scores yet</td></tr>';
-    } else {
-      scores.slice(0, 10).forEach((s, i) => {
-        html += `<tr><td style="padding:3px;color:#fa8;">${i+1}</td><td style="padding:3px;">${s.name || '???'}</td><td style="padding:3px;text-align:right;">${s.score || 0}</td><td style="padding:3px;text-align:center;">${s.wave || '?'}</td></tr>`;
-      });
-    }
-    html += '</tbody></table>';
-    el.innerHTML = html;
-    // Also try Firebase scores
-    if (typeof fetchLeaderboard === 'function') fetchLeaderboard().then(fbScores => {
-      if (fbScores && fbScores.length > 0) {
-        let fbHtml = '<div style="color:#4af;margin-top:8px;font-size:10px;letter-spacing:2px;">GLOBAL RANKINGS</div>';
-        fbHtml += '<table style="font-size:11px;color:#8cf;font-family:\'Courier New\',monospace;border-collapse:collapse;width:100%;max-width:500px;margin:4px auto 0;">';
-        fbHtml += '<thead><tr><th style="color:#fa8;text-align:left;padding:4px;">RANK</th><th style="color:#fa8;text-align:left;padding:4px;">NAME</th><th style="color:#fa8;text-align:right;padding:4px;">SCORE</th><th style="color:#fa8;text-align:center;padding:4px;">WAVE</th></tr></thead><tbody>';
-        fbScores.slice(0, 10).forEach((s, i) => {
-          fbHtml += `<tr><td style="padding:3px;color:#fa8;">${i+1}</td><td style="padding:3px;">${s.name || '???'}</td><td style="padding:3px;text-align:right;">${s.score || 0}</td><td style="padding:3px;text-align:center;">${s.wave || '?'}</td></tr>`;
+    el.innerHTML = '<div style="color:#4af;font-size:10px;letter-spacing:2px;text-align:center;">LOADING...</div>';
+    if (typeof fetchLeaderboard === 'function') {
+      fetchLeaderboard().then(scores => {
+        if (!scores || scores.length === 0) {
+          el.innerHTML = '<div style="color:#666;padding:8px;text-align:center;font-size:11px;">No global scores yet</div>';
+          return;
+        }
+        let html = '<table style="font-size:11px;color:#8cf;font-family:\'Courier New\',monospace;border-collapse:collapse;width:100%;max-width:500px;margin:0 auto;">';
+        html += '<thead><tr><th style="color:#fa8;text-align:left;padding:4px;">RANK</th><th style="color:#fa8;text-align:left;padding:4px;">NAME</th><th style="color:#fa8;text-align:right;padding:4px;">SCORE</th><th style="color:#fa8;text-align:center;padding:4px;">WAVE</th></tr></thead><tbody>';
+        scores.slice(0, 15).forEach((s, i) => {
+          html += '<tr><td style="padding:3px;color:#fa8;">' + (i+1) + '</td><td style="padding:3px;">' + (s.name||'???') + '</td><td style="padding:3px;text-align:right;">' + (s.score||0) + '</td><td style="padding:3px;text-align:center;">' + (s.wave||'?') + '</td></tr>';
         });
-        fbHtml += '</tbody></table>';
-        el.innerHTML += fbHtml;
-      }
-    }).catch(() => {});
+        html += '</tbody></table>';
+        el.innerHTML = html;
+      }).catch(() => {
+        el.innerHTML = '<div style="color:#666;padding:8px;text-align:center;font-size:11px;">Could not load leaderboard</div>';
+      });
+    } else {
+      el.innerHTML = '<div style="color:#666;padding:8px;text-align:center;font-size:11px;">Leaderboard unavailable</div>';
+    }
   } else {
     el.style.display = 'none';
   }
