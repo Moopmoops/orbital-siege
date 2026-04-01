@@ -2568,6 +2568,24 @@ class Star {
     ctx.drawImage(this.texture, -this.texture.width/2 * texScale, -this.texture.height/2 * texScale, this.texture.width * texScale, this.texture.height * texScale);
     ctx.restore();
 
+    // Bright white-hot core glow — makes the sun feel intensely luminous
+    const coreGlow = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 0.7);
+    coreGlow.addColorStop(0, `rgba(255,255,245,0.35)`);
+    coreGlow.addColorStop(0.2, `rgba(255,${Math.min(255,sc.gBright+60)},${Math.min(255,sc.bBright+80)},0.2)`);
+    coreGlow.addColorStop(0.5, `rgba(${sc.rBright},${sc.gBright},${sc.bBright},0.08)`);
+    coreGlow.addColorStop(1, `rgba(${sc.rBase},${Math.floor(sc.gBase*0.5)},0,0)`);
+    ctx.fillStyle = coreGlow;
+    ctx.beginPath(); ctx.arc(sx, sy, R * 0.7, 0, Math.PI*2); ctx.fill();
+
+    // Pulsing white center point — the "nuclear heart"
+    const pulseAlpha = 0.25 + 0.1 * Math.sin(t * 1.5);
+    const centerGlow = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 0.3);
+    centerGlow.addColorStop(0, `rgba(255,255,255,${pulseAlpha})`);
+    centerGlow.addColorStop(0.5, `rgba(255,${Math.min(255,sc.gBright+40)},${Math.min(255,sc.bBright+60)},${pulseAlpha*0.4})`);
+    centerGlow.addColorStop(1, `rgba(255,${sc.gBright},${sc.bBright},0)`);
+    ctx.fillStyle = centerGlow;
+    ctx.beginPath(); ctx.arc(sx, sy, R * 0.3, 0, Math.PI*2); ctx.fill();
+
     // Procedural corona glow (replaces texture corona — no square artifacts)
     ctx.globalAlpha = 0.5;
     for (let i = 0; i < 5; i++) {
@@ -3739,12 +3757,12 @@ class Ship {
 
 // ARH types by wave theme
 const ARH_TYPES = {
-  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0 },
-  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0 },
-  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0 },
-  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.3 },
-  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0 },
-  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.2 },
+  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0.08 },
+  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0.12 },
+  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0.06 },
+  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.35 },
+  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0.04 },
+  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.25 },
   titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.5 },
   overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 350, shootChance: 0.8, isBoss: true },
 };
@@ -3905,8 +3923,8 @@ function createARH(x, y, typeName, generation, planet) {
     vy: Math.sin(a2c + Math.PI/2)*orbV*dir,
     size, hp, maxHp: hp, generation: gen,
     typeName, type,
-    shape: type.shape, baseHue: type.colorH + Math.floor(Math.random() * 16 - 8),
-    color: hsl(type.colorH + Math.floor(Math.random() * 16 - 8), 45 + Math.floor(Math.random() * 15), 35 + Math.floor(Math.random() * 12)),
+    shape: type.shape, baseHue: type.colorH + Math.floor(Math.random() * 30 - 15),
+    color: hsl(type.colorH + Math.floor(Math.random() * 30 - 15), 35 + Math.floor(Math.random() * 25), 28 + Math.floor(Math.random() * 20)),
     spawnTime: game ? game.time : 0,
     reproduceTimer: REPRODUCE_TIME_BASE + rng(-3,4),
     reproduceProgress: 0,
@@ -4155,14 +4173,14 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
         else if (inv.typeName === 'titan') bulletColor = '#fa4';
         game.enemyBullets.push({
           x: inv.x, y: inv.y,
-          vx: inv.vx + Math.cos(sa)*150, vy: inv.vy + Math.sin(sa)*150,
-          life: 2.0, damage: 5 + Math.floor(wave/3),
+          vx: inv.vx + Math.cos(sa)*120, vy: inv.vy + Math.sin(sa)*120,
+          life: 2.0, damage: 3 + Math.floor(wave/4),
           color: bulletColor
         });
         playSound('enemy_shoot');
         particles.emitDir(inv.x, inv.y, 3, '#f44', a, 0.3, 100, 0.15, 1);
       }
-      inv.shootTimer = rng(1.5, 4) / (1 + wave*0.05);
+      inv.shootTimer = rng(1.2, 3.0) / (1 + wave*0.05);
     }
   }
 
@@ -4963,12 +4981,12 @@ function unlockAchievement(key) {
 
 // --- System Expansion Data ---
 const EXPANSION_COLOR_POOL = [
-  { c1: '#dda040', c2: '#604010' }, // amber
-  { c1: '#5a4a6a', c2: '#1a1520' }, // dark violet
-  { c1: '#8ac8e8', c2: '#203848' }, // pale ice
-  { c1: '#cc3020', c2: '#401008' }, // deep red
-  { c1: '#d0a070', c2: '#504020' }, // sandy
-  { c1: '#60a0c0', c2: '#1a3a50' }, // cerulean
+  { c1: '#907050', c2: '#382818' }, // amber dust
+  { c1: '#4a4055', c2: '#151018' }, // muted violet
+  { c1: '#708090', c2: '#283038' }, // steel
+  { c1: '#8a4838', c2: '#2a1210' }, // brick
+  { c1: '#907860', c2: '#382a18' }, // driftwood
+  { c1: '#506878', c2: '#1a2830' }, // slate teal
 ];
 const shuffledExpColors = EXPANSION_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
 const SYSTEM_EXPANSION = [
@@ -5028,16 +5046,16 @@ function initGame() {
   const star = new Star(0, 0);
   // Randomized planet color pool — no two planets share the same base color
   const PLANET_COLOR_POOL = [
-    { c1: '#4a8fc7', c2: '#1a3050' }, // blue ocean
-    { c1: '#8a5a3a', c2: '#3a2010' }, // brown rocky
-    { c1: '#3a9a6a', c2: '#1a4030' }, // green lush
-    { c1: '#6a8aaa', c2: '#2a3a4a' }, // ice blue
-    { c1: '#aa4a2a', c2: '#3a1a0a' }, // red volcanic
-    { c1: '#c89a40', c2: '#504010' }, // golden desert
-    { c1: '#7a5aaa', c2: '#2a1a4a' }, // purple gas
-    { c1: '#5aaa8a', c2: '#1a4a3a' }, // teal aquatic
-    { c1: '#aa7a5a', c2: '#4a3020' }, // tan dusty
-    { c1: '#8aaa5a', c2: '#3a4a1a' }, // lime verdant
+    { c1: '#5a7a9a', c2: '#1a2a3a' }, // slate blue
+    { c1: '#7a6050', c2: '#2a1a10' }, // warm brown
+    { c1: '#4a6a55', c2: '#1a2a1a' }, // muted olive
+    { c1: '#6a7a88', c2: '#2a3038' }, // cool grey-blue
+    { c1: '#8a5540', c2: '#301810' }, // rust
+    { c1: '#9a8060', c2: '#3a2a18' }, // sandstone
+    { c1: '#5a5068', c2: '#1a1520' }, // dusty mauve
+    { c1: '#506a6a', c2: '#1a2a2a' }, // dark teal
+    { c1: '#8a7060', c2: '#3a2a1a' }, // clay
+    { c1: '#607050', c2: '#202a18' }, // sage
   ];
   const shuffledColors = PLANET_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
   const planet1 = new Planet(320, 0, PLANET_RADIUS, shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler');
