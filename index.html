@@ -3944,34 +3944,37 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
 
   // Boss-specific behavior
   if (inv.isBoss) {
-    // Sun-avoidance: boss strongly steers away from sun unless critical
+    // Sun-avoidance: boss gently steers away from sun unless critical
+    // Designed to be overcomeable — bombs and sustained fire can push boss in
+    // Once close enough, star gravity takes over
     if (game.star && !inv.critical) {
       const dToStar = dist(inv, game.star);
-      const dangerZone = game.star.radius + 300; // wide danger zone
+      const dangerZone = game.star.radius + 180; // smaller danger zone
       if (dToStar < dangerZone) {
-        // Very strong outward force — exponentially stronger near sun
         const proximity = Math.max(0.01, (dangerZone - dToStar) / dangerZone);
         const angle = Math.atan2(inv.y - game.star.y, inv.x - game.star.x);
-        const force = 600 * proximity * proximity; // quadratic ramp — overwhelming near sun
+        // Moderate force — strong enough to avoid drifting in, but bombs can overcome
+        const force = 150 * proximity; // linear, not quadratic — much weaker
         inv.vx += Math.cos(angle) * force * dt;
         inv.vy += Math.sin(angle) * force * dt;
       }
-      // Also cancel inward velocity component when close to sun
-      if (dToStar < game.star.radius + 200) {
+      // Gentle velocity damping when heading toward sun (only outside gravity capture zone)
+      if (dToStar < game.star.radius + 120 && dToStar > game.star.radius + 50) {
         const radialAngle = Math.atan2(inv.y - game.star.y, inv.x - game.star.x);
         const radialVel = inv.vx * Math.cos(radialAngle) + inv.vy * Math.sin(radialAngle);
         if (radialVel < 0) { // moving toward sun
-          inv.vx -= Math.cos(radialAngle) * radialVel * 0.8; // cancel 80% of inward velocity
-          inv.vy -= Math.sin(radialAngle) * radialVel * 0.8;
+          inv.vx -= Math.cos(radialAngle) * radialVel * 0.3; // cancel only 30% of inward velocity
+          inv.vy -= Math.sin(radialAngle) * radialVel * 0.3;
         }
       }
-      // Maintain preferred orbital radius — orbit near planets, not the sun
+      // NO velocity cancellation within 50 units of star surface — gravity wins here
+      // Preferred orbit is closer now, so boss doesn't flee to far corners
       const distFromCenter = Math.hypot(inv.x, inv.y);
       if (distFromCenter > 0.1) {
-        const preferredRadius = 450; // well away from sun, near planet orbits
+        const preferredRadius = 350; // closer to action
         const radiusDiff = distFromCenter - preferredRadius;
-        if (Math.abs(radiusDiff) > 30) {
-          const correction = (preferredRadius - distFromCenter) * 0.2;
+        if (Math.abs(radiusDiff) > 50) {
+          const correction = (preferredRadius - distFromCenter) * 0.1; // gentler correction
           const radiusAngle = Math.atan2(inv.y, inv.x);
           inv.vx += Math.cos(radiusAngle) * correction;
           inv.vy += Math.sin(radiusAngle) * correction;
