@@ -3677,35 +3677,38 @@ function chainReaction(deadInv, invaders, particles) {
   for (const other of invaders) {
     if (other !== deadInv && other.alive !== false && dist(deadInv, other) < 80) nearbyCount++;
   }
-  if (nearbyCount < 4) return; // need a dense cluster for chain reaction
+  if (nearbyCount < 5) return; // need a dense cluster for chain reaction
 
-  const chainDmg = 8 + nearbyCount * 2; // more neighbors = more splash
-  const chainRadius = 60 + nearbyCount * 3;
+  const chainDmg = 5 + Math.min(nearbyCount, 12) * 0.8; // capped, modest splash (~5-15 dmg)
+  const chainRadius = 50; // fixed small radius, no scaling
   let chainKills = 0;
+  const maxChainKills = 3; // cap chain kills per explosion to prevent wipeouts
 
   for (let i = invaders.length - 1; i >= 0; i--) {
+    if (chainKills >= maxChainKills) break;
     const other = invaders[i];
     if (other === deadInv || other.isBoss) continue;
     const d = dist(deadInv, other);
     if (d < chainRadius) {
       const dmg = chainDmg * (1 - d / chainRadius);
       other.hp -= dmg;
-      // Knockback away from explosion
+      // Gentle knockback
       const nx = (other.x - deadInv.x) / Math.max(d, 1);
       const ny = (other.y - deadInv.y) / Math.max(d, 1);
-      other.vx += nx * 40; other.vy += ny * 40;
+      other.vx += nx * 20; other.vy += ny * 20;
 
       if (other.hp <= 0 && !other.isBoss) {
         emitDeathFlash(other, particles);
         if (game) { game.score += other.points; game.kills++; }
         invaders.splice(i, 1);
         chainKills++;
+        // Chain kills do NOT trigger further chains — prevents cascade wipeout
       }
     }
   }
-  // Visual: secondary shockwave for chain reaction
+  // Visual: small secondary shockwave for chain reaction
   if (chainKills > 0) {
-    particles.emit(deadInv.x, deadInv.y, 15 + chainKills * 5, '#ffa', 200, 0.5, 3);
+    particles.emit(deadInv.x, deadInv.y, 8 + chainKills * 3, '#ffa', 150, 0.4, 2.5);
     if (game) game.bombRings.push({ x: deadInv.x, y: deadInv.y, radius: 0, maxRadius: chainRadius * 0.7, life: 0.3 });
   }
 }
