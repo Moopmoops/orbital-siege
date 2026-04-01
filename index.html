@@ -3168,17 +3168,21 @@ class Ship {
   fireBomb(invaders, particles) {
     if (this.energy < BOMB_COST || !this.alive) return;
     this.energy -= BOMB_COST;
-    // Solar-charged bomb: up to 2.5x radius and 3x damage when fully charged
-    const solarMult = 1 + this.solarCharge * 1.5; // 1x to 2.5x
-    const solarDmgMult = 1 + this.solarCharge * 2; // 1x to 3x
-    const wasSolarCharged = this.solarCharge > 0.3;
+    // Solar-charged bomb: up to 3.5x radius and 4x damage when fully charged
+    const savedCharge = this.solarCharge;
+    const solarMult = 1 + savedCharge * 2.5; // 1x to 3.5x
+    const solarDmgMult = 1 + savedCharge * 3; // 1x to 4x
+    const wasSolarCharged = savedCharge > 0.3;
     if (wasSolarCharged) {
       this.solarCharge = 0; // consume the charge
-      playSound('bomb'); game.shake.add(8 + this.solarCharge * 20);
-      // Solar bomb: golden-white explosion
-      particles.emit(this.x, this.y, 120, '#fff', 500 * solarMult, 0.8, 6);
-      particles.emit(this.x, this.y, 80, '#fa0', 450 * solarMult, 0.7, 5);
-      particles.emit(this.x, this.y, 60, '#ff4', 400 * solarMult, 0.6, 4);
+      playSound('bomb'); game.shake.add(8 + savedCharge * 25);
+      // Solar bomb: deep orange/magenta/white — visually distinct from normal cyan bomb
+      const sc = savedCharge;
+      particles.emit(this.x, this.y, 150, '#fff', 550 * solarMult, 1.0, 7);
+      particles.emit(this.x, this.y, 100, '#f84', 500 * solarMult, 0.9, 6);
+      particles.emit(this.x, this.y, 80, '#fa0', 450 * solarMult, 0.8, 5);
+      particles.emit(this.x, this.y, 50, '#f4a', 400 * solarMult, 1.2, 8); // hot pink lingering embers
+      particles.emit(this.x, this.y, 30, '#ff4', 350 * solarMult, 0.7, 4);
     } else {
       playSound('bomb'); game.shake.add(8);
       particles.emit(this.x, this.y, 80, '#4ef', 400, 0.6, 4);
@@ -3226,7 +3230,7 @@ class Ship {
         }
       }
     }
-    game.bombRings.push({ x: this.x, y: this.y, radius: 0, maxRadius: effectiveRadius, life: 0.5 });
+    game.bombRings.push({ x: this.x, y: this.y, radius: 0, maxRadius: effectiveRadius, life: wasSolarCharged ? 0.8 : 0.5, solar: wasSolarCharged });
   }
   scan(invaders) {
     if (this.scanTimer > 0) return;
@@ -3739,14 +3743,37 @@ function emitDeathFlash(inv, particles) {
   // Apply patterns (priority: density > gas giant > old > sun > default)
   // All effects are bold and dramatic — big particle counts, large sizes, bright colors
   if (isHighDensity) {
-    // Rainbow sparkle burst — prismatic explosion, very flashy
-    const colors = ['#f55', '#fa0', '#ff4', '#4f4', '#4ef', '#55f', '#c4f', '#f4f'];
-    for (let c = 0; c < colors.length; c++) {
-      particles.emit(x, y, 8, colors[c], 250 + c*25, 0.8, 4);
+    // Cluster death — effect varies by density level and enemy type
+    const intensity = Math.min(1, (nearbyCount - 5) / 15); // 0 at 5, 1 at 20+
+
+    if (nearbyCount >= 15) {
+      // Critical mass: blinding white nova with colored afterglow
+      particles.emit(x, y, 60, '#fff', 400, 0.6, 5);
+      particles.emit(x, y, 40, '#fea', 350, 0.8, 6);
+      particles.emit(x, y, 20, '#f8c', 300, 1.2, 7); // lingering pink wisps
+      // Shockwave ring from the nova
+      if (game) game.bombRings.push({ x, y, radius: 0, maxRadius: 80 + nearbyCount * 3, life: 0.4 });
+      game.shake.add(4);
+    } else if (nearbyCount >= 10) {
+      // Volatile mass: hot plasma burst — orange/white/magenta
+      particles.emit(x, y, 40, '#fff', 320, 0.5, 4);
+      particles.emit(x, y, 30, '#f84', 280, 0.7, 5);
+      particles.emit(x, y, 20, '#fa0', 250, 0.6, 4);
+      particles.emit(x, y, 10, '#f4a', 200, 1.0, 6); // hot pink embers
+      game.shake.add(2);
+    } else {
+      // Moderate cluster: crackling energy discharge — electric blue/white/amber
+      particles.emit(x, y, 30, '#aef', 280, 0.6, 4);
+      particles.emit(x, y, 20, '#fff', 240, 0.5, 3);
+      particles.emit(x, y, 15, '#fa4', 200, 0.8, 5);
     }
-    particles.emit(x, y, 25, '#fff', 300, 0.7, 3); // bright white sparkle core
-    particles.emit(x, y, 15, '#ffa', 200, 1.0, 5); // lingering golden glow
-    game.shake.add(3);
+
+    // Enemy type adds a color accent on top of density effects
+    const typeHue = inv.baseHue || 0;
+    const typeAccent = `hsl(${typeHue},80%,65%)`;
+    const typeGlow = `hsl(${(typeHue + 40) % 360},70%,55%)`;
+    particles.emit(x, y, 12, typeAccent, 220, 0.9, 4);
+    particles.emit(x, y, 8, typeGlow, 180, 0.7, 3);
   } else if (nearRingedPlanet) {
     // White crystalline flash — bright icy explosion
     particles.emit(x, y, 40, '#fff', 280, 0.8, 4);
@@ -5651,12 +5678,32 @@ function drawGame() {
 
   // Bomb rings
   for (const r of game.bombRings) {
-    const a = r.life/0.5;
+    const maxLife = r.solar ? 0.8 : 0.5;
+    const a = r.life / maxLife;
     const sx = r.x - cam.x + canvas.width/2, sy = r.y - cam.y + canvas.height/2;
-    ctx.strokeStyle = `rgba(100,240,255,${a*0.6})`; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.stroke();
-    ctx.strokeStyle = `rgba(255,255,255,${a*0.3})`; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.7, 0, Math.PI*2); ctx.stroke();
+    if (r.solar) {
+      // Solar bomb: orange/magenta expanding rings, thicker, with inner glow
+      ctx.strokeStyle = `rgba(255,140,60,${a*0.7})`; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,80,160,${a*0.5})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.8, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,200,${a*0.4})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.5, 0, Math.PI*2); ctx.stroke();
+      // Fill glow
+      ctx.globalAlpha = a * 0.08;
+      const solarFill = ctx.createRadialGradient(sx, sy, 0, sx, sy, r.radius);
+      solarFill.addColorStop(0, 'rgba(255,200,100,0.3)');
+      solarFill.addColorStop(0.5, 'rgba(255,100,50,0.1)');
+      solarFill.addColorStop(1, 'rgba(255,60,120,0)');
+      ctx.fillStyle = solarFill;
+      ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.strokeStyle = `rgba(100,240,255,${a*0.6})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${a*0.3})`; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.7, 0, Math.PI*2); ctx.stroke();
+    }
   }
 
   // Scan rings
