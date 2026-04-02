@@ -474,6 +474,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// Safari performance warning
+(function checkSafari() {
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  if (!isSafari) return;
+  const warn = document.createElement('div');
+  warn.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(20,10,0,0.92);border-bottom:2px solid #f80;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;font-family:monospace;';
+  warn.innerHTML = `<span style="color:#fa0;font-size:13px;">⚠ Safari may experience slowdowns during intense battles. For the best experience, use <b style="color:#fff">Chrome</b> or <b style="color:#fff">Firefox</b>.</span><button onclick="this.parentElement.remove()" style="background:#333;color:#fff;border:1px solid #666;padding:4px 12px;cursor:pointer;font-family:monospace;border-radius:3px;">GOT IT</button>`;
+  document.body.appendChild(warn);
+})();
+
 function toggleChangelog() {
   const cp = document.getElementById('changelog-panel');
   if (cp) cp.style.display = cp.style.display === 'none' ? 'block' : 'none';
@@ -2479,32 +2489,69 @@ function enforceCircularOrbit(entity, bodies, strength, period) {
 
 // --- Particle System ---
 class Particles {
-  constructor() { this.list = []; }
+  constructor() {
+    this.list = [];
+    // Safari gets a lower cap due to stricter memory/CPU limits
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    this.MAX_PARTICLES = isSafari ? 4000 : 6000;
+  }
   emit(x, y, count, color, speed, life, size) {
+    // Throttle when near cap — graceful degradation
+    if (this.list.length > this.MAX_PARTICLES * 0.85) {
+      count = Math.max(1, Math.floor(count * 0.4));
+    }
+    const budget = this.MAX_PARTICLES - this.list.length;
+    if (budget <= 0) return;
+    count = Math.min(count, budget);
     for (let i = 0; i < count; i++) {
-      const a = Math.random() * Math.PI * 2, s = Math.random() * speed;
-      this.list.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life, maxLife: life, color, size: size||rng(1,3) });
+      const a = Math.random() * Math.PI * 2;
+      // Erratic spread: most particles cluster at base speed, but ~20% fly much further
+      const outlier = Math.random() < 0.2 ? 1.5 + Math.random() * 1.0 : 1.0;
+      const s = Math.random() * speed * outlier;
+      const pLife = life * (0.7 + Math.random() * 0.6); // varied lifetimes
+      const pSize = (size||rng(1,3)) * (0.8 + Math.random() * 0.5);
+      this.list.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: pLife, maxLife: pLife, color, size: pSize });
     }
   }
   emitDir(x, y, count, color, baseAngle, spread, speed, life, size) {
+    if (this.list.length > this.MAX_PARTICLES * 0.85) {
+      count = Math.max(1, Math.floor(count * 0.4));
+    }
+    const budget = this.MAX_PARTICLES - this.list.length;
+    if (budget <= 0) return;
+    count = Math.min(count, budget);
     for (let i = 0; i < count; i++) {
-      const a = baseAngle + (Math.random()-0.5)*spread, s = Math.random()*speed + speed*0.3;
-      this.list.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life, maxLife: life, color, size: size||rng(1,3) });
+      const a = baseAngle + (Math.random()-0.5)*spread;
+      const outlier = Math.random() < 0.15 ? 1.4 + Math.random() * 0.8 : 1.0;
+      const s = (Math.random()*speed + speed*0.3) * outlier;
+      const pLife = life * (0.7 + Math.random() * 0.6);
+      const pSize = (size||rng(1,3)) * (0.8 + Math.random() * 0.5);
+      this.list.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: pLife, maxLife: pLife, color, size: pSize });
     }
   }
   update(dt) {
-    for (let i = this.list.length-1; i >= 0; i--) {
+    // Particles always decay at real-time rate (unaffected by hitstop)
+    const realDt = dt < 0.003 ? 0.016 : dt; // if hitstop squished dt, use ~60fps timestep for decay
+    let writeIdx = 0;
+    for (let i = 0; i < this.list.length; i++) {
       const p = this.list[i];
-      p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.97; p.vy *= 0.97; p.life -= dt;
-      if (p.life <= 0) this.list.splice(i, 1);
+      p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.97; p.vy *= 0.97;
+      p.life -= realDt; // decay at real speed even during hitstop
+      if (p.life > 0) {
+        this.list[writeIdx++] = p;
+      }
     }
+    this.list.length = writeIdx; // efficient batch removal, no splice
   }
   draw(ctx, cam) {
+    const hw = canvas.width/2, hh = canvas.height/2;
     for (const p of this.list) {
+      const sx = p.x - cam.x + hw, sy = p.y - cam.y + hh;
+      // Cull offscreen particles
+      if (sx < -50 || sx > canvas.width+50 || sy < -50 || sy > canvas.height+50) continue;
       const alpha = Math.max(0, p.life / p.maxLife);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
-      const sx = p.x - cam.x + canvas.width/2, sy = p.y - cam.y + canvas.height/2;
       ctx.fillRect(sx - p.size/2, sy - p.size/2, p.size, p.size);
     }
     ctx.globalAlpha = 1;
@@ -3079,6 +3126,35 @@ class Ship {
 
     this.x += this.vx*dt; this.y += this.vy*dt;
 
+    // System boundary — prevent ship from escaping into deep space
+    // Find the outermost body's orbit to set the boundary
+    if (game.star) {
+      const dFromStar = dist(this, game.star);
+      let maxOrbit = 400;
+      for (const p of game.planets) {
+        if (p.orbitRadius > maxOrbit) maxOrbit = p.orbitRadius;
+      }
+      const boundary = maxOrbit + 300; // generous padding beyond outermost planet
+      if (dFromStar > boundary) {
+        // Exponentially increasing pull back toward the star
+        const excess = (dFromStar - boundary) / boundary;
+        const pullStrength = 200 + excess * excess * 2000; // ramps up fast
+        const dx = game.star.x - this.x, dy = game.star.y - this.y;
+        const d = Math.hypot(dx, dy);
+        if (d > 1) {
+          this.vx += (dx/d) * pullStrength * dt;
+          this.vy += (dy/d) * pullStrength * dt;
+        }
+        // Also bleed off excess outward velocity
+        const vRad = (this.vx * (this.x - game.star.x) + this.vy * (this.y - game.star.y)) / d;
+        if (vRad > 0) {
+          const dampen = Math.min(0.95, excess * 0.3);
+          this.vx -= (this.x - game.star.x) / d * vRad * dampen;
+          this.vy -= (this.y - game.star.y) / d * vRad * dampen;
+        }
+      }
+    }
+
     // No surface collision — planets are spheres, ship flies over/under them
     // Gravity naturally provides slingshot effect near the surface
     // Only the star deals heat damage (handled separately below)
@@ -3296,16 +3372,16 @@ class Ship {
       // Solar bomb particles — all derived from star palette, no fixed pink
       const starWarm = `rgb(${Math.min(255,stc.rBright+20)},${Math.min(255,Math.floor(stc.gBright*0.8))},${Math.floor(stc.bBright*0.4)})`;
       const starHot = `rgb(255,${Math.min(255,Math.floor(stc.gBright*1.2+40))},${Math.min(255,Math.floor(stc.bBright+60))})`;
-      particles.emit(this.x, this.y, 150, '#fff', 550 * solarMult, 1.0, 7);
-      particles.emit(this.x, this.y, 100, starMain, 500 * solarMult, 0.9, 6);
-      particles.emit(this.x, this.y, 80, starMid, 450 * solarMult, 0.8, 5);
-      particles.emit(this.x, this.y, 50, starWarm, 400 * solarMult, 1.2, 8);
-      particles.emit(this.x, this.y, 40, starDark, 380 * solarMult, 0.7, 4);
-      particles.emit(this.x, this.y, 30, starHot, 350 * solarMult, 0.6, 3);
+      particles.emit(this.x, this.y, 120, '#fff', 580 * solarMult, 0.8, 7);
+      particles.emit(this.x, this.y, 80, starMain, 520 * solarMult, 0.7, 6);
+      particles.emit(this.x, this.y, 50, starMid, 460 * solarMult, 0.6, 5);
+      particles.emit(this.x, this.y, 35, starWarm, 420 * solarMult, 1.0, 8);
+      particles.emit(this.x, this.y, 25, starDark, 400 * solarMult, 0.5, 4);
+      particles.emit(this.x, this.y, 20, starHot, 380 * solarMult, 0.4, 3);
     } else {
       playSound('bomb'); game.shake.add(8);
-      particles.emit(this.x, this.y, 80, '#4ef', 400, 0.6, 4);
-      particles.emit(this.x, this.y, 40, '#fff', 300, 0.4, 3);
+      particles.emit(this.x, this.y, 60, '#4ef', 420, 0.5, 4);
+      particles.emit(this.x, this.y, 30, '#fff', 320, 0.4, 3);
     }
     let bombKills = 0;
     const effectiveRadius = BOMB_RADIUS * (this.bombRadiusMult || 1) * solarMult;
@@ -3905,55 +3981,54 @@ function emitDeathFlash(inv, particles) {
 
     if (nearbyCount >= 15) {
       // Critical mass: blinding white nova with colored afterglow
-      particles.emit(x, y, 60, '#fff', 400, 0.6, 5);
-      particles.emit(x, y, 40, '#fea', 350, 0.8, 6);
-      particles.emit(x, y, 20, '#f8c', 300, 1.2, 7); // lingering pink wisps
-      // Shockwave ring from the nova
+      particles.emit(x, y, 55, '#fff', 450, 0.7, 5);
+      particles.emit(x, y, 35, '#fea', 400, 0.9, 6);
+      particles.emit(x, y, 18, '#f8c', 350, 1.2, 7);
       if (game) game.bombRings.push({ x, y, radius: 0, maxRadius: 80 + nearbyCount * 3, life: 0.4 });
       game.shake.add(4);
     } else if (nearbyCount >= 10) {
       // Volatile mass: hot plasma burst — orange/white/magenta
-      particles.emit(x, y, 40, '#fff', 320, 0.5, 4);
-      particles.emit(x, y, 30, '#f84', 280, 0.7, 5);
-      particles.emit(x, y, 20, '#fa0', 250, 0.6, 4);
-      particles.emit(x, y, 10, '#f4a', 200, 1.0, 6); // hot pink embers
+      particles.emit(x, y, 35, '#fff', 360, 0.5, 4);
+      particles.emit(x, y, 25, '#f84', 320, 0.7, 5);
+      particles.emit(x, y, 15, '#fa0', 280, 0.6, 4);
+      particles.emit(x, y, 8, '#f4a', 250, 1.0, 6);
       game.shake.add(2);
     } else {
       // Moderate cluster: crackling energy discharge — electric blue/white/amber
-      particles.emit(x, y, 30, '#aef', 280, 0.6, 4);
-      particles.emit(x, y, 20, '#fff', 240, 0.5, 3);
-      particles.emit(x, y, 15, '#fa4', 200, 0.8, 5);
+      particles.emit(x, y, 25, '#aef', 300, 0.6, 4);
+      particles.emit(x, y, 15, '#fff', 260, 0.5, 3);
+      particles.emit(x, y, 12, '#fa4', 220, 0.8, 5);
     }
 
     // Enemy type adds a color accent on top of density effects
     const typeHue = inv.baseHue || 0;
     const typeAccent = `hsl(${typeHue},80%,65%)`;
     const typeGlow = `hsl(${(typeHue + 40) % 360},70%,55%)`;
-    particles.emit(x, y, 12, typeAccent, 220, 0.9, 4);
-    particles.emit(x, y, 8, typeGlow, 180, 0.7, 3);
+    particles.emit(x, y, 10, typeAccent, 250, 0.9, 4);
+    particles.emit(x, y, 6, typeGlow, 200, 0.7, 3);
   } else if (nearRingedPlanet) {
     // White crystalline flash — bright icy explosion
-    particles.emit(x, y, 40, '#fff', 280, 0.8, 4);
-    particles.emit(x, y, 25, '#cef', 220, 0.6, 3.5);
-    particles.emit(x, y, 15, '#8bf', 160, 0.5, 2.5);
-    particles.emit(x, y, 8, '#aef', 320, 1.0, 5); // lingering icy wisps
+    particles.emit(x, y, 35, '#fff', 300, 0.8, 4);
+    particles.emit(x, y, 20, '#cef', 240, 0.6, 3.5);
+    particles.emit(x, y, 12, '#8bf', 180, 0.5, 2.5);
+    particles.emit(x, y, 6, '#aef', 340, 1.0, 5);
   } else if (isOld) {
     // Blue spectral burst — deep blue/violet, ethereal
-    particles.emit(x, y, 35, '#48f', 260, 0.9, 4);
-    particles.emit(x, y, 20, '#a4f', 200, 0.7, 3.5);
-    particles.emit(x, y, 15, '#ccf', 160, 0.5, 2.5);
-    particles.emit(x, y, 8, '#fff', 280, 0.4, 2); // white flash core
+    particles.emit(x, y, 30, '#48f', 280, 0.9, 4);
+    particles.emit(x, y, 18, '#a4f', 220, 0.7, 3.5);
+    particles.emit(x, y, 10, '#ccf', 180, 0.5, 2.5);
+    particles.emit(x, y, 6, '#fff', 300, 0.4, 2);
   } else if (nearSun) {
     // Solar gold flash — hot gold/white flare
-    particles.emit(x, y, 35, '#fa0', 280, 0.8, 4);
-    particles.emit(x, y, 20, '#ff4', 240, 0.6, 3.5);
-    particles.emit(x, y, 12, '#fff', 200, 0.5, 2.5);
-    particles.emit(x, y, 8, '#f80', 320, 1.0, 5); // lingering embers
+    particles.emit(x, y, 30, '#fa0', 300, 0.8, 4);
+    particles.emit(x, y, 18, '#ff4', 260, 0.6, 3.5);
+    particles.emit(x, y, 10, '#fff', 220, 0.5, 2.5);
+    particles.emit(x, y, 6, '#f80', 340, 1.0, 5);
   } else {
     // Default — punchy explosion in enemy color with bright flash
-    particles.emit(x, y, 30, inv.color, 260, 0.7, 3.5);
-    particles.emit(x, y, 15, '#fff', 200, 0.4, 2.5);
-    particles.emit(x, y, 8, '#faa', 180, 0.5, 2);
+    particles.emit(x, y, 25, inv.color, 280, 0.7, 3.5);
+    particles.emit(x, y, 12, '#fff', 220, 0.4, 2.5);
+    particles.emit(x, y, 6, '#faa', 200, 0.5, 2);
   }
 }
 
