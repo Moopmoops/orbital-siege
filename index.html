@@ -1450,9 +1450,9 @@ const STAR_COLOR_VARIANTS = [
   { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60, name: 'white-yellow' },
   { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10, name: 'deep-red' },
   { rBase: 215, gBase: 140, bBase: 50, rBright: 255, gBright: 230, bBright: 160, rDark: 155, gDark: 70, bDark: 10, name: 'peach' },
-  // Blue/blue-white stars (hot, rare-feeling)
-  { rBase: 120, gBase: 150, bBase: 220, rBright: 180, gBright: 210, bBright: 255, rDark: 40, gDark: 60, bDark: 140, name: 'blue' },
-  { rBase: 160, gBase: 180, bBase: 230, rBright: 220, gBright: 240, bBright: 255, rDark: 60, gDark: 80, bDark: 160, name: 'blue-white' },
+  // Blue/blue-white stars — high brightness, strong contrast between bright core and dark convection
+  { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100, name: 'blue' },
+  { rBase: 170, gBase: 200, bBase: 250, rBright: 240, gBright: 250, bBright: 255, rDark: 50, gDark: 70, bDark: 130, name: 'blue-white' },
 ];
 const STAR_COLOR = STAR_COLOR_VARIANTS[Math.floor(Math.random() * STAR_COLOR_VARIANTS.length)];
 const SHIP_SIZE = 10;
@@ -1892,22 +1892,22 @@ function generateSunTexture(radius) {
         const sc = STAR_COLOR;
         let r = sc.rBase + granulation * (sc.rBright - sc.rBase) * 0.6;
         let g = sc.gBase + granulation * (sc.gBright - sc.gBase) * 0.6;
-        let b = sc.bBase + granulation * (sc.bBright - sc.bBase) * 0.4;
+        let b = sc.bBase + granulation * (sc.bBright - sc.bBase) * 0.6;
 
         // Bright granulation cells — shift toward bright secondary tone
         if (granulation > 0.55) {
           const bright = (granulation - 0.55) * 4;
           r = r + (sc.rBright - r) * bright * 0.7;
-          g = g + (sc.gBright - g) * bright * 0.6;
-          b = b + (sc.bBright - b) * bright * 0.4;
+          g = g + (sc.gBright - g) * bright * 0.7;
+          b = b + (sc.bBright - b) * bright * 0.7;
         }
 
         // Dark intergranular lanes — shift toward dark secondary tone
         if (granulation < 0.35) {
           const darkF = (0.35 - granulation) * 3;
           r = r + (sc.rDark - r) * darkF * 0.6;
-          g = g + (sc.gDark - g) * darkF * 0.7;
-          b = b + (sc.bDark - b) * darkF * 0.5;
+          g = g + (sc.gDark - g) * darkF * 0.6;
+          b = b + (sc.bDark - b) * darkF * 0.6;
         }
 
         // Sunspots
@@ -1919,12 +1919,12 @@ function generateSunTexture(radius) {
           b *= (1 - spotStr*0.5);
         }
 
-        // Limb darkening
+        // Limb darkening — darkens toward the star's own dark color (preserves hue)
         const limbD = d / R;
         const limbDark = Math.pow(limbD, 2.5);
-        r *= (1 - limbDark * 0.5);
-        g *= (1 - limbDark * 0.6);
-        b *= (1 - limbDark * 0.4);
+        r = r + (sc.rDark * 0.3 - r) * limbDark * 0.5;
+        g = g + (sc.gDark * 0.3 - g) * limbDark * 0.5;
+        b = b + (sc.bDark * 0.3 - b) * limbDark * 0.5;
 
         // Soft edge
         const edge = d > R * 0.95 ? Math.max(0, 1 - (d - R*0.95) / (R*0.05)) : 1;
@@ -3337,12 +3337,12 @@ class Ship {
       }
     }
     game.achievementTracking.bombKills = bombKills;
-    // Mass kill feedback — overrides combo messages for big bombs
-    if (bombKills >= 4) {
-      game.bossMessage = bombKills >= 15 ? 'TOTAL MELTDOWN!' : bombKills >= 10 ? 'MASS DISASSEMBLY!' : bombKills >= 7 ? 'CIRCUIT BREAKER!' : 'QUAD SCRAP!';
+    // Mass kill feedback — only for truly impressive bomb kills
+    if (bombKills >= 8) {
+      game.bossMessage = bombKills >= 20 ? 'TOTAL MELTDOWN!' : bombKills >= 14 ? 'MASS DISASSEMBLY!' : 'CIRCUIT BREAKER!';
       game.bossMessageTimer = 2;
       game.bossMessageColor = wasSolarCharged ? '#fa0' : '#4ef';
-      if (bombKills >= 7) game.hitStop = 0.06;
+      game.hitStop = 0.06;
     }
     // Push back enemy projectiles within bomb radius
     if (game.enemyBullets) {
@@ -5182,56 +5182,61 @@ function registerKill(x, y, basePoints, inv) {
   game.comboTimer = 2.0; // 2 seconds to chain
   if (game.combo > game.comboMax) game.comboMax = game.combo;
 
-  // Combo multiplier: 1x for first, scaling up
-  const mult = game.combo >= 20 ? 4.0 : game.combo >= 10 ? 3.0 : game.combo >= 5 ? 2.0 : game.combo >= 3 ? 1.5 : 1.0;
+  // Combo multiplier: smooth ramp, bigger combos = bigger bonus
+  const mult = game.combo >= 50 ? 4.0 : game.combo >= 30 ? 3.0 : game.combo >= 15 ? 2.0 : game.combo >= 5 ? 1.5 : 1.0;
   const bonusPoints = Math.floor(basePoints * (mult - 1));
   game.score += bonusPoints; // base points already added at kill site
 
-  // Aggregate score popup — merge with nearby recent popup instead of stacking
+  // Aggregate score popup — merge with nearby recent popup, grows dramatically
   const totalPts = basePoints + bonusPoints;
-  const color = game.combo >= 20 ? '#f4f' : game.combo >= 10 ? '#fa0' : game.combo >= 5 ? '#4ef' : game.combo >= 3 ? '#ff4' : '#fff';
+  const color = game.combo >= 50 ? '#f4f' : game.combo >= 20 ? '#fa0' : game.combo >= 10 ? '#4ef' : game.combo >= 3 ? '#ff4' : '#fff';
   let merged = false;
   for (const p of game.scorePopups) {
     const pd = Math.hypot(p.x - x, p.y - y);
-    if (pd < 80 && p.life > 0.6) {
-      // Merge into existing popup
-      p.total = (p.total || parseInt(p.text.replace('+','')) || 0) + totalPts;
+    if (pd < 120 && p.life > 0.4) {
+      // Merge into existing popup — number chunks upward
+      p.total = (p.total || 0) + totalPts;
+      p.killCount = (p.killCount || 1) + 1;
       p.text = `+${p.total}`;
       p.color = color;
-      p.life = Math.max(p.life, 1.4); // refresh life
-      p.x = (p.x + x) / 2; // drift to center
-      p.y = Math.min(p.y, y); // keep it high
+      p.life = Math.min(3.0, p.life + 0.3); // extend life with each merge, cap at 3s
+      p.x = p.x * 0.7 + x * 0.3; // drift toward latest kill
+      p.y = Math.min(p.y, y - 5); // keep drifting up
+      p.vy = -30; // reset upward drift
+      p._punchTimer = 0.15; // brief scale punch on each merge
       merged = true;
       break;
     }
   }
   if (!merged) {
-    game.scorePopups.push({ x, y, text: `+${totalPts}`, total: totalPts, color, life: 1.4, vy: -50 });
+    game.scorePopups.push({ x, y, text: `+${totalPts}`, total: totalPts, killCount: 1, color, life: 1.5, vy: -40, _punchTimer: 0 });
   }
 
   // Combo milestone messages — machine/robot themed (skip during wave-clear to avoid overlap)
+  // Higher thresholds so they feel rare and special
   const waveClear = game.invaders && game.invaders.length === 0;
   if (!waveClear) {
-    if (game.combo === 5) {
+    if (game.combo === 15) {
       game.bossMessage = 'SYSTEMS OVERLOAD!';
       game.bossMessageTimer = 1.5;
       game.bossMessageColor = '#4ef';
-    } else if (game.combo === 10) {
+      game.shake.add(3);
+    } else if (game.combo === 30) {
       game.bossMessage = 'MACHINE MENACE!';
       game.bossMessageTimer = 1.8;
       game.bossMessageColor = '#fa0';
-      game.shake.add(3);
-    } else if (game.combo === 20) {
+      game.shake.add(4);
+    } else if (game.combo === 50) {
       game.bossMessage = 'SCRAP STORM!';
       game.bossMessageTimer = 2.0;
       game.bossMessageColor = '#f4f';
-      game.shake.add(5);
-    } else if (game.combo === 30) {
+      game.shake.add(6);
+    } else if (game.combo === 75) {
       game.bossMessage = 'TOTAL DISASSEMBLY!';
       game.bossMessageTimer = 2.5;
       game.bossMessageColor = '#fff';
       game.shake.add(8);
-    } else if (game.combo > 0 && game.combo % 25 === 0 && game.combo > 30) {
+    } else if (game.combo >= 100 && game.combo % 50 === 0) {
       game.bossMessage = `${game.combo}x CASCADE!`;
       game.bossMessageTimer = 2.0;
       game.bossMessageColor = '#f4f';
@@ -5239,9 +5244,9 @@ function registerKill(x, y, basePoints, inv) {
     }
   }
 
-  // Brief hitstop on every 5th combo kill (subtle slow-mo)
-  if (game.combo >= 5 && game.combo % 5 === 0) {
-    game.hitStop = 0.04; // 40ms freeze
+  // Brief hitstop at combo milestones only
+  if (game.combo === 15 || game.combo === 30 || game.combo === 50 || game.combo === 75) {
+    game.hitStop = 0.04;
   }
 }
 
@@ -5250,7 +5255,8 @@ function updateScorePopups(dt) {
     const p = game.scorePopups[i];
     p.life -= dt;
     p.y += p.vy * dt;
-    p.vy *= 0.97; // slow down
+    p.vy *= 0.97;
+    if (p._punchTimer > 0) p._punchTimer -= dt;
     if (p.life <= 0) game.scorePopups.splice(i, 1);
   }
 }
@@ -5259,16 +5265,26 @@ function drawScorePopups(ctx, cam) {
   for (const p of game.scorePopups) {
     const sx = p.x - cam.x + ctx.canvas.width / 2;
     const sy = p.y - cam.y + ctx.canvas.height / 2;
-    const alpha = Math.min(1, p.life / 0.3);
-    const scale = 1 + (1 - Math.min(1, p.life / 1.0)) * 0.3;
+    const alpha = Math.min(1, p.life / 0.4);
+    // Size scales with kill count — starts at 12, grows to 36+ for big streaks
+    const killScale = Math.min(3.0, 1 + (p.killCount || 1) * 0.12);
+    // Punch effect — brief scale burst on each new merge
+    const punch = p._punchTimer > 0 ? 1 + p._punchTimer * 3 : 1;
+    const baseSize = 12 * killScale * punch;
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.font = `bold ${Math.floor(12 * scale)}px 'Courier New',monospace`;
+    ctx.font = `bold ${Math.floor(baseSize)}px 'Courier New',monospace`;
     ctx.textAlign = 'center';
     ctx.fillStyle = p.color;
     ctx.shadowColor = p.color;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 4 + (p.killCount || 1) * 1.5;
     ctx.fillText(p.text, sx, sy);
+    // Show kill count if > 2
+    if ((p.killCount || 1) > 2) {
+      ctx.font = `${Math.floor(baseSize * 0.5)}px 'Courier New',monospace`;
+      ctx.globalAlpha = alpha * 0.7;
+      ctx.fillText(`${p.killCount} scrapped`, sx, sy + baseSize * 0.7);
+    }
     ctx.restore();
   }
 }
@@ -5383,32 +5399,186 @@ function selectBossForWave(wave) {
   return selected;
 }
 
+// --- Wave formation system ---
+// Each formation generates local (x,y) offsets for N units
+const WAVE_FORMATIONS = {
+  // V-shape / chevron — classic incoming attack pattern
+  chevron(n) {
+    const pts = [];
+    const spacing = 18;
+    for (let i = 0; i < n; i++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const row = Math.floor(i / 2);
+      pts.push({ x: -row * spacing, y: side * row * spacing * 0.6 });
+    }
+    return pts;
+  },
+  // Line / wall — wide horizontal line
+  line(n) {
+    const pts = [];
+    const spacing = 20;
+    for (let i = 0; i < n; i++) {
+      pts.push({ x: 0, y: (i - n/2) * spacing });
+    }
+    return pts;
+  },
+  // Ring / circle
+  ring(n) {
+    const pts = [];
+    const r = Math.max(30, n * 3);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
+    }
+    return pts;
+  },
+  // Diamond
+  diamond(n) {
+    const pts = [];
+    const size = Math.max(20, Math.sqrt(n) * 12);
+    let placed = 0;
+    for (let row = 0; placed < n; row++) {
+      const rowWidth = row <= Math.sqrt(n) ? row + 1 : Math.max(1, Math.floor(2*Math.sqrt(n)) - row);
+      for (let col = 0; col < rowWidth && placed < n; col++) {
+        pts.push({ x: (row - Math.sqrt(n)) * 16, y: (col - (rowWidth-1)/2) * 16 });
+        placed++;
+      }
+    }
+    return pts;
+  },
+  // Arrow / spearhead
+  arrow(n) {
+    const pts = [{ x: 0, y: 0 }]; // tip
+    let placed = 1;
+    for (let row = 1; placed < n; row++) {
+      for (let col = -row; col <= row && placed < n; col++) {
+        if (Math.abs(col) === row || row <= 2) {
+          pts.push({ x: -row * 16, y: col * 10 });
+          placed++;
+        }
+      }
+    }
+    return pts;
+  },
+  // Grid / phalanx — tight rectangular block
+  grid(n) {
+    const pts = [];
+    const cols = Math.ceil(Math.sqrt(n * 1.5));
+    const spacing = 18;
+    for (let i = 0; i < n; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      pts.push({ x: row * spacing, y: (col - cols/2) * spacing });
+    }
+    return pts;
+  },
+  // Spiral
+  spiral(n) {
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i * 0.4;
+      const r = 10 + t * 4;
+      pts.push({ x: Math.cos(t) * r, y: Math.sin(t) * r });
+    }
+    return pts;
+  },
+  // Cross / plus
+  cross(n) {
+    const pts = [];
+    const arm = Math.floor(n / 4);
+    const spacing = 16;
+    let placed = 0;
+    // Center
+    pts.push({ x: 0, y: 0 }); placed++;
+    // Four arms
+    for (let a = 0; a < 4 && placed < n; a++) {
+      const ax = [1, -1, 0, 0][a], ay = [0, 0, 1, -1][a];
+      for (let i = 1; i <= arm && placed < n; i++) {
+        pts.push({ x: ax * i * spacing, y: ay * i * spacing });
+        placed++;
+      }
+    }
+    // Fill remaining in center area
+    while (placed < n) {
+      pts.push({ x: rng(-20, 20), y: rng(-20, 20) });
+      placed++;
+    }
+    return pts;
+  },
+  // Pincer — two curved arms
+  pincer(n) {
+    const pts = [];
+    const half = Math.floor(n / 2);
+    for (let i = 0; i < n; i++) {
+      const side = i < half ? 1 : -1;
+      const idx = i < half ? i : i - half;
+      const t = (idx / Math.max(1, half - 1)) * Math.PI * 0.7;
+      const r = 40 + idx * 8;
+      pts.push({ x: -Math.cos(t) * r * 0.5, y: side * Math.sin(t) * r });
+    }
+    return pts;
+  },
+  // Scatter — random but within a defined radius (fallback)
+  scatter(n) {
+    const pts = [];
+    const r = Math.max(40, Math.sqrt(n) * 15);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.random() * r;
+      pts.push({ x: Math.cos(a) * d, y: Math.sin(a) * d });
+    }
+    return pts;
+  },
+};
+
+const FORMATION_NAMES = Object.keys(WAVE_FORMATIONS);
+// Cycle through formations so each wave feels distinct
+function getWaveFormation(wave) {
+  // First wave is always chevron, then cycle through with some variety
+  const pool = FORMATION_NAMES.filter(f => f !== 'scatter');
+  return pool[(wave - 1) % pool.length];
+}
+
 function spawnHorde(count, types) {
-  // Spawn in groups arriving from off-screen on orbital insertion trajectories
-  const numGroups = Math.max(1, Math.floor(count / 4));
+  // Pick formation for this wave
+  const formationName = getWaveFormation(game.wave);
+  const formFn = WAVE_FORMATIONS[formationName];
+
+  // Split into 1-3 formation groups arriving from different angles
+  const numGroups = game.wave <= 2 ? 1 : Math.min(3, 1 + Math.floor(count / 30));
   const perGroup = Math.ceil(count / numGroups);
 
   for (let g = 0; g < numGroups; g++) {
-    // Each group arrives from a different angle, far off-screen
-    const arrivalAngle = Math.random() * Math.PI * 2;
-    const arrivalDist = 600 + Math.random() * 400;
-    // Target a planet
-    const planet = game.planets[Math.floor(Math.random()*game.planets.length)];
-    const targetAngle = Math.atan2(planet.y, planet.x); // angle toward planet from origin
+    const groupCount = Math.min(perGroup, count - g * perGroup);
+    if (groupCount <= 0) break;
 
-    for (let i = 0; i < perGroup && (g * perGroup + i) < count; i++) {
-      const spreadAngle = arrivalAngle + (i - perGroup/2) * 0.08;
-      const spreadDist = arrivalDist + rng(-30, 30);
-      const sx = Math.cos(spreadAngle) * spreadDist;
-      const sy = Math.sin(spreadAngle) * spreadDist;
+    // Each group arrives from a different angle
+    const arrivalAngle = (g / numGroups) * Math.PI * 2 + Math.random() * 0.5;
+    const arrivalDist = 650 + Math.random() * 350;
+    const planet = game.planets[Math.floor(Math.random() * game.planets.length)];
 
-      const typeName = types[Math.floor(Math.random()*types.length)];
-      const gen = Math.floor(Math.random()*Math.min(Math.floor(game.wave/2), 3));
+    // Generate formation points
+    const formPts = formFn(groupCount);
+
+    // Rotate formation to face inward (toward target planet)
+    const toTarget = Math.atan2(planet.y - Math.sin(arrivalAngle) * arrivalDist,
+                                planet.x - Math.cos(arrivalAngle) * arrivalDist);
+
+    for (let i = 0; i < groupCount; i++) {
+      // Rotate local formation point to face travel direction
+      const lx = formPts[i].x, ly = formPts[i].y;
+      const rx = lx * Math.cos(toTarget) - ly * Math.sin(toTarget);
+      const ry = lx * Math.sin(toTarget) + ly * Math.cos(toTarget);
+
+      const sx = Math.cos(arrivalAngle) * arrivalDist + rx;
+      const sy = Math.sin(arrivalAngle) * arrivalDist + ry;
+
+      const typeName = types[Math.floor(Math.random() * types.length)];
+      const gen = Math.floor(Math.random() * Math.min(Math.floor(game.wave / 2), 3));
       const inv = createARH(sx, sy, typeName, gen, planet);
 
-      // Give arrival velocity — heading toward the planet
-      const toTarget = Math.atan2(planet.y - sy, planet.x - sx);
-      const approachSpeed = 30 + Math.random() * 40;
+      // Arrival velocity — toward the planet, maintaining formation
+      const approachSpeed = 35 + Math.random() * 25;
       inv.vx = Math.cos(toTarget) * approachSpeed;
       inv.vy = Math.sin(toTarget) * approachSpeed;
 
@@ -6384,24 +6554,25 @@ function drawGame() {
   const drawCam = { x: game.cam.x + game.shake.offsetX, y: game.cam.y + game.shake.offsetY };
   drawScorePopups(ctx, drawCam);
 
-  // Combo counter HUD
-  if (game.combo >= 3) {
+  // Combo counter HUD — only at 5+ to reduce clutter
+  if (game.combo >= 5) {
     ctx.save();
     const comboAlpha = Math.min(1, game.comboTimer / 0.5);
     ctx.globalAlpha = comboAlpha;
-    const comboColor = game.combo >= 20 ? '#f4f' : game.combo >= 10 ? '#fa0' : game.combo >= 5 ? '#4ef' : '#ff4';
-    ctx.font = `bold ${18 + Math.min(game.combo, 30)}px 'Courier New',monospace`;
+    const comboColor = game.combo >= 50 ? '#f4f' : game.combo >= 30 ? '#fa0' : game.combo >= 15 ? '#4ef' : '#ff4';
+    ctx.font = `bold ${16 + Math.min(Math.floor(game.combo * 0.3), 20)}px 'Courier New',monospace`;
     ctx.textAlign = 'right';
     ctx.fillStyle = comboColor;
     ctx.shadowColor = comboColor;
-    ctx.shadowBlur = 12;
-    ctx.fillText(`${game.combo}x COMBO`, canvas.width - 20, canvas.height * 0.35);
-    // Combo multiplier
-    const mult = game.combo >= 20 ? '4.0' : game.combo >= 10 ? '3.0' : game.combo >= 5 ? '2.0' : '1.5';
-    ctx.font = `14px 'Courier New',monospace`;
-    ctx.fillStyle = '#aaa';
-    ctx.shadowBlur = 0;
-    ctx.fillText(`${mult}x SCORE`, canvas.width - 20, canvas.height * 0.35 + 22);
+    ctx.shadowBlur = 8;
+    ctx.fillText(`${game.combo}x`, canvas.width - 20, canvas.height * 0.35);
+    if (game.combo >= 15) {
+      const multLabel = game.combo >= 50 ? '4x' : game.combo >= 30 ? '3x' : '2x';
+      ctx.font = `12px 'Courier New',monospace`;
+      ctx.fillStyle = '#888';
+      ctx.shadowBlur = 0;
+      ctx.fillText(`${multLabel} BONUS`, canvas.width - 20, canvas.height * 0.35 + 18);
+    }
     ctx.restore();
   }
 
