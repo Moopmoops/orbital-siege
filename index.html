@@ -1450,6 +1450,9 @@ const STAR_COLOR_VARIANTS = [
   { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60, name: 'white-yellow' },
   { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10, name: 'deep-red' },
   { rBase: 215, gBase: 140, bBase: 50, rBright: 255, gBright: 230, bBright: 160, rDark: 155, gDark: 70, bDark: 10, name: 'peach' },
+  // Blue/blue-white stars (hot, rare-feeling)
+  { rBase: 120, gBase: 150, bBase: 220, rBright: 180, gBright: 210, bBright: 255, rDark: 40, gDark: 60, bDark: 140, name: 'blue' },
+  { rBase: 160, gBase: 180, bBase: 230, rBright: 220, gBright: 240, bBright: 255, rDark: 60, gDark: 80, bDark: 160, name: 'blue-white' },
 ];
 const STAR_COLOR = STAR_COLOR_VARIANTS[Math.floor(Math.random() * STAR_COLOR_VARIANTS.length)];
 const SHIP_SIZE = 10;
@@ -1752,7 +1755,7 @@ function fbm(x, y, octaves) {
   return v;
 }
 
-function generatePlanetTexture(radius, color1, color2, seed) {
+function generatePlanetTexture(radius, color1, color2, seed, gasGiantBands) {
   const size = Math.max(radius * 4, 128);
   const c = document.createElement('canvas');
   c.width = size; c.height = size;
@@ -1770,6 +1773,12 @@ function generatePlanetTexture(radius, color1, color2, seed) {
     return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)];
   }
   const rgb1 = hexToRgb(color1), rgb2 = hexToRgb(color2);
+
+  // Parse gas giant band colors if provided
+  let bandRgbs = null;
+  if (gasGiantBands && gasGiantBands.length > 0) {
+    bandRgbs = gasGiantBands.map(hexToRgb);
+  }
 
   // Draw pixel-by-pixel for noise texture
   const imgData = cx.createImageData(size, size);
@@ -1797,11 +1806,31 @@ function generatePlanetTexture(radius, color1, color2, seed) {
       const detail = fbm(lon*6 + seed*2, lat*8 + seed*1.3, 3) * 0.3;
       const clouds = fbm(lon*3 + seed*3.5, lat*2.5 + seed*2.1, 4);
 
-      // Blend between color1 and color2 based on terrain
-      const t = clamp(terrain + detail, 0, 1);
-      let r = rgb1[0] + (rgb2[0]-rgb1[0]) * t;
-      let g = rgb1[1] + (rgb2[1]-rgb1[1]) * t;
-      let b = rgb1[2] + (rgb2[2]-rgb1[2]) * t;
+      let r, g, b;
+      if (bandRgbs) {
+        // Gas giant: horizontal bands with noise distortion (Jupiter-like)
+        const bandLat = lat * 2.5 + fbm(lon*1.5 + seed*0.3, lat*0.8 + seed*1.2, 3) * 0.5;
+        const bandIdx = ((bandLat * bandRgbs.length / Math.PI + 100) % bandRgbs.length);
+        const bi = Math.floor(bandIdx) % bandRgbs.length;
+        const bi2 = (bi + 1) % bandRgbs.length;
+        const frac = bandIdx - Math.floor(bandIdx);
+        // Smooth interpolation between bands
+        const sf = frac * frac * (3 - 2 * frac); // smoothstep
+        r = bandRgbs[bi][0] + (bandRgbs[bi2][0] - bandRgbs[bi][0]) * sf;
+        g = bandRgbs[bi][1] + (bandRgbs[bi2][1] - bandRgbs[bi][1]) * sf;
+        b = bandRgbs[bi][2] + (bandRgbs[bi2][2] - bandRgbs[bi][2]) * sf;
+        // Add turbulence from base terrain noise
+        const turb = (terrain + detail - 0.5) * 30;
+        r = clamp(r + turb, 0, 255);
+        g = clamp(g + turb * 0.8, 0, 255);
+        b = clamp(b + turb * 0.6, 0, 255);
+      } else {
+        // Regular rocky planet: blend between color1 and color2 based on terrain
+        const t = clamp(terrain + detail, 0, 1);
+        r = rgb1[0] + (rgb2[0]-rgb1[0]) * t;
+        g = rgb1[1] + (rgb2[1]-rgb1[1]) * t;
+        b = rgb1[2] + (rgb2[2]-rgb1[2]) * t;
+      }
 
       // Cloud layer (brighter)
       if (clouds > 0.55) {
@@ -2689,13 +2718,14 @@ class Star {
 
 // --- Planet ---
 class Planet {
-  constructor(x, y, radius, color1, color2, name) {
+  constructor(x, y, radius, color1, color2, name, gasGiantBands) {
     this.x = x; this.y = y; this.radius = radius;
     this.color1 = color1; this.color2 = color2; this.name = name;
     this.mass = 3000;
     this.orbitRadius = 0; this.orbitAngle = 0; this.orbitSpeed = 0;
     this.seed = Math.random() * 100;
-    this.texture = generatePlanetTexture(radius, color1, color2, this.seed);
+    this.gasGiantBands = gasGiantBands || null;
+    this.texture = generatePlanetTexture(radius, color1, color2, this.seed, gasGiantBands);
     this.texRotation = 0;
     this.hasRings = false;
     this.ringTilt = 0.3;
@@ -2953,6 +2983,9 @@ class Ship {
     this.scanTarget = null;
     this.scanTimer = 0;
     this.solarCharge = 0; // 0-1, builds while deep in sun heat
+    this.solarBombs = 0; // stored solar bombs (earned by filling charge to 100%)
+    this.maxSolarBombs = 1; // increases with wave progression
+    this.solarBombCooldown = 0; // cooldown between consecutive solar bombs
     this.applyType(this.shipType);
   }
 
@@ -3103,9 +3136,21 @@ class Ship {
       this.solarCharge = Math.min(1, this.solarCharge + chargeRate * 0.7 * dt);
       // Sun slowly restores health
       this.hp = Math.min(this.maxHp, this.hp + 3 * dt); // 3 HP per second while near sun
+      // When charge hits 100%, bank a solar bomb
+      if (this.solarCharge >= 1 && this.solarBombs < this.maxSolarBombs) {
+        this.solarBombs++;
+        this.solarCharge = 0;
+        game.bossSubMessage = `SOLAR BOMB STORED (${this.solarBombs}/${this.maxSolarBombs})`;
+        game.bossSubMessageTimer = 2;
+        game.shake.add(3);
+      }
     } else {
       this.solarCharge = Math.max(0, this.solarCharge - 0.01 * dt); // very slow decay (~100s)
     }
+    // Solar bomb cooldown tick
+    if (this.solarBombCooldown > 0) this.solarBombCooldown -= dt;
+    // Max solar bombs increases with wave
+    this.maxSolarBombs = 1 + Math.floor((game.wave || 1) / 10); // +1 every 10 waves
     // Atmosphere heat: ramp up while near planet at speed, slow decay out
     let maxAtmo = 0, bestAtmoAngle = 0;
     if (game.planets) {
@@ -3232,26 +3277,30 @@ class Ship {
   }
   fireBomb(invaders, particles) {
     if (this.energy < BOMB_COST || !this.alive) return;
-    this.energy -= BOMB_COST;
-    // Solar-charged bomb: up to 3.5x radius and 4x damage when fully charged
-    const savedCharge = this.solarCharge;
+    // Check if we should fire a solar bomb (from stored bombs)
+    const wasSolarCharged = this.solarBombs > 0 && this.solarBombCooldown <= 0;
+    const savedCharge = wasSolarCharged ? 1.0 : (this.solarCharge > 0.3 ? this.solarCharge : 0);
     const solarMult = 1 + savedCharge * 2.5; // 1x to 3.5x
     const solarDmgMult = 1 + savedCharge * 3; // 1x to 4x
-    const wasSolarCharged = savedCharge > 0.3;
+    this.energy -= BOMB_COST;
     if (wasSolarCharged) {
-      this.solarCharge = 0; // consume the charge
+      this.solarBombs--; // consume a stored bomb
+      this.solarBombCooldown = 2.0; // 2-second cooldown between solar bombs
       playSound('bomb'); game.shake.add(8 + savedCharge * 25);
       // Solar bomb: uses star's color palette for map-specific flair
       const stc = STAR_COLOR;
       const starMain = `rgb(${stc.rBright},${stc.gBright},${stc.bBright})`;
       const starMid = `rgb(${stc.rBase},${Math.floor(stc.gBase*1.2)},${Math.floor(stc.bBase*2)})`;
       const starDark = `rgb(${stc.rDark},${stc.gDark},${stc.bDark})`;
+      // Solar bomb particles — all derived from star palette, no fixed pink
+      const starWarm = `rgb(${Math.min(255,stc.rBright+20)},${Math.min(255,Math.floor(stc.gBright*0.8))},${Math.floor(stc.bBright*0.4)})`;
+      const starHot = `rgb(255,${Math.min(255,Math.floor(stc.gBright*1.2+40))},${Math.min(255,Math.floor(stc.bBright+60))})`;
       particles.emit(this.x, this.y, 150, '#fff', 550 * solarMult, 1.0, 7);
       particles.emit(this.x, this.y, 100, starMain, 500 * solarMult, 0.9, 6);
       particles.emit(this.x, this.y, 80, starMid, 450 * solarMult, 0.8, 5);
-      particles.emit(this.x, this.y, 50, '#f4a', 400 * solarMult, 1.2, 8); // pink embers for contrast
+      particles.emit(this.x, this.y, 50, starWarm, 400 * solarMult, 1.2, 8);
       particles.emit(this.x, this.y, 40, starDark, 380 * solarMult, 0.7, 4);
-      particles.emit(this.x, this.y, 30, '#ff4', 350 * solarMult, 0.6, 3); // golden sparkle
+      particles.emit(this.x, this.y, 30, starHot, 350 * solarMult, 0.6, 3);
     } else {
       playSound('bomb'); game.shake.add(8);
       particles.emit(this.x, this.y, 80, '#4ef', 400, 0.6, 4);
@@ -3289,7 +3338,7 @@ class Ship {
     game.achievementTracking.bombKills = bombKills;
     // Mass kill feedback — overrides combo messages for big bombs
     if (bombKills >= 4) {
-      game.bossMessage = bombKills >= 15 ? 'ANNIHILATION!' : bombKills >= 10 ? 'DEVASTATION!' : bombKills >= 7 ? 'MULTI-KILL!' : 'QUAD KILL!';
+      game.bossMessage = bombKills >= 15 ? 'TOTAL MELTDOWN!' : bombKills >= 10 ? 'MASS DISASSEMBLY!' : bombKills >= 7 ? 'CIRCUIT BREAKER!' : 'QUAD SCRAP!';
       game.bossMessageTimer = 2;
       game.bossMessageColor = wasSolarCharged ? '#fa0' : '#4ef';
       if (bombKills >= 7) game.hitStop = 0.06;
@@ -3513,9 +3562,9 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Solar charge indicator — golden aura persists while charged, pulses stronger at high charge
-    if (this.solarCharge > 0.1) {
-      const sc = this.solarCharge;
+    // Solar charge indicator — golden aura persists while charged or when holding stored bombs
+    if (this.solarCharge > 0.1 || this.solarBombs > 0) {
+      const sc = this.solarBombs > 0 ? 0.8 + this.solarBombs * 0.05 : this.solarCharge;
       const pulse = 0.6 + Math.sin((game.time || 0) * 2.5) * 0.4;
       const glowR = SHIP_SIZE * (2.5 + sc * 2.0);
       // Outer warm haze — always visible when charged
@@ -4981,19 +5030,19 @@ function unlockAchievement(key) {
 
 // --- System Expansion Data ---
 const EXPANSION_COLOR_POOL = [
-  { c1: '#907050', c2: '#382818' }, // amber dust
+  { c1: '#907050', c2: '#382818', gasGiant: true, bands: ['#a08050','#705030','#c09868','#604828','#907040'] }, // banded amber giant
   { c1: '#4a4055', c2: '#151018' }, // muted violet
   { c1: '#708090', c2: '#283038' }, // steel
   { c1: '#8a4838', c2: '#2a1210' }, // brick
   { c1: '#907860', c2: '#382a18' }, // driftwood
-  { c1: '#506878', c2: '#1a2830' }, // slate teal
+  { c1: '#506878', c2: '#1a2830', gasGiant: true, bands: ['#607888','#405868','#7090a0','#385060','#506a78'] }, // banded slate giant
 ];
 const shuffledExpColors = EXPANSION_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
 const SYSTEM_EXPANSION = [
-  { wave: 8, name: 'Luminara', radius: PLANET_RADIUS * 0.7, color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, orbitR: 420, orbitSpeed: 0.028, moons: 1 },
-  { wave: 15, name: 'Umbra', radius: PLANET_RADIUS * 1.4, color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, orbitR: 900, orbitSpeed: 0.009, rings: true, moons: 2 },
-  { wave: 25, name: 'Glacius', radius: PLANET_RADIUS * 1.1, color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, orbitR: 1050, orbitSpeed: 0.007, rings: true },
-  { wave: 35, name: 'Pyraxis', radius: PLANET_RADIUS * 0.95, color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, orbitR: 850, orbitSpeed: 0.011, moons: 2 },
+  { wave: 8, name: 'Luminara', radius: PLANET_RADIUS * 0.7, color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, bands: shuffledExpColors[0].bands, orbitR: 420, orbitSpeed: 0.028, moons: 1 },
+  { wave: 15, name: 'Umbra', radius: PLANET_RADIUS * 1.4, color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, bands: shuffledExpColors[1].bands, orbitR: 900, orbitSpeed: 0.009, rings: true, moons: 2 },
+  { wave: 25, name: 'Glacius', radius: PLANET_RADIUS * 1.1, color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, bands: shuffledExpColors[2].bands, orbitR: 1050, orbitSpeed: 0.007, rings: true },
+  { wave: 35, name: 'Pyraxis', radius: PLANET_RADIUS * 0.95, color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, bands: shuffledExpColors[3].bands, orbitR: 850, orbitSpeed: 0.011, moons: 2 },
 ];
 
 function expandSystem(wave) {
@@ -5004,7 +5053,7 @@ function expandSystem(wave) {
     if (expansion.wave === wave && !game.expandedWaves.has(wave)) {
       game.expandedWaves.add(wave);
       // Create new planet
-      const p = new Planet(0, 0, expansion.radius, expansion.color1, expansion.color2, expansion.name);
+      const p = new Planet(0, 0, expansion.radius, expansion.color1, expansion.color2, expansion.name, expansion.bands);
       p.orbitRadius = expansion.orbitR;
       p.orbitAngle = Math.random() * Math.PI * 2;
       p.orbitSpeed = expansion.orbitSpeed;
@@ -5034,6 +5083,9 @@ function expandSystem(wave) {
         }
       }
 
+      // Mark planet as newly discovered — fading ring indicator
+      p._discoveryTimer = 15; // 15 seconds of visible marker
+
       // Show announcement
       game.bossMessage = `NEW CELESTIAL BODY DETECTED: ${expansion.name}`;
       game.bossMessageTimer = 3.5;
@@ -5051,23 +5103,23 @@ function initGame() {
     { c1: '#4a6a55', c2: '#1a2a1a' }, // muted olive
     { c1: '#6a7a88', c2: '#2a3038' }, // cool grey-blue
     { c1: '#8a5540', c2: '#301810' }, // rust
-    { c1: '#9a8060', c2: '#3a2a18' }, // sandstone
+    { c1: '#9a8060', c2: '#3a2a18', gasGiant: true, bands: ['#b09060','#7a5a3a','#c8a070','#6a4a2a','#aa8855'] }, // banded sandstone (Jupiter-like)
     { c1: '#5a5068', c2: '#1a1520' }, // dusty mauve
-    { c1: '#506a6a', c2: '#1a2a2a' }, // dark teal
-    { c1: '#8a7060', c2: '#3a2a1a' }, // clay
+    { c1: '#506a6a', c2: '#1a2a2a', gasGiant: true, bands: ['#4a7070','#3a5555','#608080','#2a4a4a','#557a6a'] }, // banded teal giant
+    { c1: '#8a7060', c2: '#3a2a1a', gasGiant: true, bands: ['#a08050','#6a5030','#c09060','#8a6040','#5a4025'] }, // banded clay giant
     { c1: '#607050', c2: '#202a18' }, // sage
   ];
   const shuffledColors = PLANET_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
-  const planet1 = new Planet(320, 0, PLANET_RADIUS, shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler');
+  const planet1 = new Planet(320, 0, PLANET_RADIUS, shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler', shuffledColors[0].bands);
   planet1.orbitRadius = 320; planet1.orbitAngle = 0; planet1.orbitSpeed = 0.04;
-  const planet2 = new Planet(-240, 280, PLANET_RADIUS * 0.75, shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica');
+  const planet2 = new Planet(-240, 280, PLANET_RADIUS * 0.75, shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica', shuffledColors[1].bands);
   planet2.orbitRadius = 480; planet2.orbitAngle = Math.PI*0.7; planet2.orbitSpeed = 0.025;
-  const planet3 = new Planet(0, -550, PLANET_RADIUS * 1.1, shuffledColors[2].c1, shuffledColors[2].c2, 'Verdania');
+  const planet3 = new Planet(0, -550, PLANET_RADIUS * 1.1, shuffledColors[2].c1, shuffledColors[2].c2, 'Verdania', shuffledColors[2].bands);
   planet3.orbitRadius = 550; planet3.orbitAngle = Math.PI*1.5; planet3.orbitSpeed = 0.02;
-  const planet4 = new Planet(400, 400, PLANET_RADIUS * 0.65, shuffledColors[3].c1, shuffledColors[3].c2, 'Cryos');
+  const planet4 = new Planet(400, 400, PLANET_RADIUS * 0.65, shuffledColors[3].c1, shuffledColors[3].c2, 'Cryos', shuffledColors[3].bands);
   planet4.orbitRadius = 650; planet4.orbitAngle = Math.PI*0.25; planet4.orbitSpeed = 0.015;
   planet4.hasRings = true; planet4.ringTilt = 0.35;
-  const planet5 = new Planet(-600, -100, PLANET_RADIUS * 0.85, shuffledColors[4].c1, shuffledColors[4].c2, 'Magmos');
+  const planet5 = new Planet(-600, -100, PLANET_RADIUS * 0.85, shuffledColors[4].c1, shuffledColors[4].c2, 'Magmos', shuffledColors[4].bands);
   planet5.orbitRadius = 720; planet5.orbitAngle = Math.PI*1.1; planet5.orbitSpeed = 0.012;
   const planets = [planet1, planet2, planet3, planet4, planet5];
   const bodies = [star, planet1, planet2, planet3, planet4, planet5];
@@ -5129,37 +5181,50 @@ function registerKill(x, y, basePoints, inv) {
   const bonusPoints = Math.floor(basePoints * (mult - 1));
   game.score += bonusPoints; // base points already added at kill site
 
-  // Floating score popup
-  let text = `+${basePoints}`;
-  let color = '#fff';
-  if (game.combo >= 3) {
-    text = `+${basePoints + bonusPoints}`;
-    color = game.combo >= 20 ? '#f4f' : game.combo >= 10 ? '#fa0' : game.combo >= 5 ? '#4ef' : '#ff4';
+  // Aggregate score popup — merge with nearby recent popup instead of stacking
+  const totalPts = basePoints + bonusPoints;
+  const color = game.combo >= 20 ? '#f4f' : game.combo >= 10 ? '#fa0' : game.combo >= 5 ? '#4ef' : game.combo >= 3 ? '#ff4' : '#fff';
+  let merged = false;
+  for (const p of game.scorePopups) {
+    const pd = Math.hypot(p.x - x, p.y - y);
+    if (pd < 80 && p.life > 0.6) {
+      // Merge into existing popup
+      p.total = (p.total || parseInt(p.text.replace('+','')) || 0) + totalPts;
+      p.text = `+${p.total}`;
+      p.color = color;
+      p.life = Math.max(p.life, 1.4); // refresh life
+      p.x = (p.x + x) / 2; // drift to center
+      p.y = Math.min(p.y, y); // keep it high
+      merged = true;
+      break;
+    }
   }
-  game.scorePopups.push({ x, y, text, color, life: 1.2, vy: -60 });
+  if (!merged) {
+    game.scorePopups.push({ x, y, text: `+${totalPts}`, total: totalPts, color, life: 1.4, vy: -50 });
+  }
 
-  // Combo milestone messages (small satisfying moments)
+  // Combo milestone messages — machine/robot themed
   if (game.combo === 5) {
-    game.bossMessage = 'KILL STREAK!';
+    game.bossMessage = 'SYSTEMS OVERLOAD!';
     game.bossMessageTimer = 1.5;
     game.bossMessageColor = '#4ef';
   } else if (game.combo === 10) {
-    game.bossMessage = 'RAMPAGE!';
+    game.bossMessage = 'MACHINE MENACE!';
     game.bossMessageTimer = 1.8;
     game.bossMessageColor = '#fa0';
     game.shake.add(3);
   } else if (game.combo === 20) {
-    game.bossMessage = 'UNSTOPPABLE!';
+    game.bossMessage = 'SCRAP STORM!';
     game.bossMessageTimer = 2.0;
     game.bossMessageColor = '#f4f';
     game.shake.add(5);
   } else if (game.combo === 30) {
-    game.bossMessage = 'GODLIKE!';
+    game.bossMessage = 'TOTAL DISASSEMBLY!';
     game.bossMessageTimer = 2.5;
     game.bossMessageColor = '#fff';
     game.shake.add(8);
   } else if (game.combo > 0 && game.combo % 25 === 0 && game.combo > 30) {
-    game.bossMessage = `${game.combo}x COMBO!`;
+    game.bossMessage = `${game.combo}x CASCADE!`;
     game.bossMessageTimer = 2.0;
     game.bossMessageColor = '#f4f';
     game.shake.add(6);
@@ -5611,9 +5676,53 @@ function updateGame(dt) {
       }
 
       // Formation behaviors based on cluster size
+      // First-time notifications for each machine type
+      if (!game._seenMachines) game._seenMachines = {};
+
+      if (cluster.count >= 6 && cluster.count < 8) {
+        // "Swarm Cloud" — basic cluster, slight speed boost
+        for (const idx of cluster.members) {
+          const inv = game.invaders[idx];
+          const spd = Math.hypot(inv.vx, inv.vy);
+          if (spd > 5) {
+            inv.vx *= 1 + 0.3 * dt;
+            inv.vy *= 1 + 0.3 * dt;
+          }
+        }
+        if (!game._seenMachines.swarmCloud) {
+          game._seenMachines.swarmCloud = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a SWARM CLOUD!';
+          game.bossSubMessageTimer = 3.5;
+        }
+      }
+
+      if (cluster.count >= 8) {
+        // "Pulse Shield" — clustered ARH gain a small damage reduction
+        for (const idx of cluster.members) {
+          game.invaders[idx]._clusterArmor = Math.min(0.3, cluster.count * 0.02);
+        }
+        if (!game._seenMachines.pulseShield) {
+          game._seenMachines.pulseShield = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a PULSE SHIELD!';
+          game.bossSubMessageTimer = 3.5;
+        }
+      }
+
+      if (cluster.count >= 10) {
+        // "Signal Relay" — members shoot more frequently (reduce shootTimer)
+        for (const idx of cluster.members) {
+          const inv = game.invaders[idx];
+          if (inv.shootTimer > 0.5) inv.shootTimer -= 0.3 * dt;
+        }
+        if (!game._seenMachines.signalRelay) {
+          game._seenMachines.signalRelay = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a SIGNAL RELAY!';
+          game.bossSubMessageTimer = 3.5;
+        }
+      }
+
       if (cluster.count >= 12 && game.ship.alive) {
-        // "Siege Ring" — large clusters slowly orbit toward the player's position
-        // The cluster center drifts toward the ship, creating pressure
+        // "Siege Ring" — large clusters slowly orbit toward the player
         const toShipAngle = Math.atan2(game.ship.y - cluster.cy, game.ship.x - cluster.cx);
         const driftForce = 8 + cluster.count * 0.5;
         for (const idx of cluster.members) {
@@ -5621,25 +5730,20 @@ function updateGame(dt) {
           inv.vx += Math.cos(toShipAngle) * driftForce * dt;
           inv.vy += Math.sin(toShipAngle) * driftForce * dt;
         }
-      }
-
-      if (cluster.count >= 8) {
-        // "Pulse Shield" — clustered ARH gain a small damage reduction
-        // (marked on each invader, applied in damage code)
-        for (const idx of cluster.members) {
-          game.invaders[idx]._clusterArmor = Math.min(0.3, cluster.count * 0.02); // up to 30% reduction
+        if (!game._seenMachines.siegeRing) {
+          game._seenMachines.siegeRing = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a SIEGE RING!';
+          game.bossSubMessageTimer = 3.5;
         }
       }
 
       if (cluster.count >= 15) {
-        // "Hive Volley" — very large clusters occasionally fire a synchronized burst
-        // Track per-cluster timer via first member
+        // "Hive Volley" — synchronized burst fire
         const leader = game.invaders[cluster.members[0]];
         if (!leader._hiveVolleyTimer) leader._hiveVolleyTimer = 5 + Math.random() * 3;
         leader._hiveVolleyTimer -= dt;
         if (leader._hiveVolleyTimer <= 0 && game.ship.alive) {
-          leader._hiveVolleyTimer = 6 + Math.random() * 4; // 6-10 second cooldown
-          // 3-5 members fire toward player
+          leader._hiveVolleyTimer = 6 + Math.random() * 4;
           const shooters = cluster.members.slice(0, Math.min(5, cluster.members.length));
           for (const idx of shooters) {
             const inv = game.invaders[idx];
@@ -5649,11 +5753,49 @@ function updateGame(dt) {
               x: inv.x, y: inv.y,
               vx: inv.vx + Math.cos(a + spread) * 130,
               vy: inv.vy + Math.sin(a + spread) * 130,
-              life: 2.5, damage: 6, color: '#fff' // white volley bullets — distinct
+              life: 2.5, damage: 6, color: '#fff'
             });
           }
-          // Visual: brief flash at cluster center
           game.particles.emit(cluster.cx, cluster.cy, 10, '#fff', 100, 0.3, 2);
+        }
+        if (!game._seenMachines.hiveVolley) {
+          game._seenMachines.hiveVolley = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a HIVE VOLLEY!';
+          game.bossSubMessageTimer = 3.5;
+        }
+      }
+
+      if (cluster.count >= 20) {
+        // "Regeneration Matrix" — members slowly heal each other
+        for (const idx of cluster.members) {
+          const inv = game.invaders[idx];
+          if (inv.hp < inv.maxHp) {
+            inv.hp = Math.min(inv.maxHp, inv.hp + 2 * dt);
+          }
+        }
+        if (!game._seenMachines.regenMatrix) {
+          game._seenMachines.regenMatrix = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a REGENERATION MATRIX!';
+          game.bossSubMessageTimer = 3.5;
+        }
+      }
+
+      if (cluster.count >= 25) {
+        // "Gravity Anchor" — cluster becomes very hard to push apart, resists knockback
+        for (const idx of cluster.members) {
+          const inv = game.invaders[idx];
+          // Pull gently toward cluster center
+          const toCenterX = cluster.cx - inv.x, toCenterY = cluster.cy - inv.y;
+          const toCD = Math.hypot(toCenterX, toCenterY);
+          if (toCD > 30) {
+            inv.vx += (toCenterX / toCD) * 15 * dt;
+            inv.vy += (toCenterY / toCD) * 15 * dt;
+          }
+        }
+        if (!game._seenMachines.gravityAnchor) {
+          game._seenMachines.gravityAnchor = true;
+          game.bossSubMessage = 'The self-replicating swarm formed a GRAVITY ANCHOR!';
+          game.bossSubMessageTimer = 3.5;
         }
       }
     }
@@ -5949,6 +6091,28 @@ function drawGame() {
       for (const moon of p.moons) {
         moon.draw(ctx, cam);
       }
+    }
+    // Discovery marker — pulsing ring that fades out
+    if (p._discoveryTimer && p._discoveryTimer > 0) {
+      p._discoveryTimer -= dt;
+      const sx = p.x - cam.x + canvas.width/2, sy = p.y - cam.y + canvas.height/2;
+      const fadeAlpha = Math.min(1, p._discoveryTimer / 3); // fade over last 3 seconds
+      const pulse = 1 + Math.sin(game.time * 3) * 0.08;
+      const ringR = (p.radius + 25) * pulse;
+      ctx.save();
+      ctx.globalAlpha = fadeAlpha * 0.6;
+      ctx.strokeStyle = '#4ef';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.arc(sx, sy, ringR, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
+      // Name label
+      ctx.globalAlpha = fadeAlpha * 0.8;
+      ctx.font = '11px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#4ef';
+      ctx.fillText(p.name.toUpperCase(), sx, sy - ringR - 8);
+      ctx.restore();
     }
   }
 
@@ -6456,7 +6620,14 @@ function updateHUD() {
   const laserWave = (SHIP_TYPES[game.ship.shipType] && SHIP_TYPES[game.ship.shipType].laserWave) || 3;
   const laserStatus = game.wave >= laserWave ? (game.ship.laserActive ? 'FIRING' : 'READY') : `LOCKED (Wave ${laserWave})`;
   const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
-  const solarInfo = game.ship.solarCharge > 0.3 ? ` | <span style="color:#fa0">☀ SOLAR BOMB ${Math.round(game.ship.solarCharge * 100)}%</span>` : '';
+  let solarInfo = '';
+  if (game.ship.solarBombs > 0) {
+    const cdReady = game.ship.solarBombCooldown <= 0;
+    const cdColor = cdReady ? '#fa0' : '#a70';
+    solarInfo = ` | <span style="color:${cdColor}">☀ SOLAR BOMB x${game.ship.solarBombs}${cdReady ? '' : ' (COOLING)'}</span>`;
+  } else if (game.ship.solarCharge > 0.1) {
+    solarInfo = ` | <span style="color:#a70">☀ CHARGING ${Math.round(game.ship.solarCharge * 100)}%</span>`;
+  }
   document.getElementById('hud-weapons').innerHTML = `TORPEDOES: ${torpStatus} | LASER: ${laserStatus}${swapInfo}${solarInfo}`;
 }
 
