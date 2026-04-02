@@ -1467,7 +1467,7 @@ const STAR_COLOR_VARIANTS = [
 const STAR_COLOR = STAR_COLOR_VARIANTS[Math.floor(Math.random() * STAR_COLOR_VARIANTS.length)];
 const SHIP_SIZE = 10;
 let BULLET_SPEED = 200;
-let BULLET_LIFE = 15;
+let BULLET_LIFE = 10;
 let FIRE_RATE = 0.02;
 let MISSILE_SPEED = 190;
 let MISSILE_TURN = 4.0;
@@ -3126,33 +3126,17 @@ class Ship {
 
     this.x += this.vx*dt; this.y += this.vy*dt;
 
-    // System boundary — prevent ship from escaping into deep space
-    // Find the outermost body's orbit to set the boundary
-    if (game.star) {
-      const dFromStar = dist(this, game.star);
-      let maxOrbit = 400;
-      for (const p of game.planets) {
-        if (p.orbitRadius > maxOrbit) maxOrbit = p.orbitRadius;
-      }
-      const boundary = maxOrbit + 300; // generous padding beyond outermost planet
-      if (dFromStar > boundary) {
-        // Exponentially increasing pull back toward the star
-        const excess = (dFromStar - boundary) / boundary;
-        const pullStrength = 200 + excess * excess * 2000; // ramps up fast
-        const dx = game.star.x - this.x, dy = game.star.y - this.y;
-        const d = Math.hypot(dx, dy);
-        if (d > 1) {
-          this.vx += (dx/d) * pullStrength * dt;
-          this.vy += (dy/d) * pullStrength * dt;
-        }
-        // Also bleed off excess outward velocity
-        const vRad = (this.vx * (this.x - game.star.x) + this.vy * (this.y - game.star.y)) / d;
-        if (vRad > 0) {
-          const dampen = Math.min(0.95, excess * 0.3);
-          this.vx -= (this.x - game.star.x) / d * vRad * dampen;
-          this.vy -= (this.y - game.star.y) / d * vRad * dampen;
-        }
-      }
+    // NaN/Infinity guard — if physics goes haywire, snap back to nearest planet
+    if (!isFinite(this.x) || !isFinite(this.y) || !isFinite(this.vx) || !isFinite(this.vy)) {
+      console.warn('Ship position went NaN/Infinity — resetting to nearest planet');
+      const planet = game.planets[0];
+      const orbitR = planet.radius + ORBIT_MIN + 40;
+      const a = Math.random() * Math.PI * 2;
+      this.x = planet.x + Math.cos(a) * orbitR;
+      this.y = planet.y + Math.sin(a) * orbitR;
+      const orbV = (2*Math.PI*orbitR)/45;
+      this.vx = Math.cos(a + Math.PI/2) * orbV;
+      this.vy = Math.sin(a + Math.PI/2) * orbV;
     }
 
     // No surface collision — planets are spheres, ship flies over/under them
@@ -6148,6 +6132,12 @@ function updateGame(dt) {
   game.cam.x = lerp(game.cam.x, camTargetX, CAM_SMOOTH*dt);
   game.cam.y = lerp(game.cam.y, camTargetY, CAM_SMOOTH*dt);
 
+  // NaN guard for camera
+  if (!isFinite(game.cam.x) || !isFinite(game.cam.y)) {
+    game.cam.x = game.ship.x;
+    game.cam.y = game.ship.y;
+  }
+
   // Auto-zoom to keep action in frame — biased toward tighter view
   if (AUTO_ZOOM > 0) {
     let maxDist = 180; // minimum view radius (tighter default)
@@ -6173,7 +6163,9 @@ function updateGame(dt) {
     // Target zoom: fit maxDist into 70% of screen half-width
     const screenHalf = Math.min(canvas.width, canvas.height) * 0.5 * 0.70;
     const targetZoom = clamp(screenHalf / maxDist, ZOOM_MIN, ZOOM_MAX);
-    CAMERA_ZOOM = lerp(CAMERA_ZOOM, targetZoom, ZOOM_SPEED * dt);
+    // Zoom out fast (need to see incoming threats), zoom in slow (don't snap tight when clearing a wave)
+    const zoomSpeed = targetZoom < CAMERA_ZOOM ? ZOOM_SPEED : ZOOM_SPEED * 0.25;
+    CAMERA_ZOOM = lerp(CAMERA_ZOOM, targetZoom, zoomSpeed * dt);
   }
   game.particles.update(dt);
   game.shake.update(dt);
