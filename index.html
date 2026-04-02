@@ -3205,9 +3205,8 @@ class Ship {
         game.shake.add(3);
         playSound('scan');
       }
-    } else {
-      this.solarCharge = Math.max(0, this.solarCharge - 0.01 * dt); // very slow decay (~100s)
     }
+    // No charge decay — once you earn charge, you keep it
     // Solar bomb cooldown tick
     if (this.solarBombCooldown > 0) this.solarBombCooldown -= dt;
     // Max solar bombs increases with wave
@@ -3340,9 +3339,8 @@ class Ship {
     if (this.energy < BOMB_COST || !this.alive) return;
     // Check if we should fire a solar bomb (from stored bombs)
     const wasSolarCharged = this.solarBombs > 0 && this.solarBombCooldown <= 0;
-    const savedCharge = wasSolarCharged ? 1.0 : (this.solarCharge > 0.3 ? this.solarCharge : 0);
-    const solarMult = 1 + savedCharge * 2.5; // 1x to 3.5x
-    const solarDmgMult = 1 + savedCharge * 3; // 1x to 4x
+    const solarMult = wasSolarCharged ? 3.5 : 1;
+    const solarDmgMult = wasSolarCharged ? 4 : 1;
     this.energy -= BOMB_COST;
     if (wasSolarCharged) {
       this.solarBombs--; // consume a stored bomb
@@ -3623,11 +3621,12 @@ class Ship {
       ctx.globalAlpha = 1;
     }
 
-    // Solar charge indicator — golden aura persists while charged or when holding stored bombs
+    // Solar charge indicator — golden aura scales with charge, full size when bomb is stored
     if (this.solarCharge > 0.1 || this.solarBombs > 0) {
+      // sc: 0-1 for partial charge, 0.8+ for stored bombs — drives visual size
       const sc = this.solarBombs > 0 ? 0.8 + this.solarBombs * 0.05 : this.solarCharge;
       const pulse = 0.6 + Math.sin((game.time || 0) * 2.5) * 0.4;
-      const glowR = SHIP_SIZE * (2.5 + sc * 2.0);
+      const glowR = SHIP_SIZE * (1.0 + sc * 3.5); // small at low charge, large when full
       // Outer warm haze — always visible when charged
       ctx.globalAlpha = (0.15 + sc * 0.3) * pulse;
       const outerGlow = ctx.createRadialGradient(0, 0, SHIP_SIZE * 0.2, 0, 0, glowR);
@@ -5677,6 +5676,10 @@ function updateGame(dt) {
         moon.y = p.y + Math.sin(moon.moonOrbitAngle) * moon.moonOrbitRadius;
       }
     }
+    // Discovery marker countdown (visual drawn in drawGame)
+    if (p._discoveryTimer && p._discoveryTimer > 0) {
+      p._discoveryTimer -= dt;
+    }
   }
 
   // Ship
@@ -6345,9 +6348,8 @@ function drawGame() {
         moon.draw(ctx, cam);
       }
     }
-    // Discovery marker — small arrow + label that fades
+    // Discovery marker — small arrow + label that fades (timer decremented in updateGame)
     if (p._discoveryTimer && p._discoveryTimer > 0) {
-      p._discoveryTimer -= dt;
       const sx = p.x - cam.x + canvas.width/2, sy = p.y - cam.y + canvas.height/2;
       const fadeAlpha = Math.min(1, p._discoveryTimer / 3);
       const bob = Math.sin(game.time * 2.5) * 4; // gentle bobbing
@@ -6885,7 +6887,8 @@ function updateHUD() {
     const cdColor = cdReady ? '#fa0' : '#a70';
     solarInfo = ` | <span style="color:${cdColor}">☀ SOLAR BOMB x${game.ship.solarBombs}${cdReady ? '' : ' (COOLING)'}</span>`;
   } else if (game.ship.solarCharge > 0.1) {
-    solarInfo = ` | <span style="color:#a70">☀ CHARGING ${Math.round(game.ship.solarCharge * 100)}%</span>`;
+    const pct = Math.round(game.ship.solarCharge * 100);
+    solarInfo = ` | <span style="color:#a70">☀ SOLAR ${pct}%</span>`;
   }
   document.getElementById('hud-weapons').innerHTML = `TORPEDOES: ${torpStatus} | LASER: ${laserStatus}${swapInfo}${solarInfo}`;
 }
