@@ -3140,9 +3140,10 @@ class Ship {
       if (this.solarCharge >= 1 && this.solarBombs < this.maxSolarBombs) {
         this.solarBombs++;
         this.solarCharge = 0;
-        game.bossSubMessage = `SOLAR BOMB STORED (${this.solarBombs}/${this.maxSolarBombs})`;
-        game.bossSubMessageTimer = 2;
+        // Show as a small floating indicator near the ship instead of big boss message
+        game.scorePopups.push({ x: this.x, y: this.y - 20, text: `☀ SOLAR BOMB x${this.solarBombs}`, total: 0, color: '#fa0', life: 2.0, vy: -30 });
         game.shake.add(3);
+        playSound('scan');
       }
     } else {
       this.solarCharge = Math.max(0, this.solarCharge - 0.01 * dt); // very slow decay (~100s)
@@ -5160,6 +5161,11 @@ function initGame() {
     combo: 0, comboTimer: 0, comboMax: 0,
     scorePopups: [], // { x, y, text, color, life, vy }
     hitStop: 0, // brief time slowdown for big moments
+    // Personal best tracking (live during game)
+    _prevBestScore: parseInt(localStorage.getItem('orbital-siege-best-score') || '0'),
+    _prevBestKills: parseInt(localStorage.getItem('orbital-siege-best-kills') || '0'),
+    _prevBestWave: parseInt(localStorage.getItem('orbital-siege-best-wave') || '0'),
+    _beatScore: false, _beatKills: false, _beatWave: false,
     hintState: {
       orbitStuckTimer: 0, orbitStuckBody: null,
       thrustAccumTimer: 0, unstableTimer: 0,
@@ -5203,31 +5209,34 @@ function registerKill(x, y, basePoints, inv) {
     game.scorePopups.push({ x, y, text: `+${totalPts}`, total: totalPts, color, life: 1.4, vy: -50 });
   }
 
-  // Combo milestone messages — machine/robot themed
-  if (game.combo === 5) {
-    game.bossMessage = 'SYSTEMS OVERLOAD!';
-    game.bossMessageTimer = 1.5;
-    game.bossMessageColor = '#4ef';
-  } else if (game.combo === 10) {
-    game.bossMessage = 'MACHINE MENACE!';
-    game.bossMessageTimer = 1.8;
-    game.bossMessageColor = '#fa0';
-    game.shake.add(3);
-  } else if (game.combo === 20) {
-    game.bossMessage = 'SCRAP STORM!';
-    game.bossMessageTimer = 2.0;
-    game.bossMessageColor = '#f4f';
-    game.shake.add(5);
-  } else if (game.combo === 30) {
-    game.bossMessage = 'TOTAL DISASSEMBLY!';
-    game.bossMessageTimer = 2.5;
-    game.bossMessageColor = '#fff';
-    game.shake.add(8);
-  } else if (game.combo > 0 && game.combo % 25 === 0 && game.combo > 30) {
-    game.bossMessage = `${game.combo}x CASCADE!`;
-    game.bossMessageTimer = 2.0;
-    game.bossMessageColor = '#f4f';
-    game.shake.add(6);
+  // Combo milestone messages — machine/robot themed (skip during wave-clear to avoid overlap)
+  const waveClear = game.invaders && game.invaders.length === 0;
+  if (!waveClear) {
+    if (game.combo === 5) {
+      game.bossMessage = 'SYSTEMS OVERLOAD!';
+      game.bossMessageTimer = 1.5;
+      game.bossMessageColor = '#4ef';
+    } else if (game.combo === 10) {
+      game.bossMessage = 'MACHINE MENACE!';
+      game.bossMessageTimer = 1.8;
+      game.bossMessageColor = '#fa0';
+      game.shake.add(3);
+    } else if (game.combo === 20) {
+      game.bossMessage = 'SCRAP STORM!';
+      game.bossMessageTimer = 2.0;
+      game.bossMessageColor = '#f4f';
+      game.shake.add(5);
+    } else if (game.combo === 30) {
+      game.bossMessage = 'TOTAL DISASSEMBLY!';
+      game.bossMessageTimer = 2.5;
+      game.bossMessageColor = '#fff';
+      game.shake.add(8);
+    } else if (game.combo > 0 && game.combo % 25 === 0 && game.combo > 30) {
+      game.bossMessage = `${game.combo}x CASCADE!`;
+      game.bossMessageTimer = 2.0;
+      game.bossMessageColor = '#f4f';
+      game.shake.add(6);
+    }
   }
 
   // Brief hitstop on every 5th combo kill (subtle slow-mo)
@@ -5678,6 +5687,21 @@ function updateGame(dt) {
       // Formation behaviors based on cluster size
       // First-time notifications for each machine type
       if (!game._seenMachines) game._seenMachines = {};
+      function announceMachine(key, name) {
+        if (game._seenMachines[key]) return;
+        game._seenMachines[key] = true;
+        game.bossMessage = name;
+        game.bossMessageTimer = 3;
+        game.bossMessageColor = '#f84';
+        game.bossSubMessage = `The self-replicating swarm formed a ${name}!`;
+        game.bossSubMessageTimer = 4;
+        game.shake.add(5);
+        // Visual burst at cluster center
+        game.particles.emit(cluster.cx, cluster.cy, 30, '#fff', 200, 0.5, 3);
+        game.particles.emit(cluster.cx, cluster.cy, 20, '#f84', 150, 0.7, 4);
+        playSound('explode');
+        game.hitStop = 0.08;
+      }
 
       if (cluster.count >= 6 && cluster.count < 8) {
         // "Swarm Cloud" — basic cluster, slight speed boost
@@ -5689,11 +5713,7 @@ function updateGame(dt) {
             inv.vy *= 1 + 0.3 * dt;
           }
         }
-        if (!game._seenMachines.swarmCloud) {
-          game._seenMachines.swarmCloud = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a SWARM CLOUD!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('swarmCloud', 'SWARM CLOUD');
       }
 
       if (cluster.count >= 8) {
@@ -5701,11 +5721,7 @@ function updateGame(dt) {
         for (const idx of cluster.members) {
           game.invaders[idx]._clusterArmor = Math.min(0.3, cluster.count * 0.02);
         }
-        if (!game._seenMachines.pulseShield) {
-          game._seenMachines.pulseShield = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a PULSE SHIELD!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('pulseShield', 'PULSE SHIELD');
       }
 
       if (cluster.count >= 10) {
@@ -5714,11 +5730,7 @@ function updateGame(dt) {
           const inv = game.invaders[idx];
           if (inv.shootTimer > 0.5) inv.shootTimer -= 0.3 * dt;
         }
-        if (!game._seenMachines.signalRelay) {
-          game._seenMachines.signalRelay = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a SIGNAL RELAY!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('signalRelay', 'SIGNAL RELAY');
       }
 
       if (cluster.count >= 12 && game.ship.alive) {
@@ -5730,11 +5742,7 @@ function updateGame(dt) {
           inv.vx += Math.cos(toShipAngle) * driftForce * dt;
           inv.vy += Math.sin(toShipAngle) * driftForce * dt;
         }
-        if (!game._seenMachines.siegeRing) {
-          game._seenMachines.siegeRing = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a SIEGE RING!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('siegeRing', 'SIEGE RING');
       }
 
       if (cluster.count >= 15) {
@@ -5758,11 +5766,7 @@ function updateGame(dt) {
           }
           game.particles.emit(cluster.cx, cluster.cy, 10, '#fff', 100, 0.3, 2);
         }
-        if (!game._seenMachines.hiveVolley) {
-          game._seenMachines.hiveVolley = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a HIVE VOLLEY!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('hiveVolley', 'HIVE VOLLEY');
       }
 
       if (cluster.count >= 20) {
@@ -5773,11 +5777,7 @@ function updateGame(dt) {
             inv.hp = Math.min(inv.maxHp, inv.hp + 2 * dt);
           }
         }
-        if (!game._seenMachines.regenMatrix) {
-          game._seenMachines.regenMatrix = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a REGENERATION MATRIX!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('regenMatrix', 'REGENERATION MATRIX');
       }
 
       if (cluster.count >= 25) {
@@ -5792,11 +5792,7 @@ function updateGame(dt) {
             inv.vy += (toCenterY / toCD) * 15 * dt;
           }
         }
-        if (!game._seenMachines.gravityAnchor) {
-          game._seenMachines.gravityAnchor = true;
-          game.bossSubMessage = 'The self-replicating swarm formed a GRAVITY ANCHOR!';
-          game.bossSubMessageTimer = 3.5;
-        }
+        announceMachine('gravityAnchor', 'GRAVITY ANCHOR');
       }
     }
 
@@ -5940,6 +5936,26 @@ function updateGame(dt) {
   // Update hints and achievements
   updateHints(dt);
   checkAchievements();
+
+  // Live personal best notifications
+  if (gameMode === 'ranked') {
+    if (!game._beatScore && game._prevBestScore > 0 && game.score > game._prevBestScore) {
+      game._beatScore = true;
+      game.bossSubMessage = '★ NEW PERSONAL BEST SCORE! ★';
+      game.bossSubMessageTimer = 3;
+      game.shake.add(4);
+    }
+    if (!game._beatKills && game._prevBestKills > 0 && game.kills > game._prevBestKills) {
+      game._beatKills = true;
+      game.bossSubMessage = '★ NEW PERSONAL BEST KILLS! ★';
+      game.bossSubMessageTimer = 3;
+    }
+    if (!game._beatWave && game._prevBestWave > 0 && game.wave > game._prevBestWave) {
+      game._beatWave = true;
+      game.bossSubMessage = '★ NEW PERSONAL BEST WAVE! ★';
+      game.bossSubMessageTimer = 3;
+    }
+  }
 
   // Respawn message timer
   if (game.respawnMsg && game.respawnMsg.timer > 0) {
@@ -6092,26 +6108,29 @@ function drawGame() {
         moon.draw(ctx, cam);
       }
     }
-    // Discovery marker — pulsing ring that fades out
+    // Discovery marker — small arrow + label that fades
     if (p._discoveryTimer && p._discoveryTimer > 0) {
       p._discoveryTimer -= dt;
       const sx = p.x - cam.x + canvas.width/2, sy = p.y - cam.y + canvas.height/2;
-      const fadeAlpha = Math.min(1, p._discoveryTimer / 3); // fade over last 3 seconds
-      const pulse = 1 + Math.sin(game.time * 3) * 0.08;
-      const ringR = (p.radius + 25) * pulse;
+      const fadeAlpha = Math.min(1, p._discoveryTimer / 3);
+      const bob = Math.sin(game.time * 2.5) * 4; // gentle bobbing
+      const arrowY = sy - p.radius - 22 + bob;
       ctx.save();
-      ctx.globalAlpha = fadeAlpha * 0.6;
-      ctx.strokeStyle = '#4ef';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath(); ctx.arc(sx, sy, ringR, 0, Math.PI*2); ctx.stroke();
-      ctx.setLineDash([]);
-      // Name label
-      ctx.globalAlpha = fadeAlpha * 0.8;
-      ctx.font = '11px Courier New';
-      ctx.textAlign = 'center';
+      ctx.globalAlpha = fadeAlpha * 0.85;
+      // Small downward arrow
       ctx.fillStyle = '#4ef';
-      ctx.fillText(p.name.toUpperCase(), sx, sy - ringR - 8);
+      ctx.beginPath();
+      ctx.moveTo(sx, arrowY + 10);
+      ctx.lineTo(sx - 5, arrowY + 3);
+      ctx.lineTo(sx + 5, arrowY + 3);
+      ctx.closePath();
+      ctx.fill();
+      // Name label above arrow
+      ctx.font = '10px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('NEW', sx, arrowY - 6);
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillText(p.name.toUpperCase(), sx, arrowY + -16);
       ctx.restore();
     }
   }
@@ -6345,14 +6364,16 @@ function drawGame() {
     ctx.fillStyle = msgColor;
     ctx.shadowColor = msgColor;
     ctx.shadowBlur = 20;
-    ctx.fillText(game.bossMessage || '', canvas.width/2, canvas.height * 0.2);
+    // Push message down if wave announcement is visible to avoid overlap
+    const msgY = (!bossRushMode && game.invaders.length === 0 && game.waveTimer > 1) ? canvas.height * 0.35 : canvas.height * 0.2;
+    ctx.fillText(game.bossMessage || '', canvas.width/2, msgY);
     ctx.shadowBlur = 0;
     // Boss sub-message
     if (game.bossSubMessageTimer > 0) {
       ctx.globalAlpha = Math.min(1, game.bossSubMessageTimer / 0.5);
       ctx.font = '14px Courier New';
       ctx.fillStyle = '#fa0';
-      ctx.fillText(game.bossSubMessage || '', canvas.width/2, canvas.height * 0.2 + 40);
+      ctx.fillText(game.bossSubMessage || '', canvas.width/2, msgY + 40);
     }
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
@@ -6782,17 +6803,30 @@ function gameOver() {
   const finalWave = game.wave;
   const finalKills = game.kills;
 
+  // Personal best check
+  const prevBestScore = parseInt(localStorage.getItem('orbital-siege-best-score') || '0');
+  const prevBestKills = parseInt(localStorage.getItem('orbital-siege-best-kills') || '0');
+  const prevBestWave = parseInt(localStorage.getItem('orbital-siege-best-wave') || '0');
+  const newBestScore = finalScore > prevBestScore;
+  const newBestKills = finalKills > prevBestKills;
+  const newBestWave = finalWave > prevBestWave;
+  if (newBestScore) localStorage.setItem('orbital-siege-best-score', String(finalScore));
+  if (newBestKills) localStorage.setItem('orbital-siege-best-kills', String(finalKills));
+  if (newBestWave) localStorage.setItem('orbital-siege-best-wave', String(finalWave));
+
   // Show game-over screen
   const gameOverEl = document.getElementById('game-over');
   gameOverEl.style.display = 'flex';
 
-  // Show final stats
-  document.getElementById('final-stats').innerHTML = `
-    SCORE: ${finalScore}<br>
-    WAVE: ${finalWave}<br>
-    KILLS: ${finalKills}<br>
-    DEATHS: ${game.deaths}
-  `;
+  // Show final stats with personal best markers
+  let statsHtml = `SCORE: ${finalScore}${newBestScore ? ' <span style="color:#fa0;">★ NEW BEST!</span>' : ''}<br>`;
+  statsHtml += `WAVE: ${finalWave}${newBestWave ? ' <span style="color:#fa0;">★ NEW BEST!</span>' : ''}<br>`;
+  statsHtml += `KILLS: ${finalKills}${newBestKills ? ' <span style="color:#fa0;">★ NEW BEST!</span>' : ''}<br>`;
+  statsHtml += `DEATHS: ${game.deaths}`;
+  if (!newBestScore && !newBestKills && !newBestWave) {
+    statsHtml += `<br><span style="color:#888;font-size:10px;">BEST: ${prevBestScore} pts / ${prevBestKills} kills / wave ${prevBestWave}</span>`;
+  }
+  document.getElementById('final-stats').innerHTML = statsHtml;
 
   // Check if score qualifies for leaderboard
   const nameEntryEl = document.getElementById('name-entry');
