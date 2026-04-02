@@ -3345,7 +3345,7 @@ class Ship {
     if (wasSolarCharged) {
       this.solarBombs--; // consume a stored bomb
       this.solarBombCooldown = 2.0; // 2-second cooldown between solar bombs
-      playSound('bomb'); game.shake.add(8 + savedCharge * 25);
+      playSound('bomb'); game.shake.add(33);
       // Solar bomb: uses star's color palette for map-specific flair
       const stc = STAR_COLOR;
       const starMain = `rgb(${stc.rBright},${stc.gBright},${stc.bBright})`;
@@ -3923,6 +3923,48 @@ function chainReaction(deadInv, invaders, particles) {
   if (chainKills > 0) {
     particles.emit(deadInv.x, deadInv.y, 8 + chainKills * 3, '#ffa', 150, 0.4, 2.5);
     if (game) game.bombRings.push({ x: deadInv.x, y: deadInv.y, radius: 0, maxRadius: chainRadius * 0.7, life: 0.3 });
+  }
+
+  // Asymmetric chaos — read the clump shape and create directional effects
+  if (nearbyCount >= 8) {
+    // Find the center of mass of nearby bots and the direction of asymmetry
+    let cmx = 0, cmy = 0, count = 0;
+    const nearby = [];
+    for (const other of invaders) {
+      if (other !== deadInv && other.alive !== false && dist(deadInv, other) < 120) {
+        cmx += other.x; cmy += other.y; count++;
+        nearby.push(other);
+      }
+    }
+    if (count > 0) {
+      cmx /= count; cmy /= count;
+      // Asymmetry direction: from center-of-mass toward the kill point
+      // This is where the clump is "thin" — debris blows out that way
+      const asymX = deadInv.x - cmx, asymY = deadInv.y - cmy;
+      const asymD = Math.hypot(asymX, asymY);
+      if (asymD > 3) {
+        const jetAngle = Math.atan2(asymY, asymX);
+        // Narrow particle jet shooting out in the asymmetric direction
+        particles.emitDir(deadInv.x, deadInv.y, 12 + Math.floor(nearbyCount * 0.5),
+          '#ffa', jetAngle, 0.4, 400 + nearbyCount * 10, 0.6, 3);
+        particles.emitDir(deadInv.x, deadInv.y, 6,
+          '#fff', jetAngle, 0.25, 500, 0.4, 2);
+        // Fling a few nearby bots in the jet direction (shrapnel push)
+        let flung = 0;
+        for (const other of nearby) {
+          if (flung >= 3) break;
+          // Only fling bots roughly in the jet direction
+          const toOther = Math.atan2(other.y - deadInv.y, other.x - deadInv.x);
+          const angleDiff = Math.abs(((toOther - jetAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+          if (angleDiff < 0.8) { // within ~45 degrees of the jet
+            const flingForce = 80 + Math.random() * 60;
+            other.vx += Math.cos(jetAngle) * flingForce;
+            other.vy += Math.sin(jetAngle) * flingForce;
+            flung++;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -6379,28 +6421,29 @@ function drawGame() {
     const maxLife = r.solar ? 0.8 : 0.5;
     const a = r.life / maxLife;
     const sx = r.x - cam.x + canvas.width/2, sy = r.y - cam.y + canvas.height/2;
+    const rr = Math.max(1, r.radius); // guard against negative radius
     if (r.solar) {
       // Solar bomb: orange/magenta expanding rings, thicker, with inner glow
       ctx.strokeStyle = `rgba(255,140,60,${a*0.7})`; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI*2); ctx.stroke();
       ctx.strokeStyle = `rgba(255,80,160,${a*0.5})`; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.8, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, rr*0.8, 0, Math.PI*2); ctx.stroke();
       ctx.strokeStyle = `rgba(255,255,200,${a*0.4})`; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.5, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, rr*0.5, 0, Math.PI*2); ctx.stroke();
       // Fill glow
       ctx.globalAlpha = a * 0.08;
-      const solarFill = ctx.createRadialGradient(sx, sy, 0, sx, sy, r.radius);
+      const solarFill = ctx.createRadialGradient(sx, sy, 0, sx, sy, rr);
       solarFill.addColorStop(0, 'rgba(255,200,100,0.3)');
       solarFill.addColorStop(0.5, 'rgba(255,100,50,0.1)');
       solarFill.addColorStop(1, 'rgba(255,60,120,0)');
       ctx.fillStyle = solarFill;
-      ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI*2); ctx.fill();
       ctx.globalAlpha = 1;
     } else {
       ctx.strokeStyle = `rgba(100,240,255,${a*0.6})`; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(sx, sy, r.radius, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI*2); ctx.stroke();
       ctx.strokeStyle = `rgba(255,255,255,${a*0.3})`; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(sx, sy, r.radius*0.7, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, rr*0.7, 0, Math.PI*2); ctx.stroke();
     }
   }
 
@@ -6441,7 +6484,7 @@ function drawGame() {
       const sy = cluster.y - cam.y + canvas.height / 2;
       const intensity = Math.min(1, (cluster.count - 8) / 20); // 0 at 8, 1 at 28+
       const pulse = 0.6 + Math.sin((game.time || 0) * 2 + cluster.x * 0.01) * 0.4;
-      const glowSize = 60 + cluster.count * 5 + intensity * 80;
+      const glowSize = Math.max(1, 60 + cluster.count * 5 + intensity * 80);
       // Blinding white core
       ctx.globalAlpha = (0.15 + intensity * 0.35) * pulse;
       const clusterGlow = ctx.createRadialGradient(sx, sy, 0, sx, sy, glowSize);
@@ -6453,7 +6496,7 @@ function drawGame() {
       ctx.beginPath(); ctx.arc(sx, sy, glowSize, 0, Math.PI * 2); ctx.fill();
       // Synchronized pulse ring
       const ringPhase = ((game.time || 0) * 1.5 + cluster.x * 0.005) % 1;
-      const ringR = glowSize * 0.3 + ringPhase * glowSize * 0.8;
+      const ringR = Math.max(1, glowSize * 0.3 + ringPhase * glowSize * 0.8);
       ctx.globalAlpha = (1 - ringPhase) * 0.2 * (0.5 + intensity);
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
