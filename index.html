@@ -6208,9 +6208,7 @@ function updateGame(dt) {
     // Target zoom: fit maxDist into 70% of screen half-width
     const screenHalf = Math.min(canvas.width, canvas.height) * 0.5 * 0.70;
     const targetZoom = clamp(screenHalf / maxDist, ZOOM_MIN, ZOOM_MAX);
-    // Zoom out fast (need to see incoming threats), zoom in slow (don't snap tight when clearing a wave)
-    const zoomSpeed = targetZoom < CAMERA_ZOOM ? ZOOM_SPEED : ZOOM_SPEED * 0.25;
-    CAMERA_ZOOM = lerp(CAMERA_ZOOM, targetZoom, zoomSpeed * dt);
+    CAMERA_ZOOM = lerp(CAMERA_ZOOM, targetZoom, ZOOM_SPEED * dt);
   }
   game.particles.update(dt);
   game.shake.update(dt);
