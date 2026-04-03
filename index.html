@@ -320,6 +320,20 @@ canvas { display: block; cursor: crosshair; }
         <div class="mode-desc">Infinite Lives<br>No Leaderboard</div>
       </button>
     </div>
+    <div id="boss-freq-select" style="margin-top:20px;text-align:center;">
+      <div style="color:#fa8;font-size:12px;letter-spacing:3px;margin-bottom:8px;">BOSS FREQUENCY</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button class="mode-btn" id="freq-normal" onclick="setBossFrequency('normal')" style="padding:8px 14px;font-size:11px;min-width:auto;background:rgba(0,255,255,0.15);border:1px solid #0ff;color:#0ff;cursor:pointer;">
+          NORMAL<div class="mode-desc" style="font-size:9px;">Every 5 waves</div>
+        </button>
+        <button class="mode-btn" id="freq-frequent" onclick="setBossFrequency('frequent')" style="padding:8px 14px;font-size:11px;min-width:auto;background:rgba(255,160,0,0.1);border:1px solid #555;color:#aaa;cursor:pointer;">
+          FREQUENT<div class="mode-desc" style="font-size:9px;">Every 3 waves</div>
+        </button>
+        <button class="mode-btn" id="freq-gauntlet" onclick="setBossFrequency('gauntlet')" style="padding:8px 14px;font-size:11px;min-width:auto;background:rgba(255,50,50,0.1);border:1px solid #555;color:#aaa;cursor:pointer;">
+          GAUNTLET<div class="mode-desc" style="font-size:9px;">Every wave<br>1.5x score</div>
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1144,6 +1158,7 @@ let gameRunning = false;
 let gamePaused = false;
 let debugUsed = false;
 let gameMode = null; // 'ranked' or 'freeplay'
+let bossFrequency = 'normal'; // 'normal' (every 5), 'frequent' (every 3), 'gauntlet' (every wave)
 let leaderboardData = [];
 let firebaseReady = false;
 
@@ -1165,7 +1180,7 @@ const SHIP_TYPES = {
 
 // Boss tier configurations
 const BOSS_TIERS = {
-  1: { hpBase: 400, hpMult: 1.0, sizeBase: 30, sizeMult: 1.0, mechanics: 1 },
+  1: { hpBase: 400, hpMult: 1.0, sizeBase: 30, sizeMult: 1.0, mechanics: 2 },
   2: { hpBase: 900, hpMult: 1.5, sizeBase: 38, sizeMult: 1.2, mechanics: 2 },
   3: { hpBase: 1500, hpMult: 2.0, sizeBase: 48, sizeMult: 1.4, mechanics: 3 },
 };
@@ -1175,21 +1190,23 @@ const BOSS_TIERS = {
 const MECHANIC_LABELS = {
   dash: 'DASH',
   minion_spawn: 'SPAWN MINIONS',
-  // gravity_well removed
   charge: 'CHARGE',
   shield: 'SHIELD',
   split: 'MITOSIS',
-  laser_sweep: 'LASER SWEEP',
+  laser_sweep: 'BEAM CANNON',
   area_deny: 'DENIAL ZONE',
   heal: 'REGENERATE',
   bullet_reflect: 'REFLECT',
+  burst_fire: 'BURST FIRE',
+  tracking_volley: 'TRACKING VOLLEY',
+  beam_cannon: 'BEAM CANNON',
+  shrapnel_bomb: 'SHRAPNEL BOMB',
 };
 
 // Check if a boss mechanic is currently active
 function isMechanicActive(boss, mechId) {
-  if (mechId === 'dash' && boss.dashCooldown > 3.0) return true; // just dashed
-  if (mechId === 'minion_spawn' && boss.minionCooldown > 5.0) return true; // just spawned
-  // gravity_well removed
+  if (mechId === 'dash' && boss.dashCooldown > 3.0) return true;
+  if (mechId === 'minion_spawn' && boss.minionCooldown > 5.0) return true;
   if (mechId === 'charge' && boss.chargeTime > 0) return true;
   if (mechId === 'shield' && boss.shielded > 0) return true;
   if (mechId === 'split' && boss.hasSplit) return true;
@@ -1197,6 +1214,10 @@ function isMechanicActive(boss, mechId) {
   if (mechId === 'area_deny' && boss.denyZones && boss.denyZones.length > 0) return true;
   if (mechId === 'heal' && boss.healActive > 0) return true;
   if (mechId === 'bullet_reflect' && boss.reflectActive > 0) return true;
+  if (mechId === 'burst_fire' && boss.burstActive > 0) return true;
+  if (mechId === 'tracking_volley' && boss.volleyActive > 0) return true;
+  if (mechId === 'beam_cannon' && boss.beamActive > 0) return true;
+  if (mechId === 'shrapnel_bomb' && boss.shrapnelActive > 0) return true;
   return false;
 }
 
@@ -1220,8 +1241,8 @@ const BOSS_MECHANICS = {
       if (!boss.minionCooldown) boss.minionCooldown = 0;
       boss.minionCooldown -= dt;
       if (boss.minionCooldown <= 0 && Math.random() < 0.015) {
-        for (let i = 0; i < 4; i++) {
-          const angle = (i/4)*Math.PI*2 + Math.random()*0.5;
+        for (let i = 0; i < 6; i++) { // buffed from 4 to 6 drones
+          const angle = (i/6)*Math.PI*2 + Math.random()*0.5;
           const minion = createARH(boss.x + Math.cos(angle)*50, boss.y + Math.sin(angle)*50, 'drone', 1, boss.assignedPlanet || game.planets[0]);
           minion.vx = Math.cos(angle) * 60;
           minion.vy = Math.sin(angle) * 60;
@@ -1241,8 +1262,8 @@ const BOSS_MECHANICS = {
         let angle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
         // Sun avoidance: don't charge if path goes through the sun
         if (game.star) {
-          const chargeEndX = boss.x + Math.cos(angle) * 200 * 0.8;
-          const chargeEndY = boss.y + Math.sin(angle) * 200 * 0.8;
+          const chargeEndX = boss.x + Math.cos(angle) * 350 * 0.8;
+          const chargeEndY = boss.y + Math.sin(angle) * 350 * 0.8;
           const dToStar = Math.hypot(chargeEndX - game.star.x, chargeEndY - game.star.y);
           if (dToStar < game.star.radius + 150) {
             // Deflect charge angle away from sun
@@ -1252,8 +1273,8 @@ const BOSS_MECHANICS = {
             angle = sunAngle + (normalDiff >= 0 ? Math.PI / 2 : -Math.PI / 2);
           }
         }
-        boss.chargeVx = Math.cos(angle) * 200;
-        boss.chargeVy = Math.sin(angle) * 200;
+        boss.chargeVx = Math.cos(angle) * 350; // buffed from 200 to 350
+        boss.chargeVy = Math.sin(angle) * 350;
         boss.chargeTime = 0.8;
         boss.chargeCooldown = this.cooldown;
       }
@@ -1277,11 +1298,24 @@ const BOSS_MECHANICS = {
       if (!boss.shieldCooldown) boss.shieldCooldown = 0;
       boss.shieldCooldown -= dt;
       if (boss.shieldCooldown <= 0 && boss.hp / boss.maxHp > 0.3 && Math.random() < 0.01) {
-        boss.shielded = 1.2;
+        boss.shielded = 3.0; // buffed from 1.2s to 3s
         boss.shieldCooldown = this.cooldown;
       }
       if (boss.shielded) {
         boss.shielded -= dt;
+        // Damage pulse on shield break
+        if (boss.shielded <= 0) {
+          boss.shielded = 0;
+          const d = Math.hypot(game.ship.x - boss.x, game.ship.y - boss.y);
+          if (d < 200) {
+            game.ship.hp -= 10;
+            const pushA = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+            game.ship.vx += Math.cos(pushA) * 120;
+            game.ship.vy += Math.sin(pushA) * 120;
+          }
+          game.particles.emit(boss.x, boss.y, 20, '#0ff', 250, 0.4, 3);
+          playSound('explosion');
+        }
       }
     }
   },
@@ -1328,7 +1362,7 @@ const BOSS_MECHANICS = {
       boss.areaCooldown -= dt;
       if (boss.areaCooldown <= 0 && Math.random() < 0.015) {
         if (!boss.denyZones) boss.denyZones = [];
-        boss.denyZones.push({ x: boss.x, y: boss.y, r: 150, life: 2.0 });
+        boss.denyZones.push({ x: boss.x, y: boss.y, r: 220, life: 2.0 }); // buffed radius from 150 to 220
         boss.areaCooldown = this.cooldown;
       }
       if (boss.denyZones) {
@@ -1338,7 +1372,7 @@ const BOSS_MECHANICS = {
           const dy = game.ship.y - z.y;
           const dist = Math.sqrt(dx*dx + dy*dy);
           if (dist < z.r) {
-            game.ship.hp -= 0.5*dt;
+            game.ship.hp -= 2.0*dt; // buffed from 0.5 to 2.0 damage/s
           }
         }
         boss.denyZones = boss.denyZones.filter(z => z.life > 0);
@@ -1356,7 +1390,7 @@ const BOSS_MECHANICS = {
       }
       if (boss.healActive) {
         boss.healActive -= dt;
-        boss.hp = Math.min(boss.maxHp, boss.hp + 20*dt);
+        boss.hp = Math.min(boss.maxHp, boss.hp + 40*dt); // buffed from 20 to 40 HP/s
       }
     }
   },
@@ -1370,66 +1404,271 @@ const BOSS_MECHANICS = {
         boss.reflectActive -= dt;
       }
     }
+  },
+
+  // === NEW PROJECTILE MECHANICS ===
+
+  burst_fire: {
+    cooldown: 3.0,
+    apply(boss, dt, game) {
+      if (!boss.burstCooldown) boss.burstCooldown = 0;
+      if (!boss.burstActive) boss.burstActive = 0;
+      if (!boss.burstCount) boss.burstCount = 0;
+      boss.burstCooldown -= dt;
+      // Start a new burst
+      if (boss.burstCooldown <= 0 && boss.burstActive <= 0 && Math.random() < 0.02) {
+        boss.burstActive = 0.6; // burst lasts 0.6s
+        boss.burstCount = 0;
+        boss.burstAngle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        boss.burstCooldown = this.cooldown;
+      }
+      // During burst: fire 3 quick shots
+      if (boss.burstActive > 0) {
+        boss.burstActive -= dt;
+        const shotsNeeded = 3 - boss.burstCount;
+        const timePerShot = 0.2;
+        if (boss.burstCount < 3 && boss.burstActive < (shotsNeeded * timePerShot)) {
+          // Fire a burst bullet — slight spread each shot
+          const spread = (boss.burstCount - 1) * 0.15;
+          const a = boss.burstAngle + spread;
+          game.enemyBullets.push({
+            x: boss.x, y: boss.y,
+            vx: boss.vx * 0.3 + Math.cos(a) * 180,
+            vy: boss.vy * 0.3 + Math.sin(a) * 180,
+            life: 3.5, damage: 12 + Math.floor(game.wave / 3),
+            color: '#f44', size: 4
+          });
+          playSound('enemy_shoot');
+          game.particles.emitDir(boss.x, boss.y, 4, '#f66', a, 0.3, 150, 0.2, 2);
+          boss.burstCount++;
+        }
+      }
+    }
+  },
+
+  tracking_volley: {
+    cooldown: 5.0,
+    apply(boss, dt, game) {
+      if (!boss.volleyCooldown) boss.volleyCooldown = 0;
+      boss.volleyCooldown -= dt;
+      // Update existing tracking bullets
+      if (boss.trackingBullets) {
+        for (let i = boss.trackingBullets.length - 1; i >= 0; i--) {
+          const b = boss.trackingBullets[i];
+          b.trackTime -= dt;
+          if (b.trackTime > 0 && game.ship.alive) {
+            // Gentle homing — turn toward player
+            const desired = Math.atan2(game.ship.y - b.y, game.ship.x - b.x);
+            const current = Math.atan2(b.vy, b.vx);
+            let diff = desired - current;
+            diff = ((diff + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+            const turnRate = 1.8; // radians per second
+            const turn = Math.max(-turnRate * dt, Math.min(turnRate * dt, diff));
+            const speed = Math.hypot(b.vx, b.vy);
+            const newAngle = current + turn;
+            b.vx = Math.cos(newAngle) * speed;
+            b.vy = Math.sin(newAngle) * speed;
+          }
+          if (b.life <= 0) boss.trackingBullets.splice(i, 1);
+        }
+      }
+      // Launch new volley
+      if (boss.volleyCooldown <= 0 && Math.random() < 0.012) {
+        if (!boss.trackingBullets) boss.trackingBullets = [];
+        boss.volleyActive = 0.5;
+        const baseAngle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        for (let i = 0; i < 5; i++) {
+          const spreadA = baseAngle + (i - 2) * 0.4;
+          const bullet = {
+            x: boss.x, y: boss.y,
+            vx: Math.cos(spreadA) * 100,
+            vy: Math.sin(spreadA) * 100,
+            life: 4.0, damage: 8 + Math.floor(game.wave / 4),
+            color: '#f0f', size: 3, trackTime: 2.0
+          };
+          game.enemyBullets.push(bullet);
+          boss.trackingBullets.push(bullet);
+        }
+        playSound('enemy_shoot');
+        game.particles.emit(boss.x, boss.y, 15, '#f0f', 200, 0.3, 3);
+        boss.volleyCooldown = this.cooldown;
+      }
+      if (boss.volleyActive > 0) boss.volleyActive -= dt;
+    }
+  },
+
+  beam_cannon: {
+    cooldown: 6.0,
+    apply(boss, dt, game) {
+      if (!boss.beamCooldown) boss.beamCooldown = 0;
+      boss.beamCooldown -= dt;
+      // Beam telegraph phase (0.8s warning), then fire phase (1.5s sweep)
+      if (boss.beamCooldown <= 0 && !boss.beamTelegraph && !boss.beamActive && Math.random() < 0.01) {
+        boss.beamTelegraph = 0.8;
+        boss.beamAngle = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        boss.beamSweepDir = Math.random() < 0.5 ? 1 : -1;
+        boss.beamCooldown = this.cooldown;
+      }
+      // Telegraph: thin warning line that tracks player slightly
+      if (boss.beamTelegraph > 0) {
+        boss.beamTelegraph -= dt;
+        // Slowly track player during telegraph
+        const desired = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        let diff = desired - boss.beamAngle;
+        diff = ((diff + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        boss.beamAngle += Math.max(-0.8 * dt, Math.min(0.8 * dt, diff));
+        if (boss.beamTelegraph <= 0) {
+          boss.beamActive = 1.5; // fire for 1.5 seconds
+          boss.beamTelegraph = 0;
+        }
+      }
+      // Active beam: sweeps and damages
+      if (boss.beamActive > 0) {
+        boss.beamActive -= dt;
+        // Sweep the beam
+        boss.beamAngle += boss.beamSweepDir * 1.2 * dt; // 1.2 rad/s sweep
+        // Check if beam hits ship (line-circle intersection)
+        const beamLen = 500;
+        const bex = boss.x + Math.cos(boss.beamAngle) * beamLen;
+        const bey = boss.y + Math.sin(boss.beamAngle) * beamLen;
+        // Point-to-line distance
+        const dx = bex - boss.x, dy = bey - boss.y;
+        const t = Math.max(0, Math.min(1, ((game.ship.x - boss.x) * dx + (game.ship.y - boss.y) * dy) / (dx * dx + dy * dy)));
+        const closestX = boss.x + t * dx, closestY = boss.y + t * dy;
+        const hitDist = Math.hypot(game.ship.x - closestX, game.ship.y - closestY);
+        if (hitDist < 25 && game.ship.alive) {
+          game.ship.hp -= 15 * dt; // 15 damage per second
+          game.particles.emit(game.ship.x, game.ship.y, 2, '#f84', 100, 0.2, 2);
+        }
+        // Beam particles along the line
+        if (Math.random() < 0.5) {
+          const pt = Math.random();
+          game.particles.emit(
+            boss.x + dx * pt, boss.y + dy * pt,
+            1, '#fa4', 40, 0.3, 2
+          );
+        }
+        if (boss.beamActive <= 0) boss.beamActive = 0;
+      }
+    }
+  },
+
+  shrapnel_bomb: {
+    cooldown: 4.5,
+    apply(boss, dt, game) {
+      if (!boss.shrapnelCooldown) boss.shrapnelCooldown = 0;
+      boss.shrapnelCooldown -= dt;
+      // Launch a slow projectile toward player that explodes into shrapnel
+      if (!boss.shrapnelBombs) boss.shrapnelBombs = [];
+      if (boss.shrapnelCooldown <= 0 && Math.random() < 0.015) {
+        const a = Math.atan2(game.ship.y - boss.y, game.ship.x - boss.x);
+        boss.shrapnelBombs.push({
+          x: boss.x, y: boss.y,
+          vx: Math.cos(a) * 80, vy: Math.sin(a) * 80,
+          life: 2.0, exploded: false
+        });
+        playSound('enemy_shoot');
+        game.particles.emit(boss.x, boss.y, 8, '#fa0', 100, 0.2, 2);
+        boss.shrapnelCooldown = this.cooldown;
+        boss.shrapnelActive = 0.3;
+      }
+      // Update shrapnel bombs
+      for (let i = boss.shrapnelBombs.length - 1; i >= 0; i--) {
+        const bomb = boss.shrapnelBombs[i];
+        bomb.x += bomb.vx * dt;
+        bomb.y += bomb.vy * dt;
+        bomb.life -= dt;
+        // Proximity detonation or timer
+        const dToShip = Math.hypot(bomb.x - game.ship.x, bomb.y - game.ship.y);
+        if ((dToShip < 80 || bomb.life <= 0) && !bomb.exploded) {
+          bomb.exploded = true;
+          // Explode into 8 shrapnel bullets in a ring
+          for (let s = 0; s < 8; s++) {
+            const sa = (s / 8) * Math.PI * 2 + Math.random() * 0.3;
+            game.enemyBullets.push({
+              x: bomb.x, y: bomb.y,
+              vx: Math.cos(sa) * 140, vy: Math.sin(sa) * 140,
+              life: 2.0, damage: 6 + Math.floor(game.wave / 5),
+              color: '#fa0', size: 3
+            });
+          }
+          game.particles.emit(bomb.x, bomb.y, 25, '#fa0', 200, 0.5, 3);
+          game.particles.emit(bomb.x, bomb.y, 10, '#f44', 150, 0.3, 2);
+          playSound('explosion');
+        }
+        // Draw bomb as glowing orb (visual in update for simplicity)
+        if (!bomb.exploded) {
+          // Trailing particles
+          if (Math.random() < 0.4) {
+            game.particles.emit(bomb.x, bomb.y, 1, '#fa0', 30, 0.3, 2);
+          }
+        }
+      }
+      // Remove exploded bombs
+      boss.shrapnelBombs = boss.shrapnelBombs.filter(b => !b.exploded && b.life > -0.5);
+      if (boss.shrapnelActive > 0) boss.shrapnelActive -= dt;
+    }
   }
 };
 
 // 50 boss definitions across 3 tiers
 const BOSS_DEFINITIONS = [
-  // TIER 1 (16 bosses) - waves 5-15
-  { id: 'pierce', name: 'PIERCE', tier: 1, hpMult: 1.0, size: 32, colorH: 45, colorH2: 55, mechanics: ['dash'], visual: { shape: 'hex', aura: 'spiky', internal: 'core' }, desc: 'Swift Striker' },
-  { id: 'ironclad', name: 'IRONCLAD', tier: 1, hpMult: 1.2, size: 34, colorH: 30, colorH2: 40, mechanics: ['shield'], visual: { shape: 'circle', aura: 'glow', internal: 'lattice' }, desc: 'Armored Guardian' },
-  { id: 'venom', name: 'VENOM', tier: 1, hpMult: 0.9, size: 31, colorH: 120, colorH2: 130, mechanics: ['minion_spawn'], visual: { shape: 'diamond', aura: 'pulse', internal: 'chambers' }, desc: 'Hive Leader' },
-  { id: 'shatter', name: 'SHATTER', tier: 1, hpMult: 1.1, size: 33, colorH: 200, colorH2: 210, mechanics: ['dash'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Crystalline Horror' },
-  { id: 'scourge', name: 'SCOURGE', tier: 1, hpMult: 1.0, size: 32, colorH: 0, colorH2: 10, mechanics: ['charge'], visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'Burning Plague' },
-  { id: 'phantom', name: 'PHANTOM', tier: 1, hpMult: 0.85, size: 30, colorH: 270, colorH2: 280, mechanics: ['dash'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Spectral Wraith' },
-  { id: 'titan_spawn', name: 'TITAN SPAWN', tier: 1, hpMult: 1.15, size: 35, colorH: 30, colorH2: 35, mechanics: ['minion_spawn'], visual: { shape: 'hex', aura: 'rings', internal: 'chambers' }, desc: 'Young Monstrosity' },
-  { id: 'surge', name: 'SURGE', tier: 1, hpMult: 0.95, size: 31, colorH: 50, colorH2: 60, mechanics: ['charge'], visual: { shape: 'circle', aura: 'electric', internal: 'core' }, desc: 'Energy Conduit' },
-  { id: 'razor', name: 'RAZOR', tier: 1, hpMult: 1.05, size: 32, colorH: 180, colorH2: 190, mechanics: ['dash'], visual: { shape: 'star6', aura: 'spiky', internal: 'lattice' }, desc: 'Cutting Edge' },
-  { id: 'nexus', name: 'NEXUS NODE', tier: 1, hpMult: 1.0, size: 33, colorH: 200, colorH2: 205, mechanics: ['shield'], visual: { shape: 'hex', aura: 'glow', internal: 'eye' }, desc: 'Network Hub' },
-  { id: 'inferno', name: 'INFERNO', tier: 1, hpMult: 1.1, size: 32, colorH: 20, colorH2: 25, mechanics: ['charge'], visual: { shape: 'circle', aura: 'flame', internal: 'vortex' }, desc: 'Molten Beast' },
-  { id: 'void_wisp', name: 'VOID WISP', tier: 1, hpMult: 0.9, size: 30, colorH: 260, colorH2: 270, mechanics: ['minion_spawn'], visual: { shape: 'diamond', aura: 'pulse', internal: 'core' }, desc: 'Dark Fragment' },
-  { id: 'cascade', name: 'CASCADE', tier: 1, hpMult: 1.0, size: 31, colorH: 240, colorH2: 250, mechanics: ['dash'], visual: { shape: 'octagon', aura: 'glow', internal: 'chambers' }, desc: 'Tidal Terror' },
-  { id: 'prism', name: 'PRISM', tier: 1, hpMult: 0.95, size: 32, colorH: 280, colorH2: 290, mechanics: ['shield'], visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Refractive Menace' },
-  { id: 'dirge', name: 'DIRGE', tier: 1, hpMult: 1.05, size: 33, colorH: 290, colorH2: 300, mechanics: ['charge'], visual: { shape: 'circle', aura: 'rings', internal: 'eye' }, desc: 'Sound of Doom' },
-  { id: 'glint', name: 'GLINT', tier: 1, hpMult: 1.0, size: 31, colorH: 60, colorH2: 70, mechanics: ['minion_spawn'], visual: { shape: 'diamond', aura: 'glow', internal: 'vortex' }, desc: 'Swarm Sentinel' },
+  // TIER 1 (16 bosses) - waves 5-15 — all have 2 mechanics, projectiles replace dash
+  // vuln: 'resistant' = must push into sun, 'breakable' = takes full damage, breaks into phases
+  { id: 'pierce', name: 'PIERCE', tier: 1, hpMult: 1.0, size: 32, colorH: 45, colorH2: 55, mechanics: ['burst_fire', 'charge'], vuln: 'breakable', visual: { shape: 'hex', aura: 'spiky', internal: 'core' }, desc: 'Swift Striker' },
+  { id: 'ironclad', name: 'IRONCLAD', tier: 1, hpMult: 1.2, size: 34, colorH: 30, colorH2: 40, mechanics: ['shield', 'burst_fire'], vuln: 'resistant', visual: { shape: 'circle', aura: 'glow', internal: 'lattice' }, desc: 'Armored Guardian' },
+  { id: 'venom', name: 'VENOM', tier: 1, hpMult: 0.9, size: 31, colorH: 120, colorH2: 130, mechanics: ['minion_spawn', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'pulse', internal: 'chambers' }, desc: 'Hive Leader' },
+  { id: 'shatter', name: 'SHATTER', tier: 1, hpMult: 1.1, size: 33, colorH: 200, colorH2: 210, mechanics: ['tracking_volley', 'charge'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Crystalline Horror' },
+  { id: 'scourge', name: 'SCOURGE', tier: 1, hpMult: 1.0, size: 32, colorH: 0, colorH2: 10, mechanics: ['charge', 'burst_fire'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'Burning Plague' },
+  { id: 'phantom', name: 'PHANTOM', tier: 1, hpMult: 0.85, size: 30, colorH: 270, colorH2: 280, mechanics: ['tracking_volley', 'shield'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Spectral Wraith' },
+  { id: 'titan_spawn', name: 'TITAN SPAWN', tier: 1, hpMult: 1.15, size: 35, colorH: 30, colorH2: 35, mechanics: ['minion_spawn', 'burst_fire'], vuln: 'breakable', visual: { shape: 'hex', aura: 'rings', internal: 'chambers' }, desc: 'Young Monstrosity' },
+  { id: 'surge', name: 'SURGE', tier: 1, hpMult: 0.95, size: 31, colorH: 50, colorH2: 60, mechanics: ['charge', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'circle', aura: 'electric', internal: 'core' }, desc: 'Energy Conduit' },
+  { id: 'razor', name: 'RAZOR', tier: 1, hpMult: 1.05, size: 32, colorH: 180, colorH2: 190, mechanics: ['burst_fire', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'star6', aura: 'spiky', internal: 'lattice' }, desc: 'Cutting Edge' },
+  { id: 'nexus', name: 'NEXUS NODE', tier: 1, hpMult: 1.0, size: 33, colorH: 200, colorH2: 205, mechanics: ['shield', 'shrapnel_bomb'], vuln: 'resistant', visual: { shape: 'hex', aura: 'glow', internal: 'eye' }, desc: 'Network Hub' },
+  { id: 'inferno', name: 'INFERNO', tier: 1, hpMult: 1.1, size: 32, colorH: 20, colorH2: 25, mechanics: ['charge', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'circle', aura: 'flame', internal: 'vortex' }, desc: 'Molten Beast' },
+  { id: 'void_wisp', name: 'VOID WISP', tier: 1, hpMult: 0.9, size: 30, colorH: 260, colorH2: 270, mechanics: ['minion_spawn', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'pulse', internal: 'core' }, desc: 'Dark Fragment' },
+  { id: 'cascade', name: 'CASCADE', tier: 1, hpMult: 1.0, size: 31, colorH: 240, colorH2: 250, mechanics: ['shrapnel_bomb', 'charge'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'glow', internal: 'chambers' }, desc: 'Tidal Terror' },
+  { id: 'prism', name: 'PRISM', tier: 1, hpMult: 0.95, size: 32, colorH: 280, colorH2: 290, mechanics: ['shield', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Refractive Menace' },
+  { id: 'dirge', name: 'DIRGE', tier: 1, hpMult: 1.05, size: 33, colorH: 290, colorH2: 300, mechanics: ['charge', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'eye' }, desc: 'Sound of Doom' },
+  { id: 'glint', name: 'GLINT', tier: 1, hpMult: 1.0, size: 31, colorH: 60, colorH2: 70, mechanics: ['minion_spawn', 'burst_fire'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'vortex' }, desc: 'Swarm Sentinel' },
 
-  // TIER 2 (18 bosses) - waves 20-35
-  { id: 'obliterator', name: 'OBLITERATOR', tier: 2, hpMult: 1.3, size: 40, colorH: 20, colorH2: 30, mechanics: ['charge', 'minion_spawn'], visual: { shape: 'octagon', aura: 'flame', internal: 'core' }, desc: 'Siege Hammer' },
-  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['area_deny', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
-  { id: 'vortex_lord', name: 'VORTEX LORD', tier: 2, hpMult: 1.4, size: 41, colorH: 270, colorH2: 280, mechanics: ['dash', 'laser_sweep'], visual: { shape: 'hex', aura: 'electric', internal: 'vortex' }, desc: 'Reality Ripper' },
-  { id: 'doomcaller', name: 'DOOMCALLER', tier: 2, hpMult: 1.2, size: 39, colorH: 0, colorH2: 10, mechanics: ['minion_spawn', 'area_deny'], visual: { shape: 'star6', aura: 'rings', internal: 'lattice' }, desc: 'Herald of Ruin' },
-  { id: 'sovereign', name: 'SOVEREIGN', tier: 2, hpMult: 1.6, size: 43, colorH: 200, colorH2: 210, mechanics: ['shield', 'charge'], visual: { shape: 'octagon', aura: 'glow', internal: 'eye' }, desc: 'Absolute Ruler' },
-  { id: 'ravager', name: 'RAVAGER', tier: 2, hpMult: 1.4, size: 40, colorH: 30, colorH2: 40, mechanics: ['dash', 'minion_spawn'], visual: { shape: 'diamond', aura: 'spiky', internal: 'vortex' }, desc: 'World Eater' },
-  { id: 'null_entity', name: 'NULL ENTITY', tier: 2, hpMult: 1.3, size: 40, colorH: 240, colorH2: 260, mechanics: ['shield', 'laser_sweep'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Consuming Void' },
-  { id: 'tyrant', name: 'TYRANT', tier: 2, hpMult: 1.5, size: 42, colorH: 10, colorH2: 20, mechanics: ['charge', 'area_deny'], visual: { shape: 'hex', aura: 'flame', internal: 'core' }, desc: 'Iron Despot' },
-  { id: 'incinerator', name: 'INCINERATOR', tier: 2, hpMult: 1.35, size: 41, colorH: 20, colorH2: 25, mechanics: ['minion_spawn', 'laser_sweep'], visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Infernal Engine' },
-  { id: 'apex', name: 'APEX PREDATOR', tier: 2, hpMult: 1.45, size: 41, colorH: 50, colorH2: 60, mechanics: ['dash', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Evolutionary Peak' },
-  { id: 'scream', name: 'SCREAM', tier: 2, hpMult: 1.2, size: 39, colorH: 280, colorH2: 290, mechanics: ['laser_sweep', 'minion_spawn'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Psychic Horror' },
-  { id: 'nightmare', name: 'NIGHTMARE', tier: 2, hpMult: 1.3, size: 40, colorH: 260, colorH2: 270, mechanics: ['charge', 'laser_sweep'], visual: { shape: 'octagon', aura: 'pulse', internal: 'chambers' }, desc: 'Terror Manifest' },
-  { id: 'cataclysm', name: 'CATACLYSM', tier: 2, hpMult: 1.55, size: 42, colorH: 0, colorH2: 15, mechanics: ['area_deny', 'shield'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'World Ender' },
-  { id: 'eclipse', name: 'ECLIPSE', tier: 2, hpMult: 1.4, size: 40, colorH: 270, colorH2: 280, mechanics: ['dash', 'area_deny'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Darkness Bringer' },
-  { id: 'colossus', name: 'COLOSSUS', tier: 2, hpMult: 1.65, size: 43, colorH: 30, colorH2: 35, mechanics: ['shield', 'minion_spawn'], visual: { shape: 'circle', aura: 'glow', internal: 'eye' }, desc: 'Titanic Abomination' },
-  { id: 'venom_lord', name: 'VENOM LORD', tier: 2, hpMult: 1.35, size: 40, colorH: 120, colorH2: 135, mechanics: ['minion_spawn', 'laser_sweep'], visual: { shape: 'diamond', aura: 'spiky', internal: 'chambers' }, desc: 'Toxin Master' },
-  { id: 'spectral_king', name: 'SPECTRAL KING', tier: 2, hpMult: 1.25, size: 39, colorH: 240, colorH2: 255, mechanics: ['dash', 'area_deny'], visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Phantom Monarch' },
-  { id: 'storm', name: 'STORM', tier: 2, hpMult: 1.4, size: 41, colorH: 200, colorH2: 215, mechanics: ['charge', 'laser_sweep'], visual: { shape: 'hex', aura: 'electric', internal: 'lattice' }, desc: 'Tempest Force' },
+  // TIER 2 (18 bosses) - waves 20-35 — all have 2+ mechanics, projectiles mixed in
+  { id: 'obliterator', name: 'OBLITERATOR', tier: 2, hpMult: 1.3, size: 40, colorH: 20, colorH2: 30, mechanics: ['charge', 'burst_fire'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'core' }, desc: 'Siege Hammer' },
+  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['area_deny', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
+  { id: 'vortex_lord', name: 'VORTEX LORD', tier: 2, hpMult: 1.4, size: 41, colorH: 270, colorH2: 280, mechanics: ['tracking_volley', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'hex', aura: 'electric', internal: 'vortex' }, desc: 'Reality Ripper' },
+  { id: 'doomcaller', name: 'DOOMCALLER', tier: 2, hpMult: 1.2, size: 39, colorH: 0, colorH2: 10, mechanics: ['minion_spawn', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'star6', aura: 'rings', internal: 'lattice' }, desc: 'Herald of Ruin' },
+  { id: 'sovereign', name: 'SOVEREIGN', tier: 2, hpMult: 1.6, size: 43, colorH: 200, colorH2: 210, mechanics: ['shield', 'charge'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'glow', internal: 'eye' }, desc: 'Absolute Ruler' },
+  { id: 'ravager', name: 'RAVAGER', tier: 2, hpMult: 1.4, size: 40, colorH: 30, colorH2: 40, mechanics: ['burst_fire', 'minion_spawn'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'spiky', internal: 'vortex' }, desc: 'World Eater' },
+  { id: 'null_entity', name: 'NULL ENTITY', tier: 2, hpMult: 1.3, size: 40, colorH: 240, colorH2: 260, mechanics: ['shield', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Consuming Void' },
+  { id: 'tyrant', name: 'TYRANT', tier: 2, hpMult: 1.5, size: 42, colorH: 10, colorH2: 20, mechanics: ['charge', 'area_deny'], vuln: 'resistant', visual: { shape: 'hex', aura: 'flame', internal: 'core' }, desc: 'Iron Despot' },
+  { id: 'incinerator', name: 'INCINERATOR', tier: 2, hpMult: 1.35, size: 41, colorH: 20, colorH2: 25, mechanics: ['shrapnel_bomb', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Infernal Engine' },
+  { id: 'apex', name: 'APEX PREDATOR', tier: 2, hpMult: 1.45, size: 41, colorH: 50, colorH2: 60, mechanics: ['burst_fire', 'shield'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Evolutionary Peak' },
+  { id: 'scream', name: 'SCREAM', tier: 2, hpMult: 1.2, size: 39, colorH: 280, colorH2: 290, mechanics: ['beam_cannon', 'minion_spawn'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Psychic Horror' },
+  { id: 'nightmare', name: 'NIGHTMARE', tier: 2, hpMult: 1.3, size: 40, colorH: 260, colorH2: 270, mechanics: ['charge', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'pulse', internal: 'chambers' }, desc: 'Terror Manifest' },
+  { id: 'cataclysm', name: 'CATACLYSM', tier: 2, hpMult: 1.55, size: 42, colorH: 0, colorH2: 15, mechanics: ['area_deny', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'World Ender' },
+  { id: 'eclipse', name: 'ECLIPSE', tier: 2, hpMult: 1.4, size: 40, colorH: 270, colorH2: 280, mechanics: ['tracking_volley', 'area_deny'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Darkness Bringer' },
+  { id: 'colossus', name: 'COLOSSUS', tier: 2, hpMult: 1.65, size: 43, colorH: 30, colorH2: 35, mechanics: ['shield', 'burst_fire'], vuln: 'resistant', visual: { shape: 'circle', aura: 'glow', internal: 'eye' }, desc: 'Titanic Abomination' },
+  { id: 'venom_lord', name: 'VENOM LORD', tier: 2, hpMult: 1.35, size: 40, colorH: 120, colorH2: 135, mechanics: ['minion_spawn', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'spiky', internal: 'chambers' }, desc: 'Toxin Master' },
+  { id: 'spectral_king', name: 'SPECTRAL KING', tier: 2, hpMult: 1.25, size: 39, colorH: 240, colorH2: 255, mechanics: ['beam_cannon', 'area_deny'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Phantom Monarch' },
+  { id: 'storm', name: 'STORM', tier: 2, hpMult: 1.4, size: 41, colorH: 200, colorH2: 215, mechanics: ['charge', 'burst_fire'], vuln: 'breakable', visual: { shape: 'hex', aura: 'electric', internal: 'lattice' }, desc: 'Tempest Force' },
 
-  // TIER 3 (16 bosses) - waves 40+
-  { id: 'apocalypse', name: 'APOCALYPSE', tier: 3, hpMult: 2.0, size: 50, colorH: 0, colorH2: 20, mechanics: ['charge', 'minion_spawn', 'area_deny'], visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'End Times Incarnate' },
-  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['area_deny', 'laser_sweep', 'shield'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
-  { id: 'entropy', name: 'ENTROPY', tier: 3, hpMult: 2.1, size: 51, colorH: 240, colorH2: 260, mechanics: ['split', 'minion_spawn', 'area_deny'], visual: { shape: 'hex', aura: 'electric', internal: 'core' }, desc: 'Decay Absolute' },
-  { id: 'nemesis', name: 'NEMESIS', tier: 3, hpMult: 2.3, size: 53, colorH: 30, colorH2: 40, mechanics: ['charge', 'laser_sweep', 'shield'], visual: { shape: 'star6', aura: 'glow', internal: 'lattice' }, desc: 'Ultimate Adversary' },
-  { id: 'abomination', name: 'ABOMINATION', tier: 3, hpMult: 2.0, size: 50, colorH: 120, colorH2: 140, mechanics: ['minion_spawn', 'area_deny', 'dash'], visual: { shape: 'diamond', aura: 'spiky', internal: 'eye' }, desc: 'Twisted Flesh' },
-  { id: 'omega', name: 'OMEGA', tier: 3, hpMult: 2.4, size: 54, colorH: 200, colorH2: 220, mechanics: ['shield', 'charge', 'laser_sweep'], visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Final Threat' },
-  { id: 'devourer_prime', name: 'DEVOURER PRIME', tier: 3, hpMult: 2.15, size: 51, colorH: 20, colorH2: 30, mechanics: ['dash', 'minion_spawn', 'area_deny'], visual: { shape: 'octagon', aura: 'flame', internal: 'chambers' }, desc: 'Insatiable Hunger' },
-  { id: 'nightmare_lord', name: 'NIGHTMARE LORD', tier: 3, hpMult: 2.2, size: 52, colorH: 270, colorH2: 290, mechanics: ['laser_sweep', 'area_deny', 'shield'], visual: { shape: 'hex', aura: 'pulse', internal: 'lattice' }, desc: 'Endless Terror' },
-  { id: 'world_breaker', name: 'WORLD BREAKER', tier: 3, hpMult: 2.25, size: 52, colorH: 10, colorH2: 25, mechanics: ['charge', 'minion_spawn', 'shield'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Planetary Destroyer' },
-  { id: 'infinity_core', name: 'INFINITY CORE', tier: 3, hpMult: 2.3, size: 53, colorH: 240, colorH2: 265, mechanics: ['split', 'laser_sweep', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Boundless Power' },
-  { id: 'dark_sovereign', name: 'DARK SOVEREIGN', tier: 3, hpMult: 2.35, size: 53, colorH: 290, colorH2: 310, mechanics: ['laser_sweep', 'minion_spawn', 'area_deny'], visual: { shape: 'circle', aura: 'rings', internal: 'chambers' }, desc: 'Supreme Evil' },
-  { id: 'cosmic_terror', name: 'COSMIC TERROR', tier: 3, hpMult: 2.1, size: 51, colorH: 200, colorH2: 215, mechanics: ['dash', 'laser_sweep', 'shield'], visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Universe Threat' },
-  { id: 'infernal_tyrant', name: 'INFERNAL TYRANT', tier: 3, hpMult: 2.2, size: 52, colorH: 20, colorH2: 35, mechanics: ['charge', 'area_deny', 'shield'], visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'Burning Despot' },
-  { id: 'genesis_killer', name: 'GENESIS KILLER', tier: 3, hpMult: 2.25, size: 52, colorH: 100, colorH2: 120, mechanics: ['minion_spawn', 'laser_sweep', 'dash'], visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Life Extinguisher' },
-  { id: 'void_lord', name: 'VOID LORD', tier: 3, hpMult: 2.4, size: 54, colorH: 260, colorH2: 280, mechanics: ['split', 'area_deny', 'shield'], visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Abyssal Master' },
-  { id: 'harbinger', name: 'HARBINGER', tier: 3, hpMult: 2.3, size: 53, colorH: 270, colorH2: 290, mechanics: ['charge', 'laser_sweep', 'minion_spawn'], visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Doom\'s Herald' },
+  // TIER 3 (16 bosses) - waves 40+ — 3 mechanics each, all have at least 1 projectile
+  { id: 'apocalypse', name: 'APOCALYPSE', tier: 3, hpMult: 2.0, size: 50, colorH: 0, colorH2: 20, mechanics: ['charge', 'burst_fire', 'area_deny'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'End Times Incarnate' },
+  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['area_deny', 'beam_cannon', 'shield'], vuln: 'resistant', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
+  { id: 'entropy', name: 'ENTROPY', tier: 3, hpMult: 2.1, size: 51, colorH: 240, colorH2: 260, mechanics: ['split', 'shrapnel_bomb', 'area_deny'], vuln: 'breakable', visual: { shape: 'hex', aura: 'electric', internal: 'core' }, desc: 'Decay Absolute' },
+  { id: 'nemesis', name: 'NEMESIS', tier: 3, hpMult: 2.3, size: 53, colorH: 30, colorH2: 40, mechanics: ['charge', 'tracking_volley', 'shield'], vuln: 'resistant', visual: { shape: 'star6', aura: 'glow', internal: 'lattice' }, desc: 'Ultimate Adversary' },
+  { id: 'abomination', name: 'ABOMINATION', tier: 3, hpMult: 2.0, size: 50, colorH: 120, colorH2: 140, mechanics: ['minion_spawn', 'burst_fire', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'spiky', internal: 'eye' }, desc: 'Twisted Flesh' },
+  { id: 'omega', name: 'OMEGA', tier: 3, hpMult: 2.4, size: 54, colorH: 200, colorH2: 220, mechanics: ['shield', 'charge', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Final Threat' },
+  { id: 'devourer_prime', name: 'DEVOURER PRIME', tier: 3, hpMult: 2.15, size: 51, colorH: 20, colorH2: 30, mechanics: ['tracking_volley', 'minion_spawn', 'area_deny'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'chambers' }, desc: 'Insatiable Hunger' },
+  { id: 'nightmare_lord', name: 'NIGHTMARE LORD', tier: 3, hpMult: 2.2, size: 52, colorH: 270, colorH2: 290, mechanics: ['beam_cannon', 'area_deny', 'shield'], vuln: 'resistant', visual: { shape: 'hex', aura: 'pulse', internal: 'lattice' }, desc: 'Endless Terror' },
+  { id: 'world_breaker', name: 'WORLD BREAKER', tier: 3, hpMult: 2.25, size: 52, colorH: 10, colorH2: 25, mechanics: ['charge', 'shrapnel_bomb', 'shield'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Planetary Destroyer' },
+  { id: 'infinity_core', name: 'INFINITY CORE', tier: 3, hpMult: 2.3, size: 53, colorH: 240, colorH2: 265, mechanics: ['split', 'beam_cannon', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Boundless Power' },
+  { id: 'dark_sovereign', name: 'DARK SOVEREIGN', tier: 3, hpMult: 2.35, size: 53, colorH: 290, colorH2: 310, mechanics: ['burst_fire', 'minion_spawn', 'area_deny'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'chambers' }, desc: 'Supreme Evil' },
+  { id: 'cosmic_terror', name: 'COSMIC TERROR', tier: 3, hpMult: 2.1, size: 51, colorH: 200, colorH2: 215, mechanics: ['tracking_volley', 'beam_cannon', 'shield'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Universe Threat' },
+  { id: 'infernal_tyrant', name: 'INFERNAL TYRANT', tier: 3, hpMult: 2.2, size: 52, colorH: 20, colorH2: 35, mechanics: ['charge', 'shrapnel_bomb', 'burst_fire'], vuln: 'breakable', visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'Burning Despot' },
+  { id: 'genesis_killer', name: 'GENESIS KILLER', tier: 3, hpMult: 2.25, size: 52, colorH: 100, colorH2: 120, mechanics: ['minion_spawn', 'beam_cannon', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Life Extinguisher' },
+  { id: 'void_lord', name: 'VOID LORD', tier: 3, hpMult: 2.4, size: 54, colorH: 260, colorH2: 280, mechanics: ['split', 'area_deny', 'burst_fire'], vuln: 'resistant', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Abyssal Master' },
+  { id: 'harbinger', name: 'HARBINGER', tier: 3, hpMult: 2.3, size: 53, colorH: 270, colorH2: 290, mechanics: ['charge', 'beam_cannon', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Doom\'s Herald' },
 ];
 
 const ACHIEVEMENTS = {
@@ -3318,7 +3557,7 @@ class Ship {
     this.laserTarget = nearest;
     if (nearest) {
       startLaserSound(); // Only play sound when actually hitting a target
-      const laserResist = (nearest.isBoss && !nearest.nearSun) ? 0.15 : 1;
+      const laserResist = (nearest.isBoss && nearest.vuln === 'resistant' && !nearest.nearSun) ? 0.15 : 1;
       nearest.hp -= LASER_DPS * (this.laserMult || 1) * dt * laserResist;
       playEnemyHitSound(nearest.typeName);
       particles.emit(nearest.x, nearest.y, 3, '#f4f', 100, 0.15, 2);
@@ -4805,6 +5044,28 @@ function drawARH(ctx, inv, cam) {
         ctx.beginPath(); ctx.arc(zx, zy, z.r, 0, Math.PI*2); ctx.stroke();
       }
     }
+    // Burst fire active — muzzle flash
+    if (inv.burstActive && inv.burstActive > 0) {
+      ctx.fillStyle = `rgba(255,68,68,${0.4 + Math.sin(t*12)*0.3})`;
+      const flashA = inv.burstAngle ? inv.burstAngle - Math.atan2(inv.y, inv.x) : 0;
+      ctx.beginPath();
+      ctx.arc(Math.cos(flashA)*s*0.8, Math.sin(flashA)*s*0.8, s*0.3, 0, Math.PI*2);
+      ctx.fill();
+    }
+    // Tracking volley active — purple ring pulse
+    if (inv.volleyActive && inv.volleyActive > 0) {
+      ctx.strokeStyle = `rgba(255,0,255,${0.5})`;
+      ctx.lineWidth = 2;
+      const pulseR = s * (1.2 + (0.5 - inv.volleyActive) * 0.8);
+      ctx.beginPath(); ctx.arc(0, 0, Math.max(1, pulseR), 0, Math.PI*2); ctx.stroke();
+    }
+    // Beam cannon — telegraph line or active beam (drawn in world coords after restore)
+    // Shrapnel bomb orbs — drawn via particle trail in mechanic update
+    // Shrapnel active — orange glow
+    if (inv.shrapnelActive && inv.shrapnelActive > 0) {
+      ctx.fillStyle = `rgba(255,160,0,${0.3})`;
+      ctx.beginPath(); ctx.arc(0, 0, s*1.2, 0, Math.PI*2); ctx.fill();
+    }
     // Critical boss: electrical arcs (in local coords)
     if (inv.critical) {
       ctx.strokeStyle = `rgba(100,200,255,${0.3 + Math.random()*0.4})`;
@@ -4827,6 +5088,58 @@ function drawARH(ctx, inv, cam) {
   }
 
   ctx.restore();
+
+  // Beam cannon visual — drawn in screen coords after restore (matches drawARH coord system)
+  if (inv.isBoss) {
+    const cam = game.cam;
+    const bsx = inv.x - cam.x + ctx.canvas.width/2;
+    const bsy = inv.y - cam.y + ctx.canvas.height/2;
+
+    if (inv.beamTelegraph && inv.beamTelegraph > 0) {
+      // Telegraph line — thin dashed red line showing where beam will fire
+      const beamEndX = bsx + Math.cos(inv.beamAngle) * 500;
+      const beamEndY = bsy + Math.sin(inv.beamAngle) * 500;
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,50,50,${0.3 + Math.sin(game.time*10)*0.2})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(bsx, bsy);
+      ctx.lineTo(beamEndX, beamEndY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+    if (inv.beamActive && inv.beamActive > 0) {
+      // Active beam — thick glowing line from boss's current position
+      const beamEndX = bsx + Math.cos(inv.beamAngle) * 500;
+      const beamEndY = bsy + Math.sin(inv.beamAngle) * 500;
+      ctx.save();
+      // Outer glow
+      ctx.strokeStyle = `rgba(255,160,40,${0.3})`;
+      ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.moveTo(bsx, bsy); ctx.lineTo(beamEndX, beamEndY); ctx.stroke();
+      // Core beam
+      ctx.strokeStyle = `rgba(255,220,100,${0.7 + Math.sin(game.time*15)*0.2})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(bsx, bsy); ctx.lineTo(beamEndX, beamEndY); ctx.stroke();
+      ctx.restore();
+    }
+    // Shrapnel bomb orbs — draw as glowing circles in screen coords
+    if (inv.shrapnelBombs && inv.shrapnelBombs.length > 0) {
+      for (const bomb of inv.shrapnelBombs) {
+        if (bomb.exploded) continue;
+        const bx = bomb.x - cam.x + ctx.canvas.width/2;
+        const by = bomb.y - cam.y + ctx.canvas.height/2;
+        ctx.save();
+        ctx.fillStyle = `rgba(255,160,0,${0.3 + Math.sin(game.time*8)*0.15})`;
+        ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = `rgba(255,220,60,0.8)`;
+        ctx.beginPath(); ctx.arc(bx, by, 4, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
 
   // Sun heat glow for ARH
   if (game && game.star) {
@@ -5084,7 +5397,7 @@ function checkAchievements() {
 
   // no_death_boss (killed boss with 0 deaths since boss spawn)
   if (!game.achievements.no_death_boss && game.boss === null &&
-      game.achievementTracking.deathsSinceBoss === 0 && game.wave % 5 === 0) {
+      game.achievementTracking.deathsSinceBoss === 0 && game.wave % getBossWaveInterval() === 0) {
     unlockAchievement('no_death_boss');
   }
 
@@ -5412,8 +5725,9 @@ function spawnWave() {
   const count = game.waveSpawnCount + game.wave*4;
   const types = getWaveTypes(game.wave);
 
-  // Boss wave every 5 waves starting at wave 5
-  if (game.wave % 5 === 0 && game.wave >= 5) {
+  // Boss wave — frequency depends on player setting
+  const bossInterval = getBossWaveInterval();
+  if (game.wave % bossInterval === 0 && game.wave >= bossInterval) {
     // Spawn boss — arrives from off-screen
     const bossDef = selectBossForWave(game.wave);
     const bossAngle = Math.random() * Math.PI * 2;
@@ -5437,6 +5751,8 @@ function spawnWave() {
     boss.bossName = bossDef.name;
     boss.colorH = bossDef.colorH;
     boss.critical = false;
+    boss.vuln = bossDef.vuln || 'resistant'; // 'resistant' = sun only, 'breakable' = damage phases
+    boss.breakPhase = 0; // 0 = full, 1 = broken (25% HP left, smaller, faster)
     boss.assignedPlanet = planet;
 
     // Initialize mechanic cooldowns
@@ -5771,10 +6087,12 @@ function updateGame(dt) {
           continue;
         }
 
-        // Boss takes reduced damage unless near the sun or critical
+        // Boss damage: resistant bosses need sun, breakable bosses take full damage
         let dmgMult = 1;
-        if (inv.isBoss && !inv.nearSun && !inv.critical) {
-          dmgMult = 0.15;
+        if (inv.isBoss && inv.vuln === 'resistant' && !inv.nearSun && !inv.critical) {
+          dmgMult = 0.15; // resistant bosses take 15% damage away from sun
+        } else if (inv.isBoss && inv.vuln === 'breakable') {
+          dmgMult = 1; // breakable bosses take full damage always
         }
         inv.hp -= b.damage * dmgMult * (1 - (inv._clusterArmor || 0));
         playEnemyHitSound(inv.typeName);
@@ -5782,8 +6100,28 @@ function updateGame(dt) {
         inv.vx += Math.cos(a)*25; inv.vy += Math.sin(a)*25;
         game.particles.emit(b.x, b.y, 5, inv.color, 150, 0.2, 2);
 
-        // Boss critical state: floor at 1 HP until pushed into sun
-        if (inv.isBoss && inv.hp < 1) {
+        // Breakable boss: at 25% HP, enter broken phase (shrink, speed up, lose a mechanic)
+        if (inv.isBoss && inv.vuln === 'breakable' && !inv.breakPhase && inv.hp < inv.maxHp * 0.25 && inv.hp > 0) {
+          inv.breakPhase = 1;
+          inv.size *= 0.7; // visibly smaller — lost a chunk
+          inv.maxSpeed = (inv.maxSpeed || 180) * 1.3; // faster and more desperate
+          // Shed debris particles
+          game.particles.emit(inv.x, inv.y, 40, '#fa8', 250, 0.6, 4);
+          game.particles.emit(inv.x, inv.y, 20, '#888', 180, 0.8, 5);
+          game.particles.emit(inv.x, inv.y, 10, '#fff', 200, 0.3, 2);
+          playSound('explosion');
+          game.shake.add(8);
+          game.hitStop = 0.08;
+          game.bossSubMessage = `${inv.bossName} IS BREAKING APART!`;
+          game.bossSubMessageTimer = 3;
+          // Lose last mechanic if they have more than one
+          if (inv.bossMechanics && inv.bossMechanics.length > 1) {
+            inv.bossMechanics = [inv.bossMechanics[0]];
+          }
+        }
+
+        // Resistant boss critical state: floor at 1 HP until pushed into sun
+        if (inv.isBoss && inv.vuln === 'resistant' && inv.hp < 1) {
           inv.hp = 1;
           inv.critical = true;
         }
@@ -6829,33 +7167,56 @@ function drawGame() {
       }
     }
 
-    // Near-sun indicator — below mechanic labels row
-    const sunTextY = barY + barH + 32; // pushed down to clear mechanic labels
+    // Vulnerability indicator — below mechanic labels row
+    const sunTextY = barY + barH + 32;
     const isCritical = game.boss.critical;
-    if (game.boss.nearSun) {
-      const pulse = isCritical ? 0.7 + 0.3 * Math.sin(Date.now() * 0.01) : 1;
-      ctx.globalAlpha = pulse;
-      ctx.font = isCritical ? 'bold 22px Courier New' : '10px Courier New';
-      ctx.fillStyle = '#ff0';
-      ctx.shadowColor = '#f80';
-      ctx.shadowBlur = isCritical ? 20 : 0;
-      ctx.fillText('⚠ VULNERABLE — NEAR SUN ⚠', canvas.width/2, sunTextY + (isCritical ? 8 : 0));
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-    } else if (isCritical) {
-      const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.008);
-      ctx.globalAlpha = pulse;
-      ctx.font = 'bold 20px Courier New';
-      ctx.fillStyle = '#f84';
-      ctx.shadowColor = '#f40';
-      ctx.shadowBlur = 15;
-      ctx.fillText('⚠ PUSH INTO SUN TO DESTROY ⚠', canvas.width/2, sunTextY + 8);
-      ctx.shadowBlur = 0;
-      ctx.globalAlpha = 1;
-    } else {
-      ctx.fillStyle = '#888';
-      ctx.font = '10px Courier New';
-      ctx.fillText('RESISTANT — PUSH INTO SUN TO DESTROY', canvas.width/2, sunTextY);
+    const isResistant = game.boss.vuln === 'resistant';
+    const isBreakable = game.boss.vuln === 'breakable';
+
+    if (isResistant) {
+      // Resistant boss — sun push mechanic
+      if (game.boss.nearSun) {
+        const pulse = isCritical ? 0.7 + 0.3 * Math.sin(Date.now() * 0.01) : 1;
+        ctx.globalAlpha = pulse;
+        ctx.font = isCritical ? 'bold 22px Courier New' : '10px Courier New';
+        ctx.fillStyle = '#ff0';
+        ctx.shadowColor = '#f80';
+        ctx.shadowBlur = isCritical ? 20 : 0;
+        ctx.fillText('⚠ VULNERABLE — NEAR SUN ⚠', canvas.width/2, sunTextY + (isCritical ? 8 : 0));
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      } else if (isCritical) {
+        const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.008);
+        ctx.globalAlpha = pulse;
+        ctx.font = 'bold 20px Courier New';
+        ctx.fillStyle = '#f84';
+        ctx.shadowColor = '#f40';
+        ctx.shadowBlur = 15;
+        ctx.fillText('⚠ PUSH INTO SUN TO DESTROY ⚠', canvas.width/2, sunTextY + 8);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.font = '10px Courier New';
+        ctx.fillText('RESISTANT — PUSH INTO SUN TO DESTROY', canvas.width/2, sunTextY);
+      }
+    } else if (isBreakable) {
+      // Breakable boss — damage phases
+      if (game.boss.breakPhase >= 1) {
+        const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.008);
+        ctx.globalAlpha = pulse;
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillStyle = '#fa0';
+        ctx.shadowColor = '#f80';
+        ctx.shadowBlur = 10;
+        ctx.fillText('⚠ BREAKING APART — FINISH IT ⚠', canvas.width/2, sunTextY + 4);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.font = '10px Courier New';
+        ctx.fillText('DESTRUCTIBLE — KEEP FIRING', canvas.width/2, sunTextY);
+      }
     }
     ctx.textAlign = 'left';
   }
@@ -6903,7 +7264,9 @@ function updateHUD() {
   const hpBars = Math.round(hpPct*20), enBars = Math.round(enPct*20);
   const hpColor = hpPct > 0.5 ? '#0ff' : hpPct > 0.25 ? '#fa0' : '#f44';
 
-  document.getElementById('hud-score').textContent = `SCORE: ${game.score}`;
+  const scoreMult = getBossScoreMultiplier();
+  const displayScore = Math.floor(game.score * scoreMult);
+  document.getElementById('hud-score').textContent = `SCORE: ${displayScore}${scoreMult > 1 ? ` (x${scoreMult})` : ''}`;
   document.getElementById('hud-wave').textContent = bossRushMode ? `BOSS RUSH (${bossRushKills} / ${bossRushKills + bossRushQueue.length + (game.boss ? 1 : 0)})` : `WAVE: ${game.wave}`;
   document.getElementById('hud-kills').textContent = `KILLS: ${game.kills}${game.deaths ? '  DEATHS: '+game.deaths : ''}`;
 
@@ -7081,7 +7444,7 @@ function gameOver() {
   if (gameMode !== 'ranked') return;
   gameRunning = false;
 
-  const finalScore = game.score;
+  const finalScore = Math.floor(game.score * getBossScoreMultiplier());
   const finalWave = game.wave;
   const finalKills = game.kills;
 
@@ -7194,6 +7557,38 @@ function showModeSelect() {
 function selectGameMode(mode) {
   gameMode = mode;
   startGame();
+}
+
+function setBossFrequency(freq) {
+  bossFrequency = freq;
+  // Update button visuals
+  const btns = { normal: '#freq-normal', frequent: '#freq-frequent', gauntlet: '#freq-gauntlet' };
+  const colors = { normal: '0,255,255', frequent: '255,160,0', gauntlet: '255,50,50' };
+  for (const [key, sel] of Object.entries(btns)) {
+    const btn = document.querySelector(sel);
+    if (!btn) continue;
+    if (key === freq) {
+      btn.style.borderColor = `rgb(${colors[key]})`;
+      btn.style.color = `rgb(${colors[key]})`;
+      btn.style.background = `rgba(${colors[key]},0.15)`;
+    } else {
+      btn.style.borderColor = '#555';
+      btn.style.color = '#aaa';
+      btn.style.background = `rgba(${colors[key]},0.05)`;
+    }
+  }
+}
+
+function getBossWaveInterval() {
+  if (bossFrequency === 'gauntlet') return 1;
+  if (bossFrequency === 'frequent') return 3;
+  return 5; // normal
+}
+
+function getBossScoreMultiplier() {
+  if (bossFrequency === 'gauntlet') return 1.5;
+  if (bossFrequency === 'frequent') return 1.2;
+  return 1.0;
 }
 
 function updatePauseAchievements() {
