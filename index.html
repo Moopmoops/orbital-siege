@@ -1081,14 +1081,18 @@ function playSound(type) {
   } else if (type === 'laser') {
     // Handled by startLaserSound/stopLaserSound
   } else if (type === 'explode') {
-    // Softer explosion — filtered noise with slower attack
-    const bs = audioCtx.sampleRate * 0.4; const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
+    // Softer explosion with per-instance variation (pitch, filter, duration)
+    const pitchVar = 0.8 + Math.random() * 0.5; // 0.8x to 1.3x playback rate
+    const filterVar = 900 + Math.random() * 600; // 900-1500 Hz start cutoff
+    const durVar = 0.3 + Math.random() * 0.2; // 0.3-0.5s duration
+    const bs = Math.floor(audioCtx.sampleRate * durVar); const buf = audioCtx.createBuffer(1, bs, audioCtx.sampleRate);
     const d = buf.getChannelData(0); for (let i = 0; i < bs; i++) d[i] = (Math.random()*2-1)*Math.pow(1-i/bs, 1.5);
     const src = audioCtx.createBufferSource(); src.buffer = buf;
+    src.playbackRate.setValueAtTime(pitchVar, now);
     const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass';
-    lpf.frequency.setValueAtTime(1200, now); lpf.frequency.exponentialRampToValueAtTime(300, now + 0.4);
-    gain.gain.setValueAtTime(0.001, now); gain.gain.linearRampToValueAtTime(0.10, now + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    lpf.frequency.setValueAtTime(filterVar, now); lpf.frequency.exponentialRampToValueAtTime(200 + Math.random() * 200, now + durVar);
+    gain.gain.setValueAtTime(0.001, now); gain.gain.linearRampToValueAtTime(0.08 + Math.random() * 0.04, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + durVar);
     src.connect(lpf); lpf.connect(gain); src.start(now);
   } else if (type === 'explode_big') {
     // Deep muffled boom — heavy lowpass, longer decay
@@ -1136,10 +1140,17 @@ function playSound(type) {
     gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
     osc.connect(gain); osc.start(now); osc.stop(now + 0.25);
   } else if (type === 'scan') {
+    // Solar bomb charged — warm resonant tone (two layered sines)
     const osc = audioCtx.createOscillator(); osc.type = 'sine';
-    osc.frequency.setValueAtTime(1500, now); osc.frequency.exponentialRampToValueAtTime(800, now + 0.4);
-    gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-    osc.connect(gain); osc.start(now); osc.stop(now + 0.4);
+    osc.frequency.setValueAtTime(440, now); osc.frequency.exponentialRampToValueAtTime(280, now + 0.6);
+    gain.gain.setValueAtTime(0.07, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.6);
+    // Warm harmonic layer
+    const osc2 = audioCtx.createOscillator(); osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(660, now); osc2.frequency.exponentialRampToValueAtTime(420, now + 0.5);
+    const g2 = audioCtx.createGain(); g2.connect(audioCtx.destination);
+    g2.gain.setValueAtTime(0.03, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc2.connect(g2); osc2.start(now); osc2.stop(now + 0.5);
   } else if (type === 'enemy_shoot') {
     const osc = audioCtx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.06);
@@ -3440,7 +3451,7 @@ class Ship {
         this.solarBombs++;
         this.solarCharge = 0;
         // Show as a small floating indicator near the ship instead of big boss message
-        game.scorePopups.push({ x: this.x, y: this.y - 20, text: `☀ SOLAR BOMB x${this.solarBombs}`, total: 0, color: '#fa0', life: 2.0, vy: -30 });
+        game.scorePopups.push({ x: this.x, y: this.y - 20, text: `☀ SOLAR BOMB CHARGED`, total: 0, color: '#fa0', life: 2.0, vy: -30 });
         game.shake.add(3);
         playSound('scan');
       }
@@ -4371,8 +4382,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       }
     }
 
-    // Boss has special weapons — fires spread shots and homing bursts
-    if (ship.alive && inv.shootTimer <= 0) {
+    // Boss has special weapons — fires spread shots and homing bursts (disabled when critical)
+    if (ship.alive && inv.shootTimer <= 0 && !inv.critical) {
       const d = dist(inv, ship);
       if (d < 600) {
         const a = angle(inv, ship);
@@ -4419,10 +4430,30 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       // Intense fire + sparks
       game.particles.emit(inv.x + rng(-inv.size, inv.size), inv.y + rng(-inv.size, inv.size), 3, '#f84', 100, 0.5, 3);
       game.particles.emit(inv.x + rng(-inv.size, inv.size), inv.y + rng(-inv.size, inv.size), 1, '#ff0', 120, 0.2, 1);
+      // Critical boss: slow down dramatically (drag)
+      inv.vx *= (1 - 2.5 * dt); // heavy velocity damping
+      inv.vy *= (1 - 2.5 * dt);
+      // Drift away from map edges toward a mid-range orbit (but NOT into the sun)
+      const distFromCenter = Math.hypot(inv.x, inv.y);
+      const safeRadius = game.star ? game.star.radius + 250 : 300; // stay outside this
+      const preferredRadius = game.star ? game.star.radius + 400 : 500; // drift toward this zone
+      if (distFromCenter > preferredRadius + 50) {
+        // Too far out — gently pull inward
+        const pullAngle = Math.atan2(-inv.y, -inv.x);
+        const pullForce = 40 * Math.min(1, (distFromCenter - preferredRadius) / 300);
+        inv.vx += Math.cos(pullAngle) * pullForce * dt;
+        inv.vy += Math.sin(pullAngle) * pullForce * dt;
+      } else if (distFromCenter < safeRadius) {
+        // Too close to sun — gently push outward (don't let it drift in on its own)
+        const pushAngle = Math.atan2(inv.y, inv.x);
+        const pushForce = 60;
+        inv.vx += Math.cos(pushAngle) * pushForce * dt;
+        inv.vy += Math.sin(pushAngle) * pushForce * dt;
+      }
     }
 
-    // Apply boss mechanics
-    if (inv.bossMechanics && inv.bossMechanics.length > 0) {
+    // Apply boss mechanics (disabled when critical — boss is crippled)
+    if (inv.bossMechanics && inv.bossMechanics.length > 0 && !inv.critical) {
       for (const mechId of inv.bossMechanics) {
         const mechConfig = BOSS_MECHANICS[mechId];
         if (mechConfig && mechConfig.apply) {
@@ -4631,8 +4662,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   const aggroFade = dToShip < inv.aggroRange ? clamp(1 - (inv.aggroRange - dToShip) / inv.aggroRange, 0.05, 1) : 1;
   enforceCircularOrbit(inv, game.bodies, 0.08 * aggroFade, rng(42, 52));
 
-  // Speed limit
-  const spdLimit = inv.isBoss ? 180 : 120;
+  // Speed limit — critical bosses are crippled and slow
+  const spdLimit = (inv.isBoss && inv.critical) ? 50 : inv.isBoss ? 180 : 120;
   const spd = Math.hypot(inv.vx, inv.vy);
   if (spd > spdLimit) { inv.vx = (inv.vx/spd)*spdLimit; inv.vy = (inv.vy/spd)*spdLimit; }
 
@@ -7286,10 +7317,27 @@ function updateHUD() {
   const laserStatus = game.wave >= laserWave ? (game.ship.laserActive ? 'FIRING' : 'READY') : `LOCKED (Wave ${laserWave})`;
   const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
   let solarInfo = '';
-  if (game.ship.solarBombs > 0) {
+  if (game.ship.solarBombs > 0 || game.ship.solarCharge > 0.1) {
+    const bombs = game.ship.solarBombs;
+    const max = game.ship.maxSolarBombs;
     const cdReady = game.ship.solarBombCooldown <= 0;
-    const cdColor = cdReady ? '#fa0' : '#a70';
-    solarInfo = ` | <span style="color:${cdColor}">☀ SOLAR BOMB x${game.ship.solarBombs}${cdReady ? '' : ' (COOLING)'}</span>`;
+    // Build icon string: filled ☀ for available, dim ○ for depleted
+    let icons = '';
+    for (let i = 0; i < max; i++) {
+      if (i < bombs) {
+        const color = cdReady ? '#fa0' : '#a70';
+        icons += `<span style="color:${color}">☀</span>`;
+      } else {
+        icons += `<span style="color:#555">○</span>`;
+      }
+    }
+    const label = bombs > 0 ? (cdReady ? 'SOLAR BOMB' : 'COOLING') : '';
+    solarInfo = ` | ${icons}${label ? ' ' + `<span style="color:${cdReady ? '#fa0' : '#a70'}">${label}</span>` : ''}`;
+    // Show charge progress toward next bomb
+    if (bombs < max && game.ship.solarCharge > 0.1) {
+      const pct = Math.round(game.ship.solarCharge * 100);
+      solarInfo += ` <span style="color:#a70">${pct}%</span>`;
+    }
   } else if (game.ship.solarCharge > 0.1) {
     const pct = Math.round(game.ship.solarCharge * 100);
     solarInfo = ` | <span style="color:#a70">☀ SOLAR ${pct}%</span>`;
