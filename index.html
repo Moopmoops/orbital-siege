@@ -240,24 +240,26 @@ canvas { display: block; cursor: crosshair; }
 /* ===== TOUCH CONTROLS ===== */
 #touch-controls { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 90; pointer-events: none; }
 #touch-controls.show { display: block; }
-#touch-controls * { pointer-events: all; touch-action: none; user-select: none; }
-/* Joystick */
-#joystick { position: fixed; bottom: 30px; left: 30px; width: 120px; height: 120px; background: rgba(0,255,255,0.1); border: 2px solid rgba(0,255,255,0.4); border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: pointer; }
-#joystick:active { background: rgba(0,255,255,0.2); border-color: rgba(0,255,255,0.6); }
-#joystick-thumb { width: 40px; height: 40px; background: rgba(0,255,255,0.3); border: 2px solid rgba(0,255,255,0.6); border-radius: 50%; position: absolute; }
-/* Boost Button */
-#boost-btn { position: fixed; bottom: 160px; left: 30px; width: 120px; height: 50px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; cursor: pointer; letter-spacing: 2px; border-radius: 4px; }
-#boost-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
-/* Weapon Buttons */
-#weapon-buttons { position: fixed; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 12px; }
-.weapon-btn { width: 90px; height: 44px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 4px; transition: all 0.2s; }
-.weapon-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
-.weapon-btn.active { background: rgba(0,255,255,0.15); border-color: #0ff; box-shadow: 0 0 10px rgba(0,255,255,0.5); }
-/* Scan Button */
-#scan-btn { position: fixed; bottom: 125px; right: 30px; width: 90px; height: 44px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 4px; }
-#scan-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
+#touch-controls * { pointer-events: all; touch-action: none; user-select: none; -webkit-user-select: none; }
+/* Left side — movement controls */
+#mobile-left { position: fixed; bottom: 20px; left: 15px; display: flex; flex-direction: column; gap: 10px; }
+.mobile-move-btn { width: 80px; height: 64px; background: rgba(0,10,30,0.6); border: 2px solid rgba(0,255,255,0.35); color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.3; }
+.mobile-move-btn .btn-icon { font-size: 18px; }
+.mobile-move-btn.held { background: rgba(0,255,255,0.2); border-color: #0ff; box-shadow: 0 0 12px rgba(0,255,255,0.4); }
+#thrust-btn { border-color: rgba(0,200,255,0.5); }
+#boost-btn { border-color: rgba(255,170,0,0.4); color: #fa0; }
+#boost-btn.held { background: rgba(255,170,0,0.2); border-color: #fa0; box-shadow: 0 0 12px rgba(255,170,0,0.4); }
+#brake-btn { border-color: rgba(255,100,100,0.35); color: #f88; }
+#brake-btn.held { background: rgba(255,100,100,0.15); border-color: #f88; box-shadow: 0 0 8px rgba(255,100,100,0.3); }
+/* Right side — weapon controls */
+#mobile-right { position: fixed; bottom: 20px; right: 15px; display: flex; flex-direction: column; gap: 10px; }
+.weapon-btn { width: 72px; height: 56px; background: rgba(0,10,30,0.6); border: 2px solid rgba(0,255,255,0.35); color: #0ff; font-family: 'Courier New', monospace; font-size: 10px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.3; }
+.weapon-btn .btn-icon { font-size: 16px; }
+.weapon-btn.active { background: rgba(0,255,255,0.15); border-color: #0ff; box-shadow: 0 0 12px rgba(0,255,255,0.5); }
+#bomb-btn { border-color: rgba(255,170,0,0.4); color: #fa0; }
+#bomb-btn:active, #bomb-btn.held { background: rgba(255,170,0,0.2); border-color: #fa0; box-shadow: 0 0 12px rgba(255,170,0,0.4); }
 /* Pause Button */
-#mobile-pause-btn { position: fixed; top: 15px; right: 20px; width: 50px; height: 44px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 4px; }
+#mobile-pause-btn { position: fixed; top: 12px; right: 15px; width: 44px; height: 36px; background: rgba(0,10,30,0.5); border: 2px solid rgba(0,255,255,0.3); color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; font-weight: bold; cursor: pointer; letter-spacing: 1px; border-radius: 6px; }
 #mobile-pause-btn:active { background: rgba(0,255,255,0.2); border-color: #0ff; }
 /* Mobile controls note on start screen */
 .touch-controls-note { font-size: 12px; color: #8cf; margin-bottom: 15px; letter-spacing: 2px; }
@@ -376,17 +378,17 @@ canvas { display: block; cursor: crosshair; }
 
 <!-- Mobile Touch Controls -->
 <div id="touch-controls">
-  <div id="joystick">
-    <div id="joystick-thumb"></div>
+  <div id="mobile-left">
+    <button class="mobile-move-btn" id="boost-btn"><span class="btn-icon">⚡</span>BOOST</button>
+    <button class="mobile-move-btn" id="thrust-btn"><span class="btn-icon">▲</span>THRUST</button>
+    <button class="mobile-move-btn" id="brake-btn"><span class="btn-icon">▼</span>BRAKE</button>
   </div>
-  <button id="boost-btn">BOOST</button>
-  <div id="weapon-buttons">
-    <button class="weapon-btn" id="torp-btn">TORP</button>
-    <button class="weapon-btn" id="laser-btn">LASER</button>
-    <button class="weapon-btn" id="bomb-btn">BOMB</button>
+  <div id="mobile-right">
+    <button class="weapon-btn" id="bomb-btn"><span class="btn-icon">☀</span>BOMB</button>
+    <button class="weapon-btn" id="torp-btn"><span class="btn-icon">◆</span>TORP</button>
+    <button class="weapon-btn" id="laser-btn"><span class="btn-icon">≡</span>LASER</button>
   </div>
-  <button id="scan-btn">SCAN</button>
-  <button id="mobile-pause-btn">PAUSE</button>
+  <button id="mobile-pause-btn">▐▐</button>
 </div>
 
 <div id="debug-panel"></div>
@@ -5661,7 +5663,8 @@ function registerKill(x, y, basePoints, inv) {
   const waveClear = game.invaders && game.invaders.length === 0;
   if (!waveClear) {
     if (game.combo === 15) {
-      game.bossMessage = 'SYSTEMS OVERLOAD!';
+      const msgs15 = ['WRECKING SPREE!', 'CHAIN REACTION!', 'SHREDDING THEM!'];
+      game.bossMessage = msgs15[Math.floor(Math.random() * msgs15.length)];
       game.bossMessageTimer = 1.5;
       game.bossMessageColor = '#4ef';
       game.shake.add(3);
@@ -7900,174 +7903,105 @@ const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 if (isMobile) {
   // Show touch controls and hide keyboard controls on start screen
   const origStartBtn = document.getElementById('launch-btn');
-  const origStartBtnOld = origStartBtn.onclick;
   origStartBtn.addEventListener('click', () => {
     document.getElementById('touch-controls').classList.add('show');
     document.querySelector('#start-screen .controls').style.display = 'none';
     const touchNote = document.createElement('div');
     touchNote.className = 'touch-controls-note';
     touchNote.textContent = 'TOUCH CONTROLS ACTIVE';
-    document.querySelector('#start-screen .subtitle').parentNode.insertBefore(touchNote, document.querySelector('#start-screen .controls').nextSibling);
+    const subtitleEl = document.querySelector('#start-screen .subtitle');
+    if (subtitleEl && subtitleEl.parentNode) {
+      subtitleEl.parentNode.insertBefore(touchNote, document.querySelector('#start-screen .controls').nextSibling);
+    }
   });
 }
 
 // Touch state tracking
-let joystickTouchId = null;
 let shootTouchId = null;
-let boostTouchId = null;
+const activeTouches = new Map(); // touchId -> buttonId
 
-// Joystick configuration
-const joystickEl = document.getElementById('joystick');
-const joystickThumb = document.getElementById('joystick-thumb');
-const JOYSTICK_RADIUS = 60; // outer radius
-const JOYSTICK_DEAD_ZONE = 15;
-let joystickCenterX = 0, joystickCenterY = 0;
-
-// Update joystick center when resized or on load
-function updateJoystickCenter() {
-  const rect = joystickEl.getBoundingClientRect();
-  joystickCenterX = rect.left + rect.width / 2;
-  joystickCenterY = rect.top + rect.height / 2;
-}
-updateJoystickCenter();
-window.addEventListener('resize', updateJoystickCenter);
-
-// Joystick touch handlers
-joystickEl.addEventListener('touchstart', e => {
-  e.preventDefault();
-  for (const touch of e.changedTouches) {
-    const dist = Math.hypot(touch.clientX - joystickCenterX, touch.clientY - joystickCenterY);
-    if (dist < JOYSTICK_RADIUS + 20) {
-      joystickTouchId = touch.identifier;
-      updateJoystick(touch);
-    }
-  }
-});
-
-joystickEl.addEventListener('touchmove', e => {
-  e.preventDefault();
-  for (const touch of e.changedTouches) {
-    if (touch.identifier === joystickTouchId) {
-      updateJoystick(touch);
-    }
-  }
-});
-
-joystickEl.addEventListener('touchend', e => {
-  e.preventDefault();
-  for (const touch of e.changedTouches) {
-    if (touch.identifier === joystickTouchId) {
-      joystickTouchId = null;
-      keys['w'] = false;
-      keys['s'] = false;
-      keys['a'] = false;
-      keys['d'] = false;
-      joystickThumb.style.transform = 'translate(0, 0)';
-    }
-  }
-});
-
-function updateJoystick(touch) {
-  const dx = touch.clientX - joystickCenterX;
-  const dy = touch.clientY - joystickCenterY;
-  const dist = Math.hypot(dx, dy);
-
-  // Visual feedback
-  const maxThumbDist = JOYSTICK_RADIUS - 20;
-  const thumbDist = Math.min(dist, maxThumbDist);
-  const thumbAngle = Math.atan2(dy, dx);
-  joystickThumb.style.transform = `translate(${Math.cos(thumbAngle) * thumbDist}px, ${Math.sin(thumbAngle) * thumbDist}px)`;
-
-  // Key states based on dead zone
-  const isActive = dist > JOYSTICK_DEAD_ZONE;
-  if (isActive) {
-    const angle = Math.atan2(dy, dx);
-    // Determine cardinal directions
-    const up = dy < -Math.abs(dx) * 0.5;
-    const down = dy > Math.abs(dx) * 0.5;
-    const left = dx < -Math.abs(dy) * 0.5;
-    const right = dx > Math.abs(dy) * 0.5;
-
-    keys['w'] = up;
-    keys['s'] = down;
-    keys['a'] = left;
-    keys['d'] = right;
-  } else {
-    keys['w'] = false;
-    keys['s'] = false;
-    keys['a'] = false;
-    keys['d'] = false;
-  }
-}
-
-// Boost button
-const boostBtn = document.getElementById('boost-btn');
-boostBtn.addEventListener('touchstart', e => {
-  e.preventDefault();
-  keys['shift'] = true;
-  boostBtn.style.background = 'rgba(0,255,255,0.2)';
-  boostBtn.style.borderColor = '#0ff';
-});
-boostBtn.addEventListener('touchend', e => {
-  e.preventDefault();
-  keys['shift'] = false;
-  boostBtn.style.background = 'rgba(0,10,30,0.5)';
-  boostBtn.style.borderColor = 'rgba(0,255,255,0.3)';
-});
-
-// Weapon buttons
-const torpBtn = document.getElementById('torp-btn');
-const laserBtn = document.getElementById('laser-btn');
-const bombBtn = document.getElementById('bomb-btn');
-let torpActive = false, laserActive = false;
-
-function setupWeaponButton(btn, keyCode, toggle = false) {
+// --- Helper: hold-style button (active while finger is down) ---
+function setupHoldButton(btn, onDown, onUp) {
   btn.addEventListener('touchstart', e => {
-    e.preventDefault();
-    if (toggle) {
-      const isActive = btn.classList.contains('active');
-      if (isActive) {
-        keys[keyCode] = false;
-        btn.classList.remove('active');
-      } else {
-        keys[keyCode] = true;
-        btn.classList.add('active');
-      }
-    } else {
-      keys[keyCode] = true;
+    e.preventDefault(); e.stopPropagation();
+    for (const touch of e.changedTouches) {
+      activeTouches.set(touch.identifier, btn.id);
+      btn.classList.add('held');
+      onDown();
     }
   });
   btn.addEventListener('touchend', e => {
+    e.preventDefault(); e.stopPropagation();
+    for (const touch of e.changedTouches) {
+      if (activeTouches.get(touch.identifier) === btn.id) {
+        activeTouches.delete(touch.identifier);
+        btn.classList.remove('held');
+        onUp();
+      }
+    }
+  });
+  btn.addEventListener('touchcancel', e => {
     e.preventDefault();
-    if (!toggle) {
-      keys[keyCode] = false;
+    for (const touch of e.changedTouches) {
+      if (activeTouches.get(touch.identifier) === btn.id) {
+        activeTouches.delete(touch.identifier);
+        btn.classList.remove('held');
+        onUp();
+      }
     }
   });
 }
 
-setupWeaponButton(torpBtn, 'e', true);
-setupWeaponButton(laserBtn, 'q', true);
-setupWeaponButton(bombBtn, ' ', false);
+// --- Helper: toggle-style button (tap on / tap off) ---
+function setupToggleButton(btn, keyCode) {
+  btn.addEventListener('touchstart', e => {
+    e.preventDefault(); e.stopPropagation();
+    const isActive = btn.classList.contains('active');
+    if (isActive) {
+      keys[keyCode] = false;
+      btn.classList.remove('active');
+    } else {
+      keys[keyCode] = true;
+      btn.classList.add('active');
+    }
+  });
+}
 
-// Scan button
-const scanBtn = document.getElementById('scan-btn');
-scanBtn.addEventListener('touchstart', e => {
-  e.preventDefault();
-  keys['tab'] = true;
-  scanBtn.style.background = 'rgba(0,255,255,0.2)';
-  scanBtn.style.borderColor = '#0ff';
-});
-scanBtn.addEventListener('touchend', e => {
-  e.preventDefault();
-  keys['tab'] = false;
-  scanBtn.style.background = 'rgba(0,10,30,0.5)';
-  scanBtn.style.borderColor = 'rgba(0,255,255,0.3)';
-});
+// --- Left side: movement buttons ---
+const thrustBtn = document.getElementById('thrust-btn');
+const boostBtn = document.getElementById('boost-btn');
+const brakeBtn = document.getElementById('brake-btn');
 
-// Pause button
+setupHoldButton(thrustBtn,
+  () => { keys['w'] = true; },
+  () => { keys['w'] = false; }
+);
+setupHoldButton(boostBtn,
+  () => { keys['shift'] = true; keys['w'] = true; },
+  () => { keys['shift'] = false; keys['w'] = false; }
+);
+setupHoldButton(brakeBtn,
+  () => { keys['s'] = true; },
+  () => { keys['s'] = false; }
+);
+
+// --- Right side: weapon buttons ---
+const torpBtn = document.getElementById('torp-btn');
+const laserBtn = document.getElementById('laser-btn');
+const bombBtn = document.getElementById('bomb-btn');
+
+setupToggleButton(torpBtn, 'e');
+setupToggleButton(laserBtn, 'q');
+// Bomb is press-and-release (not toggle)
+setupHoldButton(bombBtn,
+  () => { keys[' '] = true; },
+  () => { keys[' '] = false; }
+);
+
+// --- Pause button ---
 const pauseBtn = document.getElementById('mobile-pause-btn');
 pauseBtn.addEventListener('touchstart', e => {
-  e.preventDefault();
+  e.preventDefault(); e.stopPropagation();
   if (gameRunning) {
     gamePaused = !gamePaused;
     document.getElementById('pause-menu').style.display = gamePaused ? 'flex' : 'none';
@@ -8079,28 +8013,21 @@ pauseBtn.addEventListener('touchstart', e => {
   }
 });
 
-// Canvas touch handlers for shooting (right side)
-const canvasRect = canvas.getBoundingClientRect();
-const JOYSTICK_ZONE_WIDTH = window.innerWidth * 0.35;
-const BUTTON_ZONE_HEIGHT = window.innerHeight * 0.5;
+// --- Canvas touch: aim + shoot (touch anywhere not on a button) ---
+// Touch the game area to aim and fire bullets. Dragging moves the aim point.
+const BUTTON_MARGIN = 110; // px from edges where buttons live
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   for (const touch of e.changedTouches) {
     const x = touch.clientX;
     const y = touch.clientY;
-
-    // Check if touch is in joystick zone (bottom-left)
-    if (x < JOYSTICK_ZONE_WIDTH && y > BUTTON_ZONE_HEIGHT) {
-      continue; // Joystick handles this
-    }
-
-    // Check if touch is on weapon/scan buttons (bottom-right)
-    if (x > window.innerWidth * 0.65 && y > BUTTON_ZONE_HEIGHT) {
-      continue; // Buttons handle this
-    }
-
-    // Shoot zone
+    // Skip if touch is in button zones (left or right edges, bottom portion)
+    if (x < BUTTON_MARGIN && y > window.innerHeight * 0.45) continue;
+    if (x > window.innerWidth - BUTTON_MARGIN && y > window.innerHeight * 0.35) continue;
+    // Skip if touch is on pause button area (top-right)
+    if (x > window.innerWidth - 80 && y < 60) continue;
+    // This is a shoot/aim touch
     shootTouchId = touch.identifier;
     mouseX = x;
     mouseY = y;
@@ -8128,8 +8055,10 @@ canvas.addEventListener('touchend', e => {
   }
 });
 
-// Prevent default browser touch behaviors
+// Prevent default browser touch behaviors (scrolling, zooming)
 canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', e => e.preventDefault());
+document.addEventListener('gesturechange', e => e.preventDefault());
 
 requestAnimationFrame(gameLoop);
 </script>
