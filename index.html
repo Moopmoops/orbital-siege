@@ -491,16 +491,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// Safari performance warning
-(function checkSafari() {
-  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-  if (!isSafari) return;
-  const warn = document.createElement('div');
-  warn.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(20,10,0,0.92);border-bottom:2px solid #f80;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;font-family:monospace;';
-  warn.innerHTML = `<span style="color:#fa0;font-size:13px;">⚠ Safari may experience slowdowns during intense battles. For the best experience, use <b style="color:#fff">Chrome</b> or <b style="color:#fff">Firefox</b>.</span><button onclick="this.parentElement.remove()" style="background:#333;color:#fff;border:1px solid #666;padding:4px 12px;cursor:pointer;font-family:monospace;border-radius:3px;">GOT IT</button>`;
-  document.body.appendChild(warn);
-})();
-
 function toggleChangelog() {
   const cp = document.getElementById('changelog-panel');
   if (cp) cp.style.display = cp.style.display === 'none' ? 'block' : 'none';
@@ -1143,17 +1133,28 @@ function playSound(type) {
     gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
     osc.connect(gain); osc.start(now); osc.stop(now + 0.25);
   } else if (type === 'scan') {
-    // Solar bomb charged — warm resonant tone (two layered sines)
+    // Solar bomb charged — deep rising "power ready" chime
+    // Base: low rumble that rises slightly
     const osc = audioCtx.createOscillator(); osc.type = 'sine';
-    osc.frequency.setValueAtTime(440, now); osc.frequency.exponentialRampToValueAtTime(280, now + 0.6);
-    gain.gain.setValueAtTime(0.07, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-    osc.connect(gain); osc.start(now); osc.stop(now + 0.6);
-    // Warm harmonic layer
+    osc.frequency.setValueAtTime(110, now); osc.frequency.exponentialRampToValueAtTime(165, now + 0.35);
+    gain.gain.setValueAtTime(0.08, now); gain.gain.linearRampToValueAtTime(0.10, now + 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass';
+    lpf.frequency.setValueAtTime(400, now); lpf.frequency.linearRampToValueAtTime(800, now + 0.3);
+    osc.connect(lpf); lpf.connect(gain); osc.start(now); osc.stop(now + 0.5);
+    // Bright chime on top — delayed slightly for a "ding" at the peak
     const osc2 = audioCtx.createOscillator(); osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(660, now); osc2.frequency.exponentialRampToValueAtTime(420, now + 0.5);
+    osc2.frequency.setValueAtTime(330, now + 0.1); osc2.frequency.exponentialRampToValueAtTime(220, now + 0.45);
     const g2 = audioCtx.createGain(); g2.connect(audioCtx.destination);
-    g2.gain.setValueAtTime(0.03, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-    osc2.connect(g2); osc2.start(now); osc2.stop(now + 0.5);
+    g2.gain.setValueAtTime(0.001, now); g2.gain.linearRampToValueAtTime(0.05, now + 0.12);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+    osc2.connect(g2); osc2.start(now); osc2.stop(now + 0.45);
+    // Sub thump for weight
+    const sub = audioCtx.createOscillator(); sub.type = 'sine';
+    sub.frequency.setValueAtTime(55, now); sub.frequency.exponentialRampToValueAtTime(40, now + 0.25);
+    const sg = audioCtx.createGain(); sg.connect(audioCtx.destination);
+    sg.gain.setValueAtTime(0.06, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    sub.connect(sg); sub.start(now); sub.stop(now + 0.25);
   } else if (type === 'enemy_shoot') {
     const osc = audioCtx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.06);
@@ -7954,11 +7955,24 @@ pauseBtn.addEventListener('touchstart', e => {
 });
 
 // --- Canvas touch: aim + shoot (relative drag from anywhere) ---
-// Put finger down anywhere to start shooting. Drag direction = aim direction.
-// Uses relative movement: dragging up-left from any start point aims up-left.
+// Put finger down to shoot. Drag direction = aim direction (relative, not absolute).
+// Dragging up-left from ANY start point aims up-left. No need to reach screen edges.
 const BUTTON_MARGIN = 110; // px from edges where buttons live
 let shootTouchStartX = 0, shootTouchStartY = 0;
-const AIM_SENSITIVITY = 3.0; // multiplier for drag distance -> aim offset
+let lastAimDx = 0, lastAimDy = -100; // remember last aim direction (default: upward)
+const AIM_SENSITIVITY = 4.0; // multiplier for drag distance -> aim offset
+
+// Compute aim from drag delta — projects direction outward from screen center
+function updateAimFromDrag(dx, dy) {
+  const dragDist = Math.hypot(dx, dy);
+  if (dragDist > 8) { // dead zone to avoid jitter on tap
+    lastAimDx = dx;
+    lastAimDy = dy;
+  }
+  // Always use last known aim direction, amplified outward from screen center
+  mouseX = canvas.width / 2 + lastAimDx * AIM_SENSITIVITY;
+  mouseY = canvas.height / 2 + lastAimDy * AIM_SENSITIVITY;
+}
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
@@ -7974,26 +7988,22 @@ canvas.addEventListener('touchstart', e => {
     shootTouchId = touch.identifier;
     shootTouchStartX = x;
     shootTouchStartY = y;
-    // Aim straight ahead from center on initial tap (no drag yet)
-    mouseX = canvas.width / 2;
-    mouseY = canvas.height / 2;
+    // On tap, keep aiming in last known direction (don't reset to center)
+    updateAimFromDrag(0, 0);
     mouseDown = true;
   }
-});
+}, { passive: false });
 
 canvas.addEventListener('touchmove', e => {
   e.preventDefault();
   for (const touch of e.changedTouches) {
     if (touch.identifier === shootTouchId) {
-      // Relative drag: compute delta from where finger first touched
       const dx = touch.clientX - shootTouchStartX;
       const dy = touch.clientY - shootTouchStartY;
-      // Project aim direction outward from screen center
-      mouseX = canvas.width / 2 + dx * AIM_SENSITIVITY;
-      mouseY = canvas.height / 2 + dy * AIM_SENSITIVITY;
+      updateAimFromDrag(dx, dy);
     }
   }
-});
+}, { passive: false });
 
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
@@ -8003,10 +8013,10 @@ canvas.addEventListener('touchend', e => {
       shootTouchId = null;
     }
   }
-});
+}, { passive: false });
 
-// Prevent default browser touch behaviors (scrolling, zooming)
-canvas.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+// Prevent default browser touch behaviors (scrolling, zooming, pinch)
+document.addEventListener('touchmove', e => { if (gameRunning) e.preventDefault(); }, { passive: false });
 document.addEventListener('gesturestart', e => e.preventDefault());
 document.addEventListener('gesturechange', e => e.preventDefault());
 
