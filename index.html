@@ -1628,60 +1628,60 @@ const BOSS_MECHANICS = {
 // 50 boss definitions across 3 tiers
 const BOSS_DEFINITIONS = [
   // TIER 1 (16 bosses) - waves 5-15 — all have 2 mechanics, projectiles replace dash
-  // vuln: 'resistant' = must push into sun, 'breakable' = takes full damage, breaks into phases
+  // vuln: 'breakable' = must push into sun, 'breakable' = takes full damage, breaks into phases
   { id: 'pierce', name: 'PIERCE', tier: 1, hpMult: 1.0, size: 32, colorH: 45, colorH2: 55, mechanics: ['burst_fire', 'charge'], vuln: 'breakable', visual: { shape: 'hex', aura: 'spiky', internal: 'core' }, desc: 'Swift Striker' },
-  { id: 'ironclad', name: 'IRONCLAD', tier: 1, hpMult: 1.2, size: 34, colorH: 30, colorH2: 40, mechanics: ['shield', 'burst_fire'], vuln: 'resistant', visual: { shape: 'circle', aura: 'glow', internal: 'lattice' }, desc: 'Armored Guardian' },
+  { id: 'ironclad', name: 'IRONCLAD', tier: 1, hpMult: 1.2, size: 34, colorH: 30, colorH2: 40, mechanics: ['shield', 'burst_fire'], vuln: 'breakable', visual: { shape: 'circle', aura: 'glow', internal: 'lattice' }, desc: 'Armored Guardian' },
   { id: 'venom', name: 'VENOM', tier: 1, hpMult: 0.9, size: 31, colorH: 120, colorH2: 130, mechanics: ['minion_spawn', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'pulse', internal: 'chambers' }, desc: 'Hive Leader' },
   { id: 'shatter', name: 'SHATTER', tier: 1, hpMult: 1.1, size: 33, colorH: 200, colorH2: 210, mechanics: ['tracking_volley', 'charge'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Crystalline Horror' },
-  { id: 'scourge', name: 'SCOURGE', tier: 1, hpMult: 1.0, size: 32, colorH: 0, colorH2: 10, mechanics: ['charge', 'burst_fire'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'Burning Plague' },
+  { id: 'scourge', name: 'SCOURGE', tier: 1, hpMult: 1.0, size: 32, colorH: 0, colorH2: 10, mechanics: ['charge', 'burst_fire'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'Burning Plague' },
   { id: 'phantom', name: 'PHANTOM', tier: 1, hpMult: 0.85, size: 30, colorH: 270, colorH2: 280, mechanics: ['tracking_volley', 'shield'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Spectral Wraith' },
   { id: 'titan_spawn', name: 'TITAN SPAWN', tier: 1, hpMult: 1.15, size: 35, colorH: 30, colorH2: 35, mechanics: ['minion_spawn', 'burst_fire'], vuln: 'breakable', visual: { shape: 'hex', aura: 'rings', internal: 'chambers' }, desc: 'Young Monstrosity' },
   { id: 'surge', name: 'SURGE', tier: 1, hpMult: 0.95, size: 31, colorH: 50, colorH2: 60, mechanics: ['charge', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'circle', aura: 'electric', internal: 'core' }, desc: 'Energy Conduit' },
   { id: 'razor', name: 'RAZOR', tier: 1, hpMult: 1.05, size: 32, colorH: 180, colorH2: 190, mechanics: ['burst_fire', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'star6', aura: 'spiky', internal: 'lattice' }, desc: 'Cutting Edge' },
-  { id: 'nexus', name: 'NEXUS NODE', tier: 1, hpMult: 1.0, size: 33, colorH: 200, colorH2: 205, mechanics: ['shield', 'shrapnel_bomb'], vuln: 'resistant', visual: { shape: 'hex', aura: 'glow', internal: 'eye' }, desc: 'Network Hub' },
-  { id: 'inferno', name: 'INFERNO', tier: 1, hpMult: 1.1, size: 32, colorH: 20, colorH2: 25, mechanics: ['charge', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'circle', aura: 'flame', internal: 'vortex' }, desc: 'Molten Beast' },
+  { id: 'nexus', name: 'NEXUS NODE', tier: 1, hpMult: 1.0, size: 33, colorH: 200, colorH2: 205, mechanics: ['shield', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'hex', aura: 'glow', internal: 'eye' }, desc: 'Network Hub' },
+  { id: 'inferno', name: 'INFERNO', tier: 1, hpMult: 1.1, size: 32, colorH: 20, colorH2: 25, mechanics: ['charge', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'circle', aura: 'flame', internal: 'vortex' }, desc: 'Molten Beast' },
   { id: 'void_wisp', name: 'VOID WISP', tier: 1, hpMult: 0.9, size: 30, colorH: 260, colorH2: 270, mechanics: ['minion_spawn', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'pulse', internal: 'core' }, desc: 'Dark Fragment' },
   { id: 'cascade', name: 'CASCADE', tier: 1, hpMult: 1.0, size: 31, colorH: 240, colorH2: 250, mechanics: ['shrapnel_bomb', 'charge'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'glow', internal: 'chambers' }, desc: 'Tidal Terror' },
-  { id: 'prism', name: 'PRISM', tier: 1, hpMult: 0.95, size: 32, colorH: 280, colorH2: 290, mechanics: ['shield', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Refractive Menace' },
+  { id: 'prism', name: 'PRISM', tier: 1, hpMult: 0.95, size: 32, colorH: 280, colorH2: 290, mechanics: ['shield', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Refractive Menace' },
   { id: 'dirge', name: 'DIRGE', tier: 1, hpMult: 1.05, size: 33, colorH: 290, colorH2: 300, mechanics: ['charge', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'eye' }, desc: 'Sound of Doom' },
   { id: 'glint', name: 'GLINT', tier: 1, hpMult: 1.0, size: 31, colorH: 60, colorH2: 70, mechanics: ['minion_spawn', 'burst_fire'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'vortex' }, desc: 'Swarm Sentinel' },
 
   // TIER 2 (18 bosses) - waves 20-35 — all have 2+ mechanics, projectiles mixed in
   { id: 'obliterator', name: 'OBLITERATOR', tier: 2, hpMult: 1.3, size: 40, colorH: 20, colorH2: 30, mechanics: ['charge', 'burst_fire'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'core' }, desc: 'Siege Hammer' },
-  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['area_deny', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
+  { id: 'leviathan', name: 'LEVIATHAN', tier: 2, hpMult: 1.5, size: 42, colorH: 240, colorH2: 250, mechanics: ['area_deny', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Abyss Terror' },
   { id: 'vortex_lord', name: 'VORTEX LORD', tier: 2, hpMult: 1.4, size: 41, colorH: 270, colorH2: 280, mechanics: ['tracking_volley', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'hex', aura: 'electric', internal: 'vortex' }, desc: 'Reality Ripper' },
   { id: 'doomcaller', name: 'DOOMCALLER', tier: 2, hpMult: 1.2, size: 39, colorH: 0, colorH2: 10, mechanics: ['minion_spawn', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'star6', aura: 'rings', internal: 'lattice' }, desc: 'Herald of Ruin' },
-  { id: 'sovereign', name: 'SOVEREIGN', tier: 2, hpMult: 1.6, size: 43, colorH: 200, colorH2: 210, mechanics: ['shield', 'charge'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'glow', internal: 'eye' }, desc: 'Absolute Ruler' },
+  { id: 'sovereign', name: 'SOVEREIGN', tier: 2, hpMult: 1.6, size: 43, colorH: 200, colorH2: 210, mechanics: ['shield', 'charge'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'glow', internal: 'eye' }, desc: 'Absolute Ruler' },
   { id: 'ravager', name: 'RAVAGER', tier: 2, hpMult: 1.4, size: 40, colorH: 30, colorH2: 40, mechanics: ['burst_fire', 'minion_spawn'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'spiky', internal: 'vortex' }, desc: 'World Eater' },
   { id: 'null_entity', name: 'NULL ENTITY', tier: 2, hpMult: 1.3, size: 40, colorH: 240, colorH2: 260, mechanics: ['shield', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Consuming Void' },
-  { id: 'tyrant', name: 'TYRANT', tier: 2, hpMult: 1.5, size: 42, colorH: 10, colorH2: 20, mechanics: ['charge', 'area_deny'], vuln: 'resistant', visual: { shape: 'hex', aura: 'flame', internal: 'core' }, desc: 'Iron Despot' },
+  { id: 'tyrant', name: 'TYRANT', tier: 2, hpMult: 1.5, size: 42, colorH: 10, colorH2: 20, mechanics: ['charge', 'area_deny'], vuln: 'breakable', visual: { shape: 'hex', aura: 'flame', internal: 'core' }, desc: 'Iron Despot' },
   { id: 'incinerator', name: 'INCINERATOR', tier: 2, hpMult: 1.35, size: 41, colorH: 20, colorH2: 25, mechanics: ['shrapnel_bomb', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'lattice' }, desc: 'Infernal Engine' },
   { id: 'apex', name: 'APEX PREDATOR', tier: 2, hpMult: 1.45, size: 41, colorH: 50, colorH2: 60, mechanics: ['burst_fire', 'shield'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Evolutionary Peak' },
   { id: 'scream', name: 'SCREAM', tier: 2, hpMult: 1.2, size: 39, colorH: 280, colorH2: 290, mechanics: ['beam_cannon', 'minion_spawn'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Psychic Horror' },
   { id: 'nightmare', name: 'NIGHTMARE', tier: 2, hpMult: 1.3, size: 40, colorH: 260, colorH2: 270, mechanics: ['charge', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'pulse', internal: 'chambers' }, desc: 'Terror Manifest' },
   { id: 'cataclysm', name: 'CATACLYSM', tier: 2, hpMult: 1.55, size: 42, colorH: 0, colorH2: 15, mechanics: ['area_deny', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'World Ender' },
   { id: 'eclipse', name: 'ECLIPSE', tier: 2, hpMult: 1.4, size: 40, colorH: 270, colorH2: 280, mechanics: ['tracking_volley', 'area_deny'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Darkness Bringer' },
-  { id: 'colossus', name: 'COLOSSUS', tier: 2, hpMult: 1.65, size: 43, colorH: 30, colorH2: 35, mechanics: ['shield', 'burst_fire'], vuln: 'resistant', visual: { shape: 'circle', aura: 'glow', internal: 'eye' }, desc: 'Titanic Abomination' },
+  { id: 'colossus', name: 'COLOSSUS', tier: 2, hpMult: 1.65, size: 43, colorH: 30, colorH2: 35, mechanics: ['shield', 'burst_fire'], vuln: 'breakable', visual: { shape: 'circle', aura: 'glow', internal: 'eye' }, desc: 'Titanic Abomination' },
   { id: 'venom_lord', name: 'VENOM LORD', tier: 2, hpMult: 1.35, size: 40, colorH: 120, colorH2: 135, mechanics: ['minion_spawn', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'spiky', internal: 'chambers' }, desc: 'Toxin Master' },
-  { id: 'spectral_king', name: 'SPECTRAL KING', tier: 2, hpMult: 1.25, size: 39, colorH: 240, colorH2: 255, mechanics: ['beam_cannon', 'area_deny'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Phantom Monarch' },
+  { id: 'spectral_king', name: 'SPECTRAL KING', tier: 2, hpMult: 1.25, size: 39, colorH: 240, colorH2: 255, mechanics: ['beam_cannon', 'area_deny'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Phantom Monarch' },
   { id: 'storm', name: 'STORM', tier: 2, hpMult: 1.4, size: 41, colorH: 200, colorH2: 215, mechanics: ['charge', 'burst_fire'], vuln: 'breakable', visual: { shape: 'hex', aura: 'electric', internal: 'lattice' }, desc: 'Tempest Force' },
 
   // TIER 3 (16 bosses) - waves 40+ — 3 mechanics each, all have at least 1 projectile
   { id: 'apocalypse', name: 'APOCALYPSE', tier: 3, hpMult: 2.0, size: 50, colorH: 0, colorH2: 20, mechanics: ['charge', 'burst_fire', 'area_deny'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'vortex' }, desc: 'End Times Incarnate' },
-  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['area_deny', 'beam_cannon', 'shield'], vuln: 'resistant', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
+  { id: 'eternal_void', name: 'ETERNAL VOID', tier: 3, hpMult: 2.2, size: 52, colorH: 260, colorH2: 280, mechanics: ['area_deny', 'beam_cannon', 'shield'], vuln: 'breakable', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Infinity Eater' },
   { id: 'entropy', name: 'ENTROPY', tier: 3, hpMult: 2.1, size: 51, colorH: 240, colorH2: 260, mechanics: ['split', 'shrapnel_bomb', 'area_deny'], vuln: 'breakable', visual: { shape: 'hex', aura: 'electric', internal: 'core' }, desc: 'Decay Absolute' },
-  { id: 'nemesis', name: 'NEMESIS', tier: 3, hpMult: 2.3, size: 53, colorH: 30, colorH2: 40, mechanics: ['charge', 'tracking_volley', 'shield'], vuln: 'resistant', visual: { shape: 'star6', aura: 'glow', internal: 'lattice' }, desc: 'Ultimate Adversary' },
+  { id: 'nemesis', name: 'NEMESIS', tier: 3, hpMult: 2.3, size: 53, colorH: 30, colorH2: 40, mechanics: ['charge', 'tracking_volley', 'shield'], vuln: 'breakable', visual: { shape: 'star6', aura: 'glow', internal: 'lattice' }, desc: 'Ultimate Adversary' },
   { id: 'abomination', name: 'ABOMINATION', tier: 3, hpMult: 2.0, size: 50, colorH: 120, colorH2: 140, mechanics: ['minion_spawn', 'burst_fire', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'spiky', internal: 'eye' }, desc: 'Twisted Flesh' },
-  { id: 'omega', name: 'OMEGA', tier: 3, hpMult: 2.4, size: 54, colorH: 200, colorH2: 220, mechanics: ['shield', 'charge', 'beam_cannon'], vuln: 'resistant', visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Final Threat' },
+  { id: 'omega', name: 'OMEGA', tier: 3, hpMult: 2.4, size: 54, colorH: 200, colorH2: 220, mechanics: ['shield', 'charge', 'beam_cannon'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'vortex' }, desc: 'Final Threat' },
   { id: 'devourer_prime', name: 'DEVOURER PRIME', tier: 3, hpMult: 2.15, size: 51, colorH: 20, colorH2: 30, mechanics: ['tracking_volley', 'minion_spawn', 'area_deny'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'flame', internal: 'chambers' }, desc: 'Insatiable Hunger' },
-  { id: 'nightmare_lord', name: 'NIGHTMARE LORD', tier: 3, hpMult: 2.2, size: 52, colorH: 270, colorH2: 290, mechanics: ['beam_cannon', 'area_deny', 'shield'], vuln: 'resistant', visual: { shape: 'hex', aura: 'pulse', internal: 'lattice' }, desc: 'Endless Terror' },
+  { id: 'nightmare_lord', name: 'NIGHTMARE LORD', tier: 3, hpMult: 2.2, size: 52, colorH: 270, colorH2: 290, mechanics: ['beam_cannon', 'area_deny', 'shield'], vuln: 'breakable', visual: { shape: 'hex', aura: 'pulse', internal: 'lattice' }, desc: 'Endless Terror' },
   { id: 'world_breaker', name: 'WORLD BREAKER', tier: 3, hpMult: 2.25, size: 52, colorH: 10, colorH2: 25, mechanics: ['charge', 'shrapnel_bomb', 'shield'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Planetary Destroyer' },
   { id: 'infinity_core', name: 'INFINITY CORE', tier: 3, hpMult: 2.3, size: 53, colorH: 240, colorH2: 265, mechanics: ['split', 'beam_cannon', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Boundless Power' },
   { id: 'dark_sovereign', name: 'DARK SOVEREIGN', tier: 3, hpMult: 2.35, size: 53, colorH: 290, colorH2: 310, mechanics: ['burst_fire', 'minion_spawn', 'area_deny'], vuln: 'breakable', visual: { shape: 'circle', aura: 'rings', internal: 'chambers' }, desc: 'Supreme Evil' },
-  { id: 'cosmic_terror', name: 'COSMIC TERROR', tier: 3, hpMult: 2.1, size: 51, colorH: 200, colorH2: 215, mechanics: ['tracking_volley', 'beam_cannon', 'shield'], vuln: 'resistant', visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Universe Threat' },
+  { id: 'cosmic_terror', name: 'COSMIC TERROR', tier: 3, hpMult: 2.1, size: 51, colorH: 200, colorH2: 215, mechanics: ['tracking_volley', 'beam_cannon', 'shield'], vuln: 'breakable', visual: { shape: 'octagon', aura: 'pulse', internal: 'vortex' }, desc: 'Universe Threat' },
   { id: 'infernal_tyrant', name: 'INFERNAL TYRANT', tier: 3, hpMult: 2.2, size: 52, colorH: 20, colorH2: 35, mechanics: ['charge', 'shrapnel_bomb', 'burst_fire'], vuln: 'breakable', visual: { shape: 'hex', aura: 'flame', internal: 'lattice' }, desc: 'Burning Despot' },
   { id: 'genesis_killer', name: 'GENESIS KILLER', tier: 3, hpMult: 2.25, size: 52, colorH: 100, colorH2: 120, mechanics: ['minion_spawn', 'beam_cannon', 'tracking_volley'], vuln: 'breakable', visual: { shape: 'star6', aura: 'electric', internal: 'core' }, desc: 'Life Extinguisher' },
-  { id: 'void_lord', name: 'VOID LORD', tier: 3, hpMult: 2.4, size: 54, colorH: 260, colorH2: 280, mechanics: ['split', 'area_deny', 'burst_fire'], vuln: 'resistant', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Abyssal Master' },
+  { id: 'void_lord', name: 'VOID LORD', tier: 3, hpMult: 2.4, size: 54, colorH: 260, colorH2: 280, mechanics: ['split', 'area_deny', 'burst_fire'], vuln: 'breakable', visual: { shape: 'diamond', aura: 'glow', internal: 'eye' }, desc: 'Abyssal Master' },
   { id: 'harbinger', name: 'HARBINGER', tier: 3, hpMult: 2.3, size: 53, colorH: 270, colorH2: 290, mechanics: ['charge', 'beam_cannon', 'shrapnel_bomb'], vuln: 'breakable', visual: { shape: 'circle', aura: 'pulse', internal: 'chambers' }, desc: 'Doom\'s Herald' },
 ];
 
@@ -1691,7 +1691,7 @@ const ACHIEVEMENTS = {
   orbit_5:        { name: 'Grand Tour',     desc: 'Orbit 5 different celestial bodies',    icon: '◉' },
   orbit_all:      { name: 'System Mapper',  desc: 'Orbit every body in the system',       icon: '⊛' },
   ship_swap:      { name: 'Refit Complete',  desc: 'Swap ships during gameplay',           icon: '⚙' },
-  sun_kill:       { name: 'Solar Furnace',   desc: 'Push a boss into the sun',             icon: '☀' },
+  sun_kill:       { name: 'Solar Furnace',   desc: 'Destroy a boss in the sun',            icon: '☀' },
   wave_10:        { name: 'Holding the Line', desc: 'Survive to wave 10',                  icon: '▣' },
   wave_25:        { name: 'Siege Breaker',   desc: 'Survive to wave 25',                   icon: '★' },
   no_death_boss:  { name: 'Untouchable',     desc: 'Defeat a boss without dying',          icon: '♛' },
@@ -2605,7 +2605,7 @@ function spawnNextRushBoss() {
   boss.bossMechanics = bossDef.mechanics;
   boss.bossName = bossDef.name;
   boss.colorH = bossDef.colorH;
-  boss.critical = false;
+  boss.breakPhase = 0;
   boss.assignedPlanet = planet;
 
   // Initialize mechanic cooldowns
@@ -3571,19 +3571,12 @@ class Ship {
     this.laserTarget = nearest;
     if (nearest) {
       startLaserSound(); // Only play sound when actually hitting a target
-      const laserResist = (nearest.isBoss && nearest.vuln === 'resistant' && !nearest.nearSun) ? 0.15 : 1;
-      nearest.hp -= LASER_DPS * (this.laserMult || 1) * dt * laserResist;
+      nearest.hp -= LASER_DPS * (this.laserMult || 1) * dt;
       playEnemyHitSound(nearest.typeName);
       particles.emit(nearest.x, nearest.y, 3, '#f4f', 100, 0.15, 2);
       particles.emit(nearest.x, nearest.y, 1, '#fff', 60, 0.1, 1);
       const a = angle(this, nearest);
       nearest.vx += Math.cos(a)*30*dt; nearest.vy += Math.sin(a)*30*dt;
-
-      // Boss critical state floor
-      if (nearest.isBoss && nearest.hp < 1) {
-        nearest.hp = 1;
-        nearest.critical = true;
-      }
     } else {
       stopLaserSound(); // No target — silence
     }
@@ -3624,19 +3617,12 @@ class Ship {
       const inv = invaders[i];
       const d = dist(this, inv);
       if (d < effectiveRadius) {
-        // Boss critical takes 3x knockback
-        const knockbackMult = (inv.isBoss && inv.critical) ? 3 : 1;
+        const knockbackMult = 1;
         inv.hp -= 80 * solarDmgMult * (1 - d/effectiveRadius);
         playEnemyHitSound(inv.typeName);
         const nx = (inv.x - this.x)/Math.max(d,1), ny = (inv.y - this.y)/Math.max(d,1);
         const knockForce = 150 * solarMult;
         inv.vx += nx*knockForce*knockbackMult; inv.vy += ny*knockForce*knockbackMult;
-
-        // Boss critical state floor
-        if (inv.isBoss && inv.hp < 1) {
-          inv.hp = 1;
-          inv.critical = true;
-        }
 
         if (inv.hp <= 0) {
           emitDeathFlash(inv, particles);
@@ -4347,10 +4333,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
 
   // Boss-specific behavior
   if (inv.isBoss) {
-    // Sun-avoidance: boss gently steers away from sun unless critical
-    // Designed to be overcomeable — bombs and sustained fire can push boss in
-    // Once close enough, star gravity takes over
-    if (game.star && !inv.critical) {
+    // Sun-avoidance: boss gently steers away from sun
+    if (game.star) {
       const dToStar = dist(inv, game.star);
       const dangerZone = game.star.radius + 180; // smaller danger zone
       if (dToStar < dangerZone) {
@@ -4386,7 +4370,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     }
 
     // Boss has special weapons — fires spread shots and homing bursts (disabled when critical)
-    if (ship.alive && inv.shootTimer <= 0 && !inv.critical) {
+    if (ship.alive && inv.shootTimer <= 0) {
       const d = dist(inv, ship);
       if (d < 600) {
         const a = angle(inv, ship);
@@ -4408,6 +4392,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     // Boss is immune to normal damage when far from sun — must be pushed in
     // (Boss takes reduced damage unless near sun)
     // This is handled in damage application — we just track sun proximity here
+    // nearSun tracked for visual effects only
     inv.nearSun = game.star ? dist(inv, game.star) < game.star.radius + 100 : false;
 
     // Boss damage effects — smoke, sparks, flames
@@ -4429,34 +4414,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
         game.particles.emit(inv.x + rng(-inv.size*0.5, inv.size*0.5), inv.y + rng(-inv.size*0.5, inv.size*0.5), 2, '#f64', 60, 0.4, 2);
       }
     }
-    if (inv.critical) {
-      // Intense fire + sparks
-      game.particles.emit(inv.x + rng(-inv.size, inv.size), inv.y + rng(-inv.size, inv.size), 3, '#f84', 100, 0.5, 3);
-      game.particles.emit(inv.x + rng(-inv.size, inv.size), inv.y + rng(-inv.size, inv.size), 1, '#ff0', 120, 0.2, 1);
-      // Critical boss: slow down dramatically (drag)
-      inv.vx *= (1 - 2.5 * dt); // heavy velocity damping
-      inv.vy *= (1 - 2.5 * dt);
-      // Drift away from map edges toward a mid-range orbit (but NOT into the sun)
-      const distFromCenter = Math.hypot(inv.x, inv.y);
-      const safeRadius = game.star ? game.star.radius + 250 : 300; // stay outside this
-      const preferredRadius = game.star ? game.star.radius + 400 : 500; // drift toward this zone
-      if (distFromCenter > preferredRadius + 50) {
-        // Too far out — gently pull inward
-        const pullAngle = Math.atan2(-inv.y, -inv.x);
-        const pullForce = 40 * Math.min(1, (distFromCenter - preferredRadius) / 300);
-        inv.vx += Math.cos(pullAngle) * pullForce * dt;
-        inv.vy += Math.sin(pullAngle) * pullForce * dt;
-      } else if (distFromCenter < safeRadius) {
-        // Too close to sun — gently push outward (don't let it drift in on its own)
-        const pushAngle = Math.atan2(inv.y, inv.x);
-        const pushForce = 60;
-        inv.vx += Math.cos(pushAngle) * pushForce * dt;
-        inv.vy += Math.sin(pushAngle) * pushForce * dt;
-      }
-    }
-
-    // Apply boss mechanics (disabled when critical — boss is crippled)
-    if (inv.bossMechanics && inv.bossMechanics.length > 0 && !inv.critical) {
+    // Apply boss mechanics
+    if (inv.bossMechanics && inv.bossMechanics.length > 0) {
       for (const mechId of inv.bossMechanics) {
         const mechConfig = BOSS_MECHANICS[mechId];
         if (mechConfig && mechConfig.apply) {
@@ -4665,8 +4624,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   const aggroFade = dToShip < inv.aggroRange ? clamp(1 - (inv.aggroRange - dToShip) / inv.aggroRange, 0.05, 1) : 1;
   enforceCircularOrbit(inv, game.bodies, 0.08 * aggroFade, rng(42, 52));
 
-  // Speed limit — critical bosses are crippled and slow
-  const spdLimit = (inv.isBoss && inv.critical) ? 50 : inv.isBoss ? 180 : 120;
+  // Speed limit
+  const spdLimit = inv.isBoss ? 180 : 120;
   const spd = Math.hypot(inv.vx, inv.vy);
   if (spd > spdLimit) { inv.vx = (inv.vx/spd)*spdLimit; inv.vy = (inv.vy/spd)*spdLimit; }
 
@@ -4677,23 +4636,20 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     if (body instanceof Star) {
       const pd = dist(inv, body);
       if (pd < body.radius + 5) {
-        // Boss critical: special death in sun with bonus and particles
-        if (inv.isBoss && inv.critical) {
+        // Anything that falls into the sun dies
+        emitDeathFlash(inv, game.particles);
+        if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
+        if (inv.isBoss) {
           game.particles.emit(inv.x, inv.y, 40, inv.color, 350, 1.0, 5);
           game.particles.emit(inv.x, inv.y, 80, '#fff', 300, 0.8, 4);
-          game.particles.emit(inv.x, inv.y, 30, '#fa0', 280, 0.9, 4);
           playSound('explode_big');
           game.shake.add(20);
           game.score += 500;
           game.bossMessage = `${inv.bossName || 'OVERLORD'} CONSUMED BY THE SUN!`;
           game.bossMessageTimer = 3;
           game.boss = null;
-          // Unlock sun_kill achievement
           unlockAchievement('sun_kill');
-        }
-        if (!inv.isBoss || !inv.critical) {
-          emitDeathFlash(inv, game.particles);
-          if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
+        } else {
           playSound('explode');
         }
         inv.hp = -1000;
@@ -4735,11 +4691,6 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       const a = angle(ship, inv);
       inv.vx += Math.cos(a)*40; inv.vy += Math.sin(a)*40;
 
-      // Boss critical state floor
-      if (inv.isBoss && inv.hp < 1) {
-        inv.hp = 1;
-        inv.critical = true;
-      }
     }
   }
 
@@ -5100,25 +5051,6 @@ function drawARH(ctx, inv, cam) {
       ctx.fillStyle = `rgba(255,160,0,${0.3})`;
       ctx.beginPath(); ctx.arc(0, 0, s*1.2, 0, Math.PI*2); ctx.fill();
     }
-    // Critical boss: electrical arcs (in local coords)
-    if (inv.critical) {
-      ctx.strokeStyle = `rgba(100,200,255,${0.3 + Math.random()*0.4})`;
-      ctx.lineWidth = 1;
-      for (let arc = 0; arc < 3; arc++) {
-        const startA = Math.random() * Math.PI * 2;
-        const startR = s * 0.4;
-        let ax = Math.cos(startA) * startR;
-        let ay = Math.sin(startA) * startR;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        for (let seg = 0; seg < 4; seg++) {
-          ax += rng(-s*0.4, s*0.4);
-          ay += rng(-s*0.4, s*0.4);
-          ctx.lineTo(ax, ay);
-        }
-        ctx.stroke();
-      }
-    }
   }
 
   ctx.restore();
@@ -5194,11 +5126,8 @@ function drawARH(ctx, inv, cam) {
   // HP bar
   if (inv.hp < inv.maxHp) {
     const bw2 = s*2.5, hpf = (inv.maxHp > 0) ? Math.max(0, Math.min(1, inv.hp/inv.maxHp)) : 0;
-    // Boss HP bar changes color at critical
     let barColor = '#4f4';
-    if (inv.isBoss && inv.critical) {
-      barColor = '#f44';
-    } else if (hpf > 0.5) {
+    if (hpf > 0.5) {
       barColor = '#4f4';
     } else if (hpf > 0.25) {
       barColor = '#fa0';
@@ -5209,8 +5138,8 @@ function drawARH(ctx, inv, cam) {
     ctx.fillStyle = barColor;
     ctx.fillRect(sx-bw2/2, sy-s*inv.growScale-10, bw2*hpf, 3);
 
-    // Boss critical — pulsing HP bar glow instead of text (text is in the header bar)
-    if (inv.isBoss && inv.critical) {
+    // Boss break phase — pulsing HP bar glow
+    if (inv.isBoss && inv.breakPhase) {
       const pulse = 0.3 + 0.3 * Math.sin(Date.now() * 0.008);
       ctx.strokeStyle = `rgba(255,100,0,${pulse})`;
       ctx.lineWidth = 3;
@@ -5385,14 +5314,14 @@ function updateHints(dt) {
 
   // Hint 5: Boss not damaged
   if (game.boss && game.boss.alive && game.wave > game.bossSpawnWave + 0.25 && !hints.shownHints.has('boss_damage')) {
-    hints.activeHint = { text: 'Bosses take full damage near the sun', timer: 4 };
+    hints.activeHint = { text: 'Keep firing — at 25% HP bosses start breaking apart!', timer: 4 };
     hints.shownHints.add('boss_damage');
   }
 
-  // Hint 6: Boss critical not pushed
-  if (game.boss && game.boss.critical && game.time - game.bossLaunchTime > 10 && !hints.shownHints.has('boss_critical')) {
-    hints.activeHint = { text: 'Use bombs to push it into the sun!', timer: 4 };
-    hints.shownHints.add('boss_critical');
+  // Hint 6: Boss break phase
+  if (game.boss && game.boss.breakPhase && !hints.shownHints.has('boss_break')) {
+    hints.activeHint = { text: 'Boss is breaking apart — finish it off!', timer: 4 };
+    hints.shownHints.add('boss_break');
   }
 }
 
@@ -5785,8 +5714,8 @@ function spawnWave() {
     boss.bossMechanics = bossDef.mechanics;
     boss.bossName = bossDef.name;
     boss.colorH = bossDef.colorH;
-    boss.critical = false;
-    boss.vuln = bossDef.vuln || 'resistant'; // 'resistant' = sun only, 'breakable' = damage phases
+    boss.vuln = 'breakable';
+    boss.breakPhase = 0;
     boss.breakPhase = 0; // 0 = full, 1 = broken (25% HP left, smaller, faster)
     boss.assignedPlanet = planet;
 
@@ -6122,21 +6051,15 @@ function updateGame(dt) {
           continue;
         }
 
-        // Boss damage: resistant bosses need sun, breakable bosses take full damage
-        let dmgMult = 1;
-        if (inv.isBoss && inv.vuln === 'resistant' && !inv.nearSun && !inv.critical) {
-          dmgMult = 0.15; // resistant bosses take 15% damage away from sun
-        } else if (inv.isBoss && inv.vuln === 'breakable') {
-          dmgMult = 1; // breakable bosses take full damage always
-        }
-        inv.hp -= b.damage * dmgMult * (1 - (inv._clusterArmor || 0));
+        // Boss damage: all bosses take full damage
+        inv.hp -= b.damage * (1 - (inv._clusterArmor || 0));
         playEnemyHitSound(inv.typeName);
         const a = Math.atan2(b.vy, b.vx);
         inv.vx += Math.cos(a)*25; inv.vy += Math.sin(a)*25;
         game.particles.emit(b.x, b.y, 5, inv.color, 150, 0.2, 2);
 
-        // Breakable boss: at 25% HP, enter broken phase (shrink, speed up, lose a mechanic)
-        if (inv.isBoss && inv.vuln === 'breakable' && !inv.breakPhase && inv.hp < inv.maxHp * 0.25 && inv.hp > 0) {
+        // Boss break phase: at 25% HP, shrink, speed up, lose a mechanic
+        if (inv.isBoss && !inv.breakPhase && inv.hp < inv.maxHp * 0.25 && inv.hp > 0) {
           inv.breakPhase = 1;
           inv.size *= 0.7; // visibly smaller — lost a chunk
           inv.maxSpeed = (inv.maxSpeed || 180) * 1.3; // faster and more desperate
@@ -6153,12 +6076,6 @@ function updateGame(dt) {
           if (inv.bossMechanics && inv.bossMechanics.length > 1) {
             inv.bossMechanics = [inv.bossMechanics[0]];
           }
-        }
-
-        // Resistant boss critical state: floor at 1 HP until pushed into sun
-        if (inv.isBoss && inv.vuln === 'resistant' && inv.hp < 1) {
-          inv.hp = 1;
-          inv.critical = true;
         }
 
         if (inv.hp <= 0) {
@@ -6233,12 +6150,6 @@ function updateGame(dt) {
           playEnemyHitSound(inv.typeName);
           const nx = (inv.x - m.x)/Math.max(sd,1), ny = (inv.y - m.y)/Math.max(sd,1);
           inv.vx += nx*25; inv.vy += ny*25;
-
-          // Boss critical state floor
-          if (inv.isBoss && inv.hp < 1) {
-            inv.hp = 1;
-            inv.critical = true;
-          }
 
           if (inv.hp <= 0) {
             emitDeathFlash(inv, game.particles);
@@ -6708,6 +6619,23 @@ function drawGame() {
     const pBand = enforceBand(pEnt, game.bodies);
     pax += pBand.ax; pay += pBand.ay;
 
+    // Track periapsis (closest) and apoapsis (farthest) relative to dominant body
+    // Find the dominant body (nearest to ship at start)
+    let domBody = null, domDist = Infinity;
+    for (const body of game.bodies) {
+      const d = Math.hypot(game.ship.x - body.x, game.ship.y - body.y) - body.radius;
+      if (d < domDist) { domDist = d; domBody = body; }
+    }
+    let peAlt = Infinity, pePx = 0, pePy = 0; // periapsis
+    let apAlt = -Infinity, apPx = 0, apPy = 0; // apoapsis
+    // Track if radial velocity changes sign (actual apsides, not just min/max distance)
+    let prevRadVel = 0;
+    if (domBody) {
+      const drx = game.ship.x - domBody.x, dry = game.ship.y - domBody.y;
+      const dr0 = Math.hypot(drx, dry);
+      if (dr0 > 1) prevRadVel = (pvx * drx + pvy * dry) / dr0;
+    }
+
     for (let i = 0; i < PREDICTION_STEPS; i++) {
       // Velocity Verlet: position update with half-step acceleration
       px += pvx*pdt + 0.5*pax*pdt*pdt;
@@ -6737,6 +6665,23 @@ function drawGame() {
         }
       }
       pax = nax; pay = nay;
+
+      // Track apsides — detect radial velocity sign changes relative to dominant body
+      if (domBody && i > 5) { // skip first few steps to avoid jitter near ship
+        const drx = px - domBody.x, dry = py - domBody.y;
+        const dr = Math.hypot(drx, dry);
+        const alt = dr - domBody.radius;
+        const radVel = dr > 1 ? (pvx * drx + pvy * dry) / dr : 0;
+        // Sign change: outward→inward = apoapsis, inward→outward = periapsis
+        if (prevRadVel > 0.5 && radVel <= 0 && alt > apAlt) {
+          apAlt = alt; apPx = px; apPy = py; // apoapsis (was moving away, now moving toward)
+        }
+        if (prevRadVel < -0.5 && radVel >= 0 && alt < peAlt) {
+          peAlt = alt; pePx = px; pePy = py; // periapsis (was moving toward, now moving away)
+        }
+        prevRadVel = radVel;
+      }
+
       // No collision stops — prediction shows full orbital arc through gravity wells
       const sx2 = px - cam.x + canvas.width/2, sy2 = py - cam.y + canvas.height/2;
       i === 0 ? ctx.moveTo(sx2, sy2) : ctx.lineTo(sx2, sy2);
@@ -6749,6 +6694,38 @@ function drawGame() {
     ctx.strokeStyle = orbitColor; ctx.lineWidth = 2;
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Draw periapsis/apoapsis markers — small, subtle, educational
+    ctx.textAlign = 'center'; ctx.font = '9px Courier New';
+    if (peAlt < Infinity) {
+      const sx = pePx - cam.x + canvas.width/2, sy = pePy - cam.y + canvas.height/2;
+      // Small diamond marker
+      ctx.fillStyle = orbitColor;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 4); ctx.lineTo(sx - 3, sy);
+      ctx.closePath(); ctx.fill();
+      // Label
+      ctx.fillStyle = orbitColor;
+      ctx.globalAlpha = 0.5;
+      ctx.fillText(`PE ${Math.round(peAlt)}`, sx, sy - 8);
+      ctx.globalAlpha = 1;
+    }
+    if (apAlt > -Infinity) {
+      const sx = apPx - cam.x + canvas.width/2, sy = apPy - cam.y + canvas.height/2;
+      // Small diamond marker
+      ctx.fillStyle = orbitColor;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - 4); ctx.lineTo(sx + 3, sy); ctx.lineTo(sx, sy + 4); ctx.lineTo(sx - 3, sy);
+      ctx.closePath(); ctx.fill();
+      // Label
+      ctx.fillStyle = orbitColor;
+      ctx.globalAlpha = 0.5;
+      ctx.fillText(`AP ${Math.round(apAlt)}`, sx, sy - 8);
+      ctx.globalAlpha = 1;
+    }
+    ctx.textAlign = 'left';
   }
 
   // Star & planets
@@ -7202,56 +7179,18 @@ function drawGame() {
       }
     }
 
-    // Vulnerability indicator — below mechanic labels row
+    // Boss status indicator — below mechanic labels row
     const sunTextY = barY + barH + 32;
-    const isCritical = game.boss.critical;
-    const isResistant = game.boss.vuln === 'resistant';
-    const isBreakable = game.boss.vuln === 'breakable';
-
-    if (isResistant) {
-      // Resistant boss — sun push mechanic
-      if (game.boss.nearSun) {
-        const pulse = isCritical ? 0.7 + 0.3 * Math.sin(Date.now() * 0.01) : 1;
-        ctx.globalAlpha = pulse;
-        ctx.font = isCritical ? 'bold 22px Courier New' : '10px Courier New';
-        ctx.fillStyle = '#ff0';
-        ctx.shadowColor = '#f80';
-        ctx.shadowBlur = isCritical ? 20 : 0;
-        ctx.fillText('⚠ VULNERABLE — NEAR SUN ⚠', canvas.width/2, sunTextY + (isCritical ? 8 : 0));
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-      } else if (isCritical) {
-        const pulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.008);
-        ctx.globalAlpha = pulse;
-        ctx.font = 'bold 20px Courier New';
-        ctx.fillStyle = '#f84';
-        ctx.shadowColor = '#f40';
-        ctx.shadowBlur = 15;
-        ctx.fillText('⚠ PUSH INTO SUN TO DESTROY ⚠', canvas.width/2, sunTextY + 8);
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.fillStyle = '#888';
-        ctx.font = '10px Courier New';
-        ctx.fillText('RESISTANT — PUSH INTO SUN TO DESTROY', canvas.width/2, sunTextY);
-      }
-    } else if (isBreakable) {
-      // Breakable boss — damage phases
-      if (game.boss.breakPhase >= 1) {
-        const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.008);
-        ctx.globalAlpha = pulse;
-        ctx.font = 'bold 16px Courier New';
-        ctx.fillStyle = '#fa0';
-        ctx.shadowColor = '#f80';
-        ctx.shadowBlur = 10;
-        ctx.fillText('⚠ BREAKING APART — FINISH IT ⚠', canvas.width/2, sunTextY + 4);
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-      } else {
-        ctx.fillStyle = '#888';
-        ctx.font = '10px Courier New';
-        ctx.fillText('DESTRUCTIBLE — KEEP FIRING', canvas.width/2, sunTextY);
-      }
+    if (game.boss.breakPhase >= 1) {
+      const pulse = 0.7 + 0.3 * Math.sin(Date.now() * 0.008);
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 16px Courier New';
+      ctx.fillStyle = '#fa0';
+      ctx.shadowColor = '#f80';
+      ctx.shadowBlur = 10;
+      ctx.fillText('⚠ BREAKING APART — FINISH IT ⚠', canvas.width/2, sunTextY + 4);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
     }
     ctx.textAlign = 'left';
   }
@@ -8014,9 +7953,12 @@ pauseBtn.addEventListener('touchstart', e => {
   }
 });
 
-// --- Canvas touch: aim + shoot (touch anywhere not on a button) ---
-// Touch the game area to aim and fire bullets. Dragging moves the aim point.
+// --- Canvas touch: aim + shoot (relative drag from anywhere) ---
+// Put finger down anywhere to start shooting. Drag direction = aim direction.
+// Uses relative movement: dragging up-left from any start point aims up-left.
 const BUTTON_MARGIN = 110; // px from edges where buttons live
+let shootTouchStartX = 0, shootTouchStartY = 0;
+const AIM_SENSITIVITY = 3.0; // multiplier for drag distance -> aim offset
 
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
@@ -8028,10 +7970,13 @@ canvas.addEventListener('touchstart', e => {
     if (x > window.innerWidth - BUTTON_MARGIN && y > window.innerHeight * 0.35) continue;
     // Skip if touch is on pause button area (top-right)
     if (x > window.innerWidth - 80 && y < 60) continue;
-    // This is a shoot/aim touch
+    // This is a shoot/aim touch — record start position
     shootTouchId = touch.identifier;
-    mouseX = x;
-    mouseY = y;
+    shootTouchStartX = x;
+    shootTouchStartY = y;
+    // Aim straight ahead from center on initial tap (no drag yet)
+    mouseX = canvas.width / 2;
+    mouseY = canvas.height / 2;
     mouseDown = true;
   }
 });
@@ -8040,8 +7985,12 @@ canvas.addEventListener('touchmove', e => {
   e.preventDefault();
   for (const touch of e.changedTouches) {
     if (touch.identifier === shootTouchId) {
-      mouseX = touch.clientX;
-      mouseY = touch.clientY;
+      // Relative drag: compute delta from where finger first touched
+      const dx = touch.clientX - shootTouchStartX;
+      const dy = touch.clientY - shootTouchStartY;
+      // Project aim direction outward from screen center
+      mouseX = canvas.width / 2 + dx * AIM_SENSITIVITY;
+      mouseY = canvas.height / 2 + dy * AIM_SENSITIVITY;
     }
   }
 });
