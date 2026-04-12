@@ -274,8 +274,8 @@ canvas { display: block; cursor: crosshair; }
   <div id="changelog-panel" style="display:none;max-width:500px;margin:0 auto 10px;padding:10px 16px;background:rgba(0,20,40,0.9);border:1px solid #4af;border-radius:6px;text-align:left;font-family:'Courier New',monospace;font-size:10px;color:#8cf;max-height:200px;overflow-y:auto;"></div>
   <div class="subtitle">DEFEND THE SYSTEM FROM THE ARH SWARM</div>
   <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;justify-items:start;">
-    <div><span>W</span><span>S</span> or <span>↑</span><span>↓</span> &mdash; Speed up / Slow down</div>
-    <div><span>A</span><span>D</span> or <span>←</span><span>→</span> &mdash; Radial in / out</div>
+    <div><span>W</span> or <span>↑</span> &mdash; Accelerate</div>
+    <div><span>S</span> or <span>↓</span> &mdash; Decelerate</div>
     <div><span>CLICK</span> &mdash; Fire cannons</div>
     <div><span>SHIFT</span> &mdash; Boost thrust</div>
     <div><span>E</span> &mdash; Seeking torpedoes</div>
@@ -363,6 +363,7 @@ canvas { display: block; cursor: crosshair; }
   <div class="left">
     <div id="hud-score">SCORE: 0</div>
     <div id="hud-wave">WAVE: 1</div>
+    <div id="hud-star-type" style="color:#fa8;font-size:9px;letter-spacing:1px;opacity:0.7;"></div>
     <div id="hud-kills">KILLS: 0</div>
     <div id="hud-lives" style="color:#0ff;">LIVES: ♦♦♦♦♦</div>
     <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
@@ -398,8 +399,8 @@ canvas { display: block; cursor: crosshair; }
   <div id="pause-version" style="color:#4af;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;margin-bottom:8px;opacity:0.6;"></div>
   <div class="controls-grid">
     <div class="controls-section">FLIGHT</div>
-    <div class="key">W / S</div><div class="action">Prograde / Retrograde thrust</div>
-    <div class="key">A / D</div><div class="action">Radial in / out</div>
+    <div class="key">W</div><div class="action">Accelerate (prograde thrust)</div>
+    <div class="key">S</div><div class="action">Decelerate (lower orbit)</div>
     <div class="key">SHIFT</div><div class="action">Boost thrust</div>
     <div class="controls-section">WEAPONS</div>
     <div class="key">CLICK</div><div class="action">Fire torpedoes</div>
@@ -1702,23 +1703,38 @@ const ACHIEVEMENTS = {
 };
 
 let G = 390;
-const PLANET_RADIUS = 40;
-const STAR_RADIUS = 70;
-// Random star color variance — multi-toned warm star colors
-// Each variant has a base color PLUS a secondary hue that shows through in granulation/bright cells
-const STAR_COLOR_VARIANTS = [
-  { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0, name: 'red-orange' },
-  { rBase: 200, gBase: 100, bBase: 10, rBright: 255, gBright: 220, bBright: 80, rDark: 140, gDark: 40, bDark: 0, name: 'orange' },
-  { rBase: 220, gBase: 160, bBase: 30, rBright: 255, gBright: 255, bBright: 140, rDark: 160, gDark: 90, bDark: 5, name: 'yellow' },
-  { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5, name: 'amber' },
-  { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60, name: 'white-yellow' },
-  { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10, name: 'deep-red' },
-  { rBase: 215, gBase: 140, bBase: 50, rBright: 255, gBright: 230, bBright: 160, rDark: 155, gDark: 70, bDark: 10, name: 'peach' },
-  // Blue/blue-white stars — high brightness, strong contrast between bright core and dark convection
-  { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100, name: 'blue' },
-  { rBase: 170, gBase: 200, bBase: 250, rBright: 240, gBright: 250, bBright: 255, rDark: 50, gDark: 70, bDark: 130, name: 'blue-white' },
+const PLANET_RADIUS = 25; // base rocky planet size (Earth-like)
+
+// Star classification system — each type has distinct size, mass, color, and corona
+const STAR_TYPES = [
+  { type: 'Red Dwarf', class: 'M', radius: 70, mass: 5000, corona: 3.5,
+    color: { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10 },
+    orbitScale: 0.7 }, // compact system
+  { type: 'Orange Dwarf', class: 'K', radius: 95, mass: 7000, corona: 4,
+    color: { rBase: 200, gBase: 100, bBase: 10, rBright: 255, gBright: 220, bBright: 80, rDark: 140, gDark: 40, bDark: 0 },
+    orbitScale: 0.85 },
+  { type: 'Yellow Dwarf', class: 'G', radius: 110, mass: 8500, corona: 4.5,
+    color: { rBase: 220, gBase: 160, bBase: 30, rBright: 255, gBright: 255, bBright: 140, rDark: 160, gDark: 90, bDark: 5 },
+    orbitScale: 0.95 }, // Sun-like
+  { type: 'White Star', class: 'F', radius: 130, mass: 10000, corona: 5,
+    color: { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60 },
+    orbitScale: 1.05 },
+  { type: 'Blue-White Star', class: 'A', radius: 150, mass: 12000, corona: 5.5,
+    color: { rBase: 170, gBase: 200, bBase: 250, rBright: 240, gBright: 250, bBright: 255, rDark: 50, gDark: 70, bDark: 130 },
+    orbitScale: 1.15 },
+  { type: 'Blue Giant', class: 'B', radius: 190, mass: 15000, corona: 6.5,
+    color: { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100 },
+    orbitScale: 1.35 }, // wide system
+  { type: 'Red Giant', class: 'M-III', radius: 220, mass: 11000, corona: 8,
+    color: { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0 },
+    orbitScale: 1.5 }, // huge but diffuse — lower density
+  { type: 'Amber Star', class: 'K-III', radius: 160, mass: 11500, corona: 6,
+    color: { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5 },
+    orbitScale: 1.2 },
 ];
-const STAR_COLOR = STAR_COLOR_VARIANTS[Math.floor(Math.random() * STAR_COLOR_VARIANTS.length)];
+const STAR_TYPE = STAR_TYPES[Math.floor(Math.random() * STAR_TYPES.length)];
+const STAR_RADIUS = STAR_TYPE.radius;
+const STAR_COLOR = STAR_TYPE.color;
 const SHIP_SIZE = 10;
 let BULLET_SPEED = 200;
 let BULLET_LIFE = 10;
@@ -1752,7 +1768,7 @@ let SHIP_THRUST = 100;
 let SHIP_CLOCKWORK_IDLE = 0.19;
 let SHIP_CLOCKWORK_THRUST = 0.01;
 let ORBIT_PERIOD = 15;
-let SUN_CORONA_SIZE = 5;
+let SUN_CORONA_SIZE = STAR_TYPE.corona;
 let SUN_PLASMA_INTENSITY = 0.14;
 let HEAT_DAMAGE_INNER = 0;
 let HEAT_DAMAGE_OUTER = 0;
@@ -2847,7 +2863,8 @@ class Starfield {
 // --- Star (Sun) ---
 class Star {
   constructor(x, y) {
-    this.x = x; this.y = y; this.radius = STAR_RADIUS; this.mass = 6500;
+    this.x = x; this.y = y; this.radius = STAR_RADIUS; this.mass = STAR_TYPE.mass;
+    this.starType = STAR_TYPE.type; this.starClass = STAR_TYPE.class;
     this.coronaPhase = 0;
     this.texture = generateSunTexture(this.radius);
     this.texRadius = this.texture.width * 0.35; // matches R in generateSunTexture
@@ -3022,7 +3039,9 @@ class Planet {
   constructor(x, y, radius, color1, color2, name, gasGiantBands) {
     this.x = x; this.y = y; this.radius = radius;
     this.color1 = color1; this.color2 = color2; this.name = name;
-    this.mass = 3000;
+    // Mass scales linearly with radius (gas giants are big but less dense)
+    // Capped at 8000 so planets never rival the star (mass 9000)
+    this.mass = Math.min(8000, 3000 * (radius / PLANET_RADIUS));
     this.orbitRadius = 0; this.orbitAngle = 0; this.orbitSpeed = 0;
     this.seed = Math.random() * 100;
     this.gasGiantBands = gasGiantBands || null;
@@ -3310,12 +3329,11 @@ class Ship {
     const wmy = mouseY - canvas.height/2 + game.cam.y;
     this.angle = Math.atan2(wmy - this.y, wmx - this.x);
 
-    // Orbital thrust — W/S = prograde/retrograde (along velocity), A/D = radial
+    // Orbital thrust — W = prograde (accelerate), S = retrograde (lower orbit), Shift = boost
     this.thrustOn = false;
     const boost = keys['shift'] ? 2.0 : 1;
     const spd = Math.hypot(this.vx, this.vy);
     if (game && spd > (game.topSpeed || 0)) {
-      // Only show indicator for meaningful speed increases (every 50 units)
       const oldBracket = Math.floor((game.topSpeed || 0) / 50);
       const newBracket = Math.floor(spd / 50);
       if (newBracket > oldBracket && spd > 100) {
@@ -3342,28 +3360,20 @@ class Ship {
       }
     }
     if ((keys['s'] || keys['arrowdown'])) {
-      // Retrograde — decelerate along velocity (lowers orbit)
-      if (spd > 5) {
-        this.vx -= (this.vx/spd)*thrustAmt*0.5*dt;
-        this.vy -= (this.vy/spd)*thrustAmt*0.5*dt;
+      // Retrograde — slow down along velocity to lower orbit (never fully stop)
+      // Floor speed at ~20% of current orbital velocity so ship always keeps orbiting
+      const minSpeed = 15; // minimum orbital speed — prevents dead stop
+      if (spd > minSpeed) {
+        const brakeStr = Math.min(thrustAmt * 0.5, (spd - minSpeed) / dt); // can't brake below min
+        this.vx -= (this.vx/spd) * brakeStr * dt;
+        this.vy -= (this.vy/spd) * brakeStr * dt;
         this.thrustOn = true;
+        // Retrograde exhaust particles
+        if (Math.random() < 0.5) {
+          particles.emitDir(this.x + Math.cos(velAngle)*SHIP_SIZE, this.y + Math.sin(velAngle)*SHIP_SIZE,
+            2, '#88f', velAngle, 0.3, 80, 0.2, 1);
+        }
       }
-    }
-    if ((keys['a'] || keys['arrowleft'])) {
-      // Radial in (toward nearest body) — gentle
-      const nb = game.planets.reduce((b,p) => dist(this,p) < dist(this,b) ? p : b);
-      const ra = angle(this, nb);
-      this.vx += Math.cos(ra)*thrustAmt*0.25*dt;
-      this.vy += Math.sin(ra)*thrustAmt*0.25*dt;
-      this.thrustOn = true;
-    }
-    if ((keys['d'] || keys['arrowright'])) {
-      // Radial out (away from nearest body) — gentle
-      const nb = game.planets.reduce((b,p) => dist(this,p) < dist(this,b) ? p : b);
-      const ra = angle(nb, this);
-      this.vx += Math.cos(ra)*thrustAmt*0.25*dt;
-      this.vy += Math.sin(ra)*thrustAmt*0.25*dt;
-      this.thrustOn = true;
     }
 
     // Gravity from all bodies
@@ -5156,7 +5166,7 @@ function drawARH(ctx, inv, cam) {
 function drawMinimap(ctx) {
   const mx = canvas.width - MINIMAP_SIZE - MINIMAP_MARGIN;
   const my = canvas.height - MINIMAP_SIZE - MINIMAP_MARGIN;
-  const scale = 1800; // world units visible on minimap
+  const scale = Math.round(1800 * STAR_TYPE.orbitScale); // world units visible — scales with star system size
   const ms = MINIMAP_SIZE / 2;
 
   // Background
@@ -5416,11 +5426,18 @@ const EXPANSION_COLOR_POOL = [
   { c1: '#506878', c2: '#1a2830', gasGiant: true, bands: ['#607888','#405868','#7090a0','#385060','#506a78'] }, // banded slate giant
 ];
 const shuffledExpColors = EXPANSION_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
+// Expansion planet sizes: gas giants get 2.2-2.8x, rocky get 0.8-1.1x
+function expRadius(i) {
+  const rockyMults = [0.8, 1.1, 0.95, 0.9];
+  const gasMults = [2.3, 2.7, 2.5, 2.4];
+  return PLANET_RADIUS * (shuffledExpColors[i].gasGiant ? gasMults[i] : rockyMults[i]);
+}
+const expOS = STAR_TYPE.orbitScale; // orbit scale for expansion planets
 const SYSTEM_EXPANSION = [
-  { wave: 8, name: 'Luminara', radius: PLANET_RADIUS * 0.7, color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, bands: shuffledExpColors[0].bands, orbitR: 420, orbitSpeed: 0.028, moons: 1 },
-  { wave: 15, name: 'Umbra', radius: PLANET_RADIUS * 1.4, color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, bands: shuffledExpColors[1].bands, orbitR: 900, orbitSpeed: 0.009, rings: true, moons: 2 },
-  { wave: 25, name: 'Glacius', radius: PLANET_RADIUS * 1.1, color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, bands: shuffledExpColors[2].bands, orbitR: 1050, orbitSpeed: 0.007, rings: true },
-  { wave: 35, name: 'Pyraxis', radius: PLANET_RADIUS * 0.95, color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, bands: shuffledExpColors[3].bands, orbitR: 850, orbitSpeed: 0.011, moons: 2 },
+  { wave: 8, name: 'Luminara', radius: expRadius(0), color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, bands: shuffledExpColors[0].bands, orbitR: Math.round(450*expOS), orbitSpeed: 0.026/expOS, moons: 1 },
+  { wave: 15, name: 'Umbra', radius: expRadius(1), color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, bands: shuffledExpColors[1].bands, orbitR: Math.round(1100*expOS), orbitSpeed: 0.008/expOS, rings: true, moons: 2 },
+  { wave: 25, name: 'Glacius', radius: expRadius(2), color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, bands: shuffledExpColors[2].bands, orbitR: Math.round(1350*expOS), orbitSpeed: 0.006/expOS, rings: true },
+  { wave: 35, name: 'Pyraxis', radius: expRadius(3), color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, bands: shuffledExpColors[3].bands, orbitR: Math.round(1550*expOS), orbitSpeed: 0.005/expOS, moons: 2 },
 ];
 
 function expandSystem(wave) {
@@ -5448,7 +5465,7 @@ function expandSystem(wave) {
       // Add moons if specified
       if (expansion.moons && expansion.moons > 0) {
         for (let m = 0; m < expansion.moons; m++) {
-          const moonDist = 60 + Math.random() * 30;
+          const moonDist = p.radius + 30 + Math.random() * 30;
           const moonAngle = (Math.PI * 2 / expansion.moons) * m + Math.random() * 0.3;
           const moonMx = Math.cos(moonAngle) * moonDist;
           const moonMy = Math.sin(moonAngle) * moonDist;
@@ -5488,17 +5505,31 @@ function initGame() {
     { c1: '#607050', c2: '#202a18' }, // sage
   ];
   const shuffledColors = PLANET_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
-  const planet1 = new Planet(320, 0, PLANET_RADIUS, shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler', shuffledColors[0].bands);
-  planet1.orbitRadius = 320; planet1.orbitAngle = 0; planet1.orbitSpeed = 0.04;
-  const planet2 = new Planet(-240, 280, PLANET_RADIUS * 0.75, shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica', shuffledColors[1].bands);
-  planet2.orbitRadius = 480; planet2.orbitAngle = Math.PI*0.7; planet2.orbitSpeed = 0.025;
-  const planet3 = new Planet(0, -550, PLANET_RADIUS * 1.1, shuffledColors[2].c1, shuffledColors[2].c2, 'Verdania', shuffledColors[2].bands);
-  planet3.orbitRadius = 550; planet3.orbitAngle = Math.PI*1.5; planet3.orbitSpeed = 0.02;
-  const planet4 = new Planet(400, 400, PLANET_RADIUS * 0.65, shuffledColors[3].c1, shuffledColors[3].c2, 'Cryos', shuffledColors[3].bands);
-  planet4.orbitRadius = 650; planet4.orbitAngle = Math.PI*0.25; planet4.orbitSpeed = 0.015;
+  // Size depends on type: gas giants are 2.2-2.8x base, rocky planets are 0.8-1.2x base
+  // Each planet has a base rocky multiplier; if it rolls gas giant colors, it gets bigger
+  const planetSizes = [1.0, 0.85, 1.1, 0.75, 0.9]; // base rocky multipliers
+  const gasGiantMults = [2.4, 2.6, 2.2, 2.8, 2.5]; // gas giant multipliers
+  function pRadius(i) {
+    return PLANET_RADIUS * (shuffledColors[i].gasGiant ? gasGiantMults[i] : planetSizes[i]);
+  }
+  const oS = STAR_TYPE.orbitScale; // orbit scale factor for star type
+  const planet1 = new Planet(320*oS, 0, pRadius(0), shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler', shuffledColors[0].bands);
+  planet1.orbitRadius = Math.round(320*oS); planet1.orbitAngle = 0; planet1.orbitSpeed = 0.04/oS;
+  const planet2 = new Planet(-240*oS, 280*oS, pRadius(1), shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica', shuffledColors[1].bands);
+  planet2.orbitRadius = Math.round(500*oS); planet2.orbitAngle = Math.PI*0.7; planet2.orbitSpeed = 0.023/oS;
+  const planet3 = new Planet(0, -550*oS, pRadius(2), shuffledColors[2].c1, shuffledColors[2].c2, 'Verdania', shuffledColors[2].bands);
+  planet3.orbitRadius = Math.round(620*oS); planet3.orbitAngle = Math.PI*1.5; planet3.orbitSpeed = 0.018/oS;
+  const planet4 = new Planet(400*oS, 400*oS, pRadius(3), shuffledColors[3].c1, shuffledColors[3].c2, 'Cryos', shuffledColors[3].bands);
+  planet4.orbitRadius = Math.round(760*oS); planet4.orbitAngle = Math.PI*0.25; planet4.orbitSpeed = 0.014/oS;
   planet4.hasRings = true; planet4.ringTilt = 0.35;
-  const planet5 = new Planet(-600, -100, PLANET_RADIUS * 0.85, shuffledColors[4].c1, shuffledColors[4].c2, 'Magmos', shuffledColors[4].bands);
-  planet5.orbitRadius = 720; planet5.orbitAngle = Math.PI*1.1; planet5.orbitSpeed = 0.012;
+  const planet5 = new Planet(-600*oS, -100*oS, pRadius(4), shuffledColors[4].c1, shuffledColors[4].c2, 'Magmos', shuffledColors[4].bands);
+  planet5.orbitRadius = Math.round(880*oS); planet5.orbitAngle = Math.PI*1.1; planet5.orbitSpeed = 0.011/oS;
+  // Gas giants automatically get rings (50% chance each)
+  [planet1, planet2, planet3, planet5].forEach((p, i) => {
+    if (shuffledColors[[0,1,2,4][i]].gasGiant && !p.hasRings && Math.random() < 0.5) {
+      p.hasRings = true; p.ringTilt = 0.2 + Math.random() * 0.4;
+    }
+  });
   const planets = [planet1, planet2, planet3, planet4, planet5];
   const bodies = [star, planet1, planet2, planet3, planet4, planet5];
   const ship = new Ship(planet1);
@@ -7243,6 +7274,7 @@ function updateHUD() {
   const displayScore = Math.floor(game.score * scoreMult);
   document.getElementById('hud-score').textContent = `SCORE: ${displayScore}${scoreMult > 1 ? ` (x${scoreMult})` : ''}`;
   document.getElementById('hud-wave').textContent = bossRushMode ? `BOSS RUSH (${bossRushKills} / ${bossRushKills + bossRushQueue.length + (game.boss ? 1 : 0)})` : `WAVE: ${game.wave}`;
+  document.getElementById('hud-star-type').textContent = `★ ${STAR_TYPE.type} (${STAR_TYPE.class})`;
   document.getElementById('hud-kills').textContent = `KILLS: ${game.kills}${game.deaths ? '  DEATHS: '+game.deaths : ''}`;
 
   // Update lives display
