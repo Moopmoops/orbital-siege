@@ -274,15 +274,15 @@ canvas { display: block; cursor: crosshair; }
   <div id="changelog-panel" style="display:none;max-width:500px;margin:0 auto 10px;padding:10px 16px;background:rgba(0,20,40,0.9);border:1px solid #4af;border-radius:6px;text-align:left;font-family:'Courier New',monospace;font-size:10px;color:#8cf;max-height:200px;overflow-y:auto;"></div>
   <div class="subtitle">DEFEND THE SYSTEM FROM THE ARH SWARM</div>
   <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;justify-items:start;">
-    <div><span>W</span> or <span>↑</span> &mdash; Accelerate</div>
-    <div><span>S</span> or <span>↓</span> &mdash; Decelerate</div>
-    <div><span>CLICK</span> &mdash; Fire cannons</div>
+    <div><span>W</span> or <span>↑</span> &mdash; Accelerate (raise orbit)</div>
+    <div><span>S</span> or <span>↓</span> &mdash; Decelerate (lower orbit)</div>
     <div><span>SHIFT</span> &mdash; Boost thrust</div>
-    <div><span>E</span> &mdash; Seeking torpedoes</div>
-    <div><span>SPACE</span> &mdash; Orbital bomb</div>
-    <div><span>Q</span> &mdash; Laser beam</div>
+    <div><span>CLICK</span> &mdash; Fire cannons</div>
+    <div><span>R</span> &mdash; Toggle auto-fire</div>
+    <div><span>E</span> &mdash; Toggle torpedoes</div>
+    <div><span>Q</span> &mdash; Toggle laser beam</div>
+    <div><span>SPACE</span> &mdash; Solar bomb</div>
     <div><span>TAB</span> &mdash; Scan target</div>
-    <div><span>V</span> &mdash; Ship swap</div>
     <div><span>P</span> &mdash; Pause / Controls</div>
   </div>
   <div style="display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;">
@@ -402,11 +402,12 @@ canvas { display: block; cursor: crosshair; }
     <div class="key">W</div><div class="action">Accelerate (prograde thrust)</div>
     <div class="key">S</div><div class="action">Decelerate (lower orbit)</div>
     <div class="key">SHIFT</div><div class="action">Boost thrust</div>
-    <div class="controls-section">WEAPONS</div>
-    <div class="key">CLICK</div><div class="action">Fire torpedoes</div>
-    <div class="key">E</div><div class="action">Lock-on missile</div>
-    <div class="key">Q</div><div class="action">Laser beam (hold)</div>
-    <div class="key">SPACE</div><div class="action">Orbital bomb</div>
+    <div class="controls-section">WEAPONS (all toggles)</div>
+    <div class="key">CLICK</div><div class="action">Fire cannons (manual)</div>
+    <div class="key">R</div><div class="action">Toggle auto-fire cannons</div>
+    <div class="key">E</div><div class="action">Toggle homing torpedoes</div>
+    <div class="key">Q</div><div class="action">Toggle laser beam</div>
+    <div class="key">SPACE</div><div class="action">Solar bomb</div>
     <div class="key">TAB</div><div class="action">Scan target</div>
     <div class="controls-section">SYSTEMS</div>
     <div class="key">V</div><div class="action">Swap ship (between waves)</div>
@@ -1203,11 +1204,12 @@ let firebaseReady = false;
 
 // --- Input ---
 const keys = {}; let mouseX = 0, mouseY = 0, mouseDown = false;
-// Torpedo (E) and Laser (Q) are toggles — press to activate, press again to deactivate
-let torpedoToggle = false, laserToggle = false;
+// Weapons are toggles — press to activate, press again to deactivate
+let bulletToggle = false, torpedoToggle = false, laserToggle = false;
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k === 'e' && !e.repeat) { torpedoToggle = !torpedoToggle; keys['e'] = torpedoToggle; }
+  if (k === 'r' && !e.repeat) { bulletToggle = !bulletToggle; }
+  else if (k === 'e' && !e.repeat) { torpedoToggle = !torpedoToggle; keys['e'] = torpedoToggle; }
   else if (k === 'q' && !e.repeat) { laserToggle = !laserToggle; keys['q'] = laserToggle; }
   else { keys[k] = true; }
   if(['tab',' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k) || e.key === 'Tab') e.preventDefault();
@@ -1774,7 +1776,7 @@ let BULLET_LIFE = 10;
 let FIRE_RATE = 0.02;
 let MISSILE_SPEED = 190;
 let MISSILE_TURN = 4.0;
-let MISSILE_LIFE = 4.0;
+let MISSILE_LIFE = 8.0;
 const MISSILE_COOLDOWN = 0.3;
 let TORPEDO_SPLASH = 80;
 let LASER_RANGE = 250;
@@ -1798,8 +1800,8 @@ let BAND_FORCE = 300;  // how hard the band pushes you back in
 let CAMERA_ZOOM = Math.max(0.3, 0.7 / STAR_TYPE.orbitScale);
 let SHAKE_MULT = 0.1;
 let SHIP_THRUST = 100;
-let SHIP_CLOCKWORK_IDLE = 0.19;
-let SHIP_CLOCKWORK_THRUST = 0.01;
+let SHIP_CLOCKWORK_IDLE = 0.04;  // very gentle — allows elliptical orbits
+let SHIP_CLOCKWORK_THRUST = 0.0;  // zero when thrusting — full player control
 let ORBIT_PERIOD = 15;
 let SUN_CORONA_SIZE = STAR_TYPE.corona;
 let SUN_PLASMA_INTENSITY = 0.14;
@@ -1811,7 +1813,7 @@ let HEAT_RANGE_OUTER = 130;
 // Band tuning variables
 let BAND_PUSH_MULT = 1.5;
 let BAND_TANGENT_CONVERT = 0.3;
-let RADIAL_DAMPING = 0.4;
+let RADIAL_DAMPING = 0.1;  // low — lets elliptical orbits persist naturally
 let PREDICTION_STEPS = 400;
 let PREDICTION_DT = 0.03;
 
@@ -2708,9 +2710,8 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Orbital band enforcer — keeps entity in the donut between ORBIT_MIN and ORBIT_MAX
-// from the nearest celestial body. Returns force to push back into the band.
-// Also handles orbit capture: when entering a band from outside, injects orbital velocity.
+// Surface avoidance — soft push away from body surfaces to prevent crashing.
+// NO outer limit — prograde thrust freely raises orbit for realistic Keplerian transfers.
 function enforceBand(entity, bodies) {
   let nearestD = Infinity, nearestB = null;
   for (const b of bodies) {
@@ -2728,14 +2729,14 @@ function enforceBand(entity, bodies) {
   const tx = -ry * dir, ty = rx * dir; // tangential unit vector
 
   if (nearestD < ORBIT_MIN) {
-    // Too close — instead of hard bounce, circularize:
-    // Convert inward radial velocity to tangential + gentle radial push
+    // Too close to surface — gentle push outward + convert inward velocity to tangential
+    // This prevents crashing while feeling natural (like atmospheric drag + lift)
     const excess = (ORBIT_MIN - nearestD) / ORBIT_MIN;
-    const vRad = entity.vx * rx + entity.vy * ry; // radial velocity (positive = outward)
+    const vRad = entity.vx * rx + entity.vy * ry;
 
-    // Gentle radial push outward
-    const pushF = excess * BAND_FORCE * BAND_PUSH_MULT;
-    // If moving inward (vRad < 0), convert that energy to tangential
+    // Soft push outward — gets stronger closer to surface
+    const pushF = excess * excess * BAND_FORCE * BAND_PUSH_MULT;
+    // Convert inward radial velocity to tangential (energy conservation feel)
     let tangConvert = 0;
     if (vRad < 0) {
       tangConvert = -vRad * excess * BAND_TANGENT_CONVERT;
@@ -2744,19 +2745,8 @@ function enforceBand(entity, bodies) {
       ax: rx*pushF + tx*tangConvert,
       ay: ry*pushF + ty*tangConvert
     };
-  } else if (nearestD > ORBIT_MAX) {
-    // Outside band — pull in + circularize to prevent falling straight into body
-    const excess = (nearestD - ORBIT_MAX) / ORBIT_MAX;
-    const pullF = Math.min(excess * BAND_FORCE * 1.0, BAND_FORCE * 3);
-    // Inject tangential velocity proportional to how far outside we are
-    const targetOrbSpeed = (2 * Math.PI * r) / 45;
-    const tangDeficit = targetOrbSpeed - Math.abs(currentTang);
-    const tangBoost = Math.max(0, tangDeficit) * clamp(excess, 0, 1) * 0.2;
-    return {
-      ax: -rx*pullF + tx*tangBoost,
-      ay: -ry*pullF + ty*tangBoost
-    };
   }
+  // No outer limit — free to orbit at any altitude
   return { ax: 0, ay: 0 };
 }
 
@@ -2783,10 +2773,8 @@ function enforceCircularOrbit(entity, bodies, strength, period) {
   // Current velocity decomposed
   const vTang = entity.vx * tx + entity.vy * ty; // tangential component
   const vRad = entity.vx * rx + entity.vy * ry;  // radial component
-  // Nudge tangential toward target, gently damp radial drift
-  // Only damp radial if entity is within band (don't fight transfers)
-  const inBand = nearestD >= ORBIT_MIN && nearestD <= ORBIT_MAX;
-  const radDamp = inBand ? RADIAL_DAMPING : 0.1;
+  // Very gentle circularization — allows elliptical orbits but prevents pure radial plunge
+  const radDamp = RADIAL_DAMPING;
   entity.vx += (tx * (targetSpeed - vTang) * strength - rx * vRad * strength * radDamp);
   entity.vy += (ty * (targetSpeed - vTang) * strength - ry * vRad * strength * radDamp);
 }
@@ -3415,7 +3403,7 @@ class Ship {
       const g = body.gravityAt(this.x, this.y);
       this.vx += g.ax*dt; this.vy += g.ay*dt;
     }
-    // Orbital band enforcement — locks ship to the donut
+    // Surface avoidance — soft push away from body surfaces
     const band = enforceBand(this, game.bodies);
     this.vx += band.ax*dt; this.vy += band.ay*dt;
     // Clockwork orbit — gentle correction toward circular orbit (thrust overrides)
@@ -3423,6 +3411,16 @@ class Ship {
     enforceCircularOrbit(this, game.bodies, thrustActive ? SHIP_CLOCKWORK_THRUST : SHIP_CLOCKWORK_IDLE, ORBIT_PERIOD);
 
     this.x += this.vx*dt; this.y += this.vy*dt;
+
+    // Soft system boundary — very gentle pull toward star if drifting far from all bodies
+    const outerLimit = (game.planets.length > 0 ? Math.max(...game.planets.map(p => p.orbitRadius)) : 1000) + 800;
+    const dFromStar = Math.hypot(this.x - game.star.x, this.y - game.star.y);
+    if (dFromStar > outerLimit) {
+      const excess = (dFromStar - outerLimit) / outerLimit;
+      const pullStr = excess * 30; // gentle pull back
+      this.vx += (game.star.x - this.x) / dFromStar * pullStr * dt;
+      this.vy += (game.star.y - this.y) / dFromStar * pullStr * dt;
+    }
 
     // NaN/Infinity guard — if physics goes haywire, snap back to nearest planet
     if (!isFinite(this.x) || !isFinite(this.y) || !isFinite(this.vx) || !isFinite(this.vy)) {
@@ -3741,7 +3739,7 @@ class Ship {
   }
   respawn() {
     game.deaths = (game.deaths || 0) + 1;
-    torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
+    bulletToggle = false; torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
     game.achievementTracking.deathsSinceBoss += 1;
 
     // In ranked mode, decrement lives
@@ -4669,15 +4667,15 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     }
   }
 
-  // Orbital band enforcement — ARH locked to donut
+  // Surface avoidance only — ARH orbit freely under gravity
   const band = enforceBand(inv, game.bodies);
-  inv.vx += band.ax*dt*1.5; inv.vy += band.ay*dt*1.5;
+  inv.vx += band.ax*dt; inv.vy += band.ay*dt;
 
-  // Clockwork orbit — ARH naturally settle into clean circular orbits
+  // Gentle clockwork — ARH settle into orbits but can have elliptical paths
   // Strength reduces when aggroed so they can break orbit to chase
   const dToShip = ship.alive ? dist(inv, ship) : 9999;
   const aggroFade = dToShip < inv.aggroRange ? clamp(1 - (inv.aggroRange - dToShip) / inv.aggroRange, 0.05, 1) : 1;
-  enforceCircularOrbit(inv, game.bodies, 0.08 * aggroFade, rng(42, 52));
+  enforceCircularOrbit(inv, game.bodies, 0.04 * aggroFade, rng(42, 52));
 
   // Speed limit
   const spdLimit = inv.isBoss ? 180 : 120;
@@ -5777,7 +5775,9 @@ function spawnWave() {
     // Spawn boss — arrives from off-screen
     const bossDef = selectBossForWave(game.wave);
     const bossAngle = Math.random() * Math.PI * 2;
-    const bossR = 800; // far off-screen
+    // Spawn boss well outside the system — beyond outermost planet
+    const outerOrbit = Math.max(...game.planets.map(p => p.orbitRadius)) + 500;
+    const bossR = Math.max(outerOrbit, STAR_RADIUS + 600);
     const bossX = Math.cos(bossAngle) * bossR;
     const bossY = Math.sin(bossAngle) * bossR;
     const planet = game.planets[Math.floor(Math.random()*game.planets.length)];
@@ -6016,8 +6016,9 @@ function spawnHorde(count, types) {
 
     // Each group arrives from a different angle
     const arrivalAngle = (g / numGroups) * Math.PI * 2 + Math.random() * 0.5;
-    const arrivalDist = 650 + Math.random() * 350;
     const planet = game.planets[Math.floor(Math.random() * game.planets.length)];
+    // Spawn well outside the star — arrival distance from the TARGET PLANET, not origin
+    const arrivalDist = planet.orbitRadius + 400 + Math.random() * 300;
 
     // Generate formation points
     const formPts = formFn(groupCount);
@@ -6090,7 +6091,7 @@ function updateGame(dt) {
   game.ship.update(dt, game.particles);
 
   // Weapons
-  if (mouseDown && game.ship.alive) game.ship.fire(game.bullets, game.particles);
+  if ((mouseDown || bulletToggle) && game.ship.alive) game.ship.fire(game.bullets, game.particles);
   if (keys['e']) {
     game.ship.fireMissile(game.invaders, game.particles);
   } else {
@@ -6672,29 +6673,23 @@ function drawGame() {
     ctx.beginPath(); ctx.arc(ssx, ssy, bloomR, 0, Math.PI*2); ctx.fill();
   }
 
-  // Orbital band visualization — subtle filled donut for each body
+  // Low-orbit safety zone visualization — subtle inner ring only (no outer wall)
   for (const body of game.bodies) {
     const bsx = body.x - cam.x + canvas.width/2, bsy = body.y - cam.y + canvas.height/2;
     const innerR = body.radius + ORBIT_MIN;
-    const outerR = body.radius + ORBIT_MAX;
-    const midR = (innerR + outerR) / 2;
-    // Filled band with radial gradient — brighter in the middle, fading at edges
-    const bandG = ctx.createRadialGradient(bsx, bsy, innerR, bsx, bsy, outerR);
     const bc = body instanceof Star ? '255,200,100' : '100,180,255';
-    bandG.addColorStop(0, `rgba(${bc},0)`);
-    bandG.addColorStop(0.2, `rgba(${bc},0.025)`);
-    bandG.addColorStop(0.5, `rgba(${bc},0.04)`);
-    bandG.addColorStop(0.8, `rgba(${bc},0.025)`);
-    bandG.addColorStop(1, `rgba(${bc},0)`);
-    ctx.fillStyle = bandG;
-    ctx.beginPath(); ctx.arc(bsx, bsy, outerR, 0, Math.PI*2);
-    ctx.moveTo(bsx + innerR, bsy);
-    ctx.arc(bsx, bsy, innerR, 0, Math.PI*2, true); // cut out inner circle
-    ctx.fill();
-    // Soft edge lines
-    ctx.strokeStyle = `rgba(${bc},0.06)`; ctx.lineWidth = 0.5;
+    // Soft glow near surface — warns player of minimum altitude
+    const safeG = ctx.createRadialGradient(bsx, bsy, body.radius, bsx, bsy, innerR + 30);
+    safeG.addColorStop(0, `rgba(${bc},0.03)`);
+    safeG.addColorStop(0.7, `rgba(${bc},0.015)`);
+    safeG.addColorStop(1, `rgba(${bc},0)`);
+    ctx.fillStyle = safeG;
+    ctx.beginPath(); ctx.arc(bsx, bsy, innerR + 30, 0, Math.PI*2); ctx.fill();
+    // Dashed minimum altitude line
+    ctx.strokeStyle = `rgba(${bc},0.08)`; ctx.lineWidth = 0.5;
+    ctx.setLineDash([3,8]);
     ctx.beginPath(); ctx.arc(bsx, bsy, innerR, 0, Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(bsx, bsy, outerR, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // Orbit prediction — Velocity Verlet with band enforcement
@@ -6746,7 +6741,7 @@ function drawGame() {
       // Simple clockwork: find nearest body, damp radial
       let minD = Infinity, minB = null;
       for (const body of game.bodies) { const d2 = Math.hypot(px-body.x, py-body.y) - body.radius; if (d2 < minD) { minD = d2; minB = body; } }
-      if (minB && minD >= ORBIT_MIN && minD <= ORBIT_MAX) {
+      if (minB && minD >= ORBIT_MIN) {
         const dr = Math.hypot(px-minB.x, py-minB.y);
         if (dr > 1) {
           const rrx = (px-minB.x)/dr, rry = (py-minB.y)/dr;
@@ -7377,7 +7372,8 @@ function updateHUD() {
     const pct = Math.round(game.ship.solarCharge * 100);
     solarInfo = ` | <span style="color:#a70">☀ SOLAR ${pct}%</span>`;
   }
-  document.getElementById('hud-weapons').innerHTML = `TORPEDOES: ${torpStatus} | LASER: ${laserStatus}${swapInfo}${solarInfo}`;
+  const bulletStatus = bulletToggle ? '<span style="color:#0f0">AUTO</span>' : 'MANUAL';
+  document.getElementById('hud-weapons').innerHTML = `GUNS: ${bulletStatus} | TORPS: ${torpStatus} | LASER: ${laserStatus}${swapInfo}${solarInfo}`;
 }
 
 // --- Firebase Configuration ---
@@ -7526,7 +7522,7 @@ function togglePauseLeaderboard() {
 function gameOver() {
   if (gameMode !== 'ranked') return;
   gameRunning = false;
-  torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
+  bulletToggle = false; torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
 
   const finalScore = Math.floor(game.score * getBossScoreMultiplier());
   const finalWave = game.wave;
