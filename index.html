@@ -1134,28 +1134,51 @@ function playSound(type) {
     gain.gain.setValueAtTime(0.06, now); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
     osc.connect(gain); osc.start(now); osc.stop(now + 0.25);
   } else if (type === 'scan') {
-    // Solar bomb charged — deep rising "power ready" chime
-    // Base: low rumble that rises slightly
-    const osc = audioCtx.createOscillator(); osc.type = 'sine';
-    osc.frequency.setValueAtTime(110, now); osc.frequency.exponentialRampToValueAtTime(165, now + 0.35);
-    gain.gain.setValueAtTime(0.08, now); gain.gain.linearRampToValueAtTime(0.10, now + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    // Solar bomb charged — dramatic rising power-up sweep (like charging a weapon)
+    // Layer 1: Rising sine sweep from deep bass to mid — the "engine spool"
+    const osc = audioCtx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(60, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.5);
+    osc.frequency.exponentialRampToValueAtTime(400, now + 0.75);
     const lpf = audioCtx.createBiquadFilter(); lpf.type = 'lowpass';
-    lpf.frequency.setValueAtTime(400, now); lpf.frequency.linearRampToValueAtTime(800, now + 0.3);
-    osc.connect(lpf); lpf.connect(gain); osc.start(now); osc.stop(now + 0.5);
-    // Bright chime on top — delayed slightly for a "ding" at the peak
-    const osc2 = audioCtx.createOscillator(); osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(330, now + 0.1); osc2.frequency.exponentialRampToValueAtTime(220, now + 0.45);
+    lpf.frequency.setValueAtTime(200, now);
+    lpf.frequency.exponentialRampToValueAtTime(1200, now + 0.6);
+    lpf.frequency.exponentialRampToValueAtTime(2000, now + 0.75);
+    lpf.Q.value = 4; // resonance adds urgency
+    gain.gain.setValueAtTime(0.02, now);
+    gain.gain.linearRampToValueAtTime(0.09, now + 0.5);
+    gain.gain.linearRampToValueAtTime(0.12, now + 0.7);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    osc.connect(lpf); lpf.connect(gain); osc.start(now); osc.stop(now + 0.9);
+    // Layer 2: Rising harmonic — adds brightness as power builds
+    const osc2 = audioCtx.createOscillator(); osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(120, now + 0.15);
+    osc2.frequency.exponentialRampToValueAtTime(600, now + 0.65);
+    osc2.frequency.exponentialRampToValueAtTime(880, now + 0.8); // resolves to a note
     const g2 = audioCtx.createGain(); g2.connect(audioCtx.destination);
-    g2.gain.setValueAtTime(0.001, now); g2.gain.linearRampToValueAtTime(0.05, now + 0.12);
-    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-    osc2.connect(g2); osc2.start(now); osc2.stop(now + 0.45);
-    // Sub thump for weight
+    g2.gain.setValueAtTime(0.001, now);
+    g2.gain.linearRampToValueAtTime(0.06, now + 0.55);
+    g2.gain.linearRampToValueAtTime(0.08, now + 0.75);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+    osc2.connect(g2); osc2.start(now + 0.1); osc2.stop(now + 0.9);
+    // Layer 3: "Charged!" confirmation ping at the end — bright and satisfying
+    const ping = audioCtx.createOscillator(); ping.type = 'sine';
+    ping.frequency.setValueAtTime(880, now + 0.7);
+    ping.frequency.exponentialRampToValueAtTime(660, now + 0.95);
+    const pg = audioCtx.createGain(); pg.connect(audioCtx.destination);
+    pg.gain.setValueAtTime(0.001, now);
+    pg.gain.linearRampToValueAtTime(0.1, now + 0.72);
+    pg.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+    ping.connect(pg); ping.start(now + 0.7); ping.stop(now + 1.0);
+    // Layer 4: Sub bass rumble underneath — weight and power
     const sub = audioCtx.createOscillator(); sub.type = 'sine';
-    sub.frequency.setValueAtTime(55, now); sub.frequency.exponentialRampToValueAtTime(40, now + 0.25);
+    sub.frequency.setValueAtTime(40, now);
+    sub.frequency.linearRampToValueAtTime(55, now + 0.7);
     const sg = audioCtx.createGain(); sg.connect(audioCtx.destination);
-    sg.gain.setValueAtTime(0.06, now); sg.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-    sub.connect(sg); sub.start(now); sub.stop(now + 0.25);
+    sg.gain.setValueAtTime(0.05, now);
+    sg.gain.linearRampToValueAtTime(0.08, now + 0.6);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+    sub.connect(sg); sub.start(now); sub.stop(now + 0.85);
   } else if (type === 'enemy_shoot') {
     const osc = audioCtx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(400, now); osc.frequency.exponentialRampToValueAtTime(100, now + 0.06);
@@ -1180,8 +1203,16 @@ let firebaseReady = false;
 
 // --- Input ---
 const keys = {}; let mouseX = 0, mouseY = 0, mouseDown = false;
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if(['tab',' ','arrowup','arrowdown','arrowleft','arrowright'].includes(e.key.toLowerCase()) || e.key === 'Tab') e.preventDefault(); });
-window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+// Torpedo (E) and Laser (Q) are toggles — press to activate, press again to deactivate
+let torpedoToggle = false, laserToggle = false;
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'e' && !e.repeat) { torpedoToggle = !torpedoToggle; keys['e'] = torpedoToggle; }
+  else if (k === 'q' && !e.repeat) { laserToggle = !laserToggle; keys['q'] = laserToggle; }
+  else { keys[k] = true; }
+  if(['tab',' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k) || e.key === 'Tab') e.preventDefault();
+});
+window.addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k !== 'e' && k !== 'q') keys[k] = false; });
 window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
 window.addEventListener('mousedown', () => { mouseDown = true; });
 window.addEventListener('mouseup', () => { mouseDown = false; });
@@ -1707,32 +1738,32 @@ const PLANET_RADIUS = 25; // base rocky planet size (Earth-like)
 
 // Star classification system — dramatically different sizes (exaggerated realism)
 // Real ratios: red dwarf ~0.1 Sun, blue giant ~10 Sun, red giant ~100-400 Sun
-// Game ratios pushed hard: red dwarf is barely bigger than a gas giant
+// Game pushes hard: red dwarf barely bigger than a gas giant, red giant fills the screen
 const STAR_TYPES = [
-  { type: 'Red Dwarf', class: 'M', radius: 180, mass: 8000, corona: 3,
+  { type: 'Red Dwarf', class: 'M', radius: 220, mass: 8000, corona: 3,
     color: { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10 },
-    orbitScale: 0.65 }, // compact — star barely bigger than gas giants
-  { type: 'Orange Dwarf', class: 'K', radius: 250, mass: 12000, corona: 3.5,
+    orbitScale: 0.6 }, // compact — star barely bigger than gas giants!
+  { type: 'Orange Dwarf', class: 'K', radius: 320, mass: 14000, corona: 3.5,
     color: { rBase: 200, gBase: 100, bBase: 10, rBright: 255, gBright: 220, bBright: 80, rDark: 140, gDark: 40, bDark: 0 },
-    orbitScale: 0.8 },
-  { type: 'Yellow Dwarf', class: 'G', radius: 350, mass: 18000, corona: 4.5,
+    orbitScale: 0.75 },
+  { type: 'Yellow Dwarf', class: 'G', radius: 450, mass: 22000, corona: 4.5,
     color: { rBase: 220, gBase: 160, bBase: 30, rBright: 255, gBright: 255, bBright: 140, rDark: 160, gDark: 90, bDark: 5 },
     orbitScale: 1.0 }, // Sun-like — baseline
-  { type: 'White Star', class: 'F', radius: 420, mass: 22000, corona: 5,
+  { type: 'White Star', class: 'F', radius: 580, mass: 30000, corona: 5,
     color: { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60 },
-    orbitScale: 1.15 },
-  { type: 'Blue-White Star', class: 'A', radius: 550, mass: 28000, corona: 5.5,
+    orbitScale: 1.2 },
+  { type: 'Blue-White Star', class: 'A', radius: 750, mass: 40000, corona: 5.5,
     color: { rBase: 170, gBase: 200, bBase: 250, rBright: 240, gBright: 250, bBright: 255, rDark: 50, gDark: 70, bDark: 130 },
-    orbitScale: 1.35 },
-  { type: 'Blue Giant', class: 'B', radius: 700, mass: 40000, corona: 6,
-    color: { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100 },
-    orbitScale: 1.7 }, // wide system, massive star
-  { type: 'Red Giant', class: 'M-III', radius: 900, mass: 25000, corona: 7,
-    color: { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0 },
-    orbitScale: 2.0 }, // enormous but diffuse — planets far out
-  { type: 'Amber Giant', class: 'K-III', radius: 600, mass: 28000, corona: 6,
-    color: { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5 },
     orbitScale: 1.5 },
+  { type: 'Blue Giant', class: 'B', radius: 1000, mass: 60000, corona: 6,
+    color: { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100 },
+    orbitScale: 2.0 }, // wide system, massive star
+  { type: 'Red Giant', class: 'M-III', radius: 1400, mass: 35000, corona: 7,
+    color: { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0 },
+    orbitScale: 2.5 }, // enormous but diffuse — completely fills the screen
+  { type: 'Amber Giant', class: 'K-III', radius: 850, mass: 38000, corona: 6,
+    color: { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5 },
+    orbitScale: 1.7 },
 ];
 const STAR_TYPE = STAR_TYPES[Math.floor(Math.random() * STAR_TYPES.length)];
 const STAR_RADIUS = STAR_TYPE.radius;
@@ -3539,19 +3570,28 @@ class Ship {
   }
   fireMissile(invaders, particles) {
     if (this.torpedoCooldown > 0 || !this.alive) return;
-    // Find nearest invader
-    let nearest = null, nd = Infinity;
+    if (invaders.length === 0) return;
+    // Smart targeting: count how many torpedoes already track each enemy
+    const torpCount = new Map();
+    for (const m of game.missiles) {
+      if (m.target && m.target.hp > 0) torpCount.set(m.target, (torpCount.get(m.target) || 0) + 1);
+    }
+    // Score each enemy: prefer close + untargeted. Enemies with fewer torpedoes score better.
+    let best = null, bestScore = Infinity;
     for (const inv of invaders) {
       const d = dist(this, inv);
-      if (d < nd) { nd = d; nearest = inv; }
+      const existing = torpCount.get(inv) || 0;
+      // Each existing torpedo adds 300 "virtual distance" — spreads fire across targets
+      const score = d + existing * 300;
+      if (score < bestScore) { bestScore = score; best = inv; }
     }
-    if (!nearest) return;
+    if (!best) return;
     this.torpedoCooldown = MISSILE_COOLDOWN;
-    const a = angle(this, nearest);
+    const a = angle(this, best);
     game.missiles.push({
       x: this.x + Math.cos(this.angle)*SHIP_SIZE, y: this.y + Math.sin(this.angle)*SHIP_SIZE,
       vx: this.vx + Math.cos(a)*MISSILE_SPEED*0.5, vy: this.vy + Math.sin(a)*MISSILE_SPEED*0.5,
-      angle: a, target: nearest, life: MISSILE_LIFE, damage: 35, trailTimer: 0
+      angle: a, target: best, life: MISSILE_LIFE, damage: 35, trailTimer: 0
     });
     playSound('missile');
     game.shake.add(2);
@@ -3701,6 +3741,7 @@ class Ship {
   }
   respawn() {
     game.deaths = (game.deaths || 0) + 1;
+    torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
     game.achievementTracking.deathsSinceBoss += 1;
 
     // In ranked mode, decrement lives
@@ -5430,15 +5471,15 @@ const EXPANSION_COLOR_POOL = [
   { c1: '#506878', c2: '#1a2830', gasGiant: true, bands: ['#607888','#405868','#7090a0','#385060','#506a78'] }, // banded slate giant
 ];
 const shuffledExpColors = EXPANSION_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
-// Expansion planet sizes: gas giants get 5-6x, rocky get 0.8-1.1x
+// Expansion planet sizes: gas giants get 7-8x, rocky get 0.8-1.1x
 function expRadius(i) {
   const rockyMults = [0.8, 1.1, 0.95, 0.9];
-  const gasMults = [5.4, 5.8, 5.2, 5.6];
+  const gasMults = [7.4, 7.8, 7.2, 7.6];
   return PLANET_RADIUS * (shuffledExpColors[i].gasGiant ? gasMults[i] : rockyMults[i]);
 }
 const expOS = STAR_TYPE.orbitScale; // orbit scale for expansion planets
-const expBaseInner = STAR_RADIUS + 250; // same clearance formula
-const expGap = 220 * expOS;
+const expBaseInner = STAR_RADIUS + 300; // same clearance formula
+const expGap = 300 * expOS;
 const SYSTEM_EXPANSION = [
   { wave: 8, name: 'Luminara', radius: expRadius(0), color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, bands: shuffledExpColors[0].bands, orbitR: Math.round(expBaseInner + expGap*2.5), orbitSpeed: 0.02/expOS, moons: 1 },
   { wave: 15, name: 'Umbra', radius: expRadius(1), color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, bands: shuffledExpColors[1].bands, orbitR: Math.round(expBaseInner + expGap*6), orbitSpeed: 0.007/expOS, rings: true, moons: 2 },
@@ -5511,17 +5552,17 @@ function initGame() {
     { c1: '#607050', c2: '#202a18' }, // sage
   ];
   const shuffledColors = PLANET_COLOR_POOL.slice().sort(() => Math.random() - 0.5);
-  // Size depends on type: gas giants are 5-6x base rocky, rocky planets are 0.8-1.2x base
-  // Real ratio is ~11x but we cap for gameplay. Still dramatically bigger.
-  const planetSizes = [1.0, 0.85, 1.1, 0.75, 0.9]; // base rocky multipliers (20-30px)
-  const gasGiantMults = [5.2, 5.8, 5.0, 6.0, 5.5]; // gas giant multipliers (130-150px)
+  // Size depends on type: gas giants are 7-8x base rocky (real is ~11x)
+  // Rocky: 20-30px, Gas giants: 175-200px — dramatically bigger
+  const planetSizes = [1.0, 0.85, 1.1, 0.75, 0.9]; // base rocky multipliers
+  const gasGiantMults = [7.2, 7.8, 7.0, 8.0, 7.5]; // gas giant multipliers
   function pRadius(i) {
     return PLANET_RADIUS * (shuffledColors[i].gasGiant ? gasGiantMults[i] : planetSizes[i]);
   }
   const oS = STAR_TYPE.orbitScale; // orbit scale factor for star type
-  // Base orbits start well outside the star — innermost at star radius + 250
-  const baseInner = STAR_RADIUS + 250; // guaranteed clearance from star surface
-  const orbitGap = 220 * oS; // spacing between planet orbits
+  // Base orbits start well outside the star — clearance scales with star size
+  const baseInner = STAR_RADIUS + 300; // guaranteed clearance from star surface
+  const orbitGap = 300 * oS; // wider spacing between planet orbits
   const planet1 = new Planet(baseInner, 0, pRadius(0), shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler', shuffledColors[0].bands);
   planet1.orbitRadius = Math.round(baseInner); planet1.orbitAngle = 0; planet1.orbitSpeed = 0.035/oS;
   const planet2 = new Planet(0, 0, pRadius(1), shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica', shuffledColors[1].bands);
@@ -6147,10 +6188,19 @@ function updateGame(dt) {
     if (m.life <= 0 || !m.target || m.target.hp <= 0) {
       // Check if target was removed
       if (m.target && !game.invaders.includes(m.target)) {
-        // Retarget nearest
-        let nn = null, nd = Infinity;
-        for (const inv of game.invaders) { const d = dist(m, inv); if (d < nd) { nd = d; nn = inv; } }
-        if (nn && nd < 500) { m.target = nn; }
+        // Smart retarget: prefer enemies with fewer torpedoes already tracking them
+        const torpCount = new Map();
+        for (const om of game.missiles) {
+          if (om !== m && om.target && om.target.hp > 0) torpCount.set(om.target, (torpCount.get(om.target) || 0) + 1);
+        }
+        let nn = null, bestScore = Infinity;
+        for (const inv of game.invaders) {
+          const d = dist(m, inv);
+          if (d > 500) continue;
+          const score = d + (torpCount.get(inv) || 0) * 200;
+          if (score < bestScore) { bestScore = score; nn = inv; }
+        }
+        if (nn) { m.target = nn; }
         else { game.particles.emit(m.x, m.y, 6, '#fa0', 100, 0.2, 2); game.missiles.splice(i, 1); continue; }
       }
       if (m.life <= 0) { game.particles.emit(m.x, m.y, 6, '#fa0', 100, 0.2, 2); game.missiles.splice(i, 1); continue; }
@@ -7297,9 +7347,9 @@ function updateHUD() {
   document.getElementById('hud-hp').innerHTML = `<span style="color:${hpColor}">HULL: ${'█'.repeat(hpBars)}${'░'.repeat(20-hpBars)} ${Math.round(hpPct*100)}%</span>`;
   document.getElementById('hud-energy').innerHTML = `ENERGY: ${'█'.repeat(enBars)}${'░'.repeat(20-enBars)} ${Math.round(enPct*100)}%`;
 
-  const torpStatus = game.ship.torpedoCooldown > 0 ? 'LOADING' : 'READY';
+  const torpStatus = torpedoToggle ? (game.ship.torpedoCooldown > 0 ? '<span style="color:#fa0">ACTIVE</span>' : '<span style="color:#0f0">FIRING</span>') : 'READY';
   const laserWave = (SHIP_TYPES[game.ship.shipType] && SHIP_TYPES[game.ship.shipType].laserWave) || 3;
-  const laserStatus = game.wave >= laserWave ? (game.ship.laserActive ? 'FIRING' : 'READY') : `LOCKED (Wave ${laserWave})`;
+  const laserStatus = game.wave >= laserWave ? (laserToggle ? '<span style="color:#0f0">FIRING</span>' : 'READY') : `LOCKED (Wave ${laserWave})`;
   const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
   let solarInfo = '';
   if (game.ship.solarBombs > 0 || game.ship.solarCharge > 0.1) {
@@ -7476,6 +7526,7 @@ function togglePauseLeaderboard() {
 function gameOver() {
   if (gameMode !== 'ranked') return;
   gameRunning = false;
+  torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
 
   const finalScore = Math.floor(game.score * getBossScoreMultiplier());
   const finalWave = game.wave;
