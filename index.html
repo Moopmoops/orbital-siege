@@ -365,6 +365,7 @@ canvas { display: block; cursor: crosshair; }
     <div id="hud-wave">WAVE: 1</div>
     <div id="hud-star-type" style="color:#fa8;font-size:9px;letter-spacing:1px;opacity:0.7;"></div>
     <div id="hud-kills">KILLS: 0</div>
+    <div id="hud-swarm" style="color:#f88;font-size:10px;letter-spacing:1px;"></div>
     <div id="hud-lives" style="color:#0ff;">LIVES: ♦♦♦♦♦</div>
     <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
   </div>
@@ -1215,9 +1216,48 @@ window.addEventListener('keydown', e => {
   if(['tab',' ','arrowup','arrowdown','arrowleft','arrowright'].includes(k) || e.key === 'Tab') e.preventDefault();
 });
 window.addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k !== 'e' && k !== 'q') keys[k] = false; });
-window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
-window.addEventListener('mousedown', () => { mouseDown = true; });
+
+// --- Mouse aiming: relative movement (like mobile touch drag) ---
+// Moving the mouse in a direction points the ship that direction,
+// regardless of where the cursor is on screen. Uses pointer lock.
+let virtualAimX = 0, virtualAimY = -150; // virtual aim offset from center (start: up)
+const AIM_MAX_DIST = 300; // clamp range — acts like edge of a joystick
+const AIM_MOUSE_SENS = 1.5; // how fast mouse movement moves the virtual aim
+
+window.addEventListener('mousemove', e => {
+  if (document.pointerLockElement === canvas) {
+    // Pointer locked: use raw movement deltas (relative, not absolute)
+    virtualAimX += e.movementX * AIM_MOUSE_SENS;
+    virtualAimY += e.movementY * AIM_MOUSE_SENS;
+    // Clamp to max distance (joystick edge)
+    const mag = Math.hypot(virtualAimX, virtualAimY);
+    if (mag > AIM_MAX_DIST) {
+      virtualAimX = virtualAimX / mag * AIM_MAX_DIST;
+      virtualAimY = virtualAimY / mag * AIM_MAX_DIST;
+    }
+    mouseX = canvas.width / 2 + virtualAimX;
+    mouseY = canvas.height / 2 + virtualAimY;
+  } else {
+    // Fallback when not locked (menus, etc): absolute position
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  }
+});
+
+// Request pointer lock on canvas click (enters relative mouse mode)
+window.addEventListener('mousedown', () => {
+  mouseDown = true;
+  if (gameRunning && !gamePaused && document.pointerLockElement !== canvas) {
+    canvas.requestPointerLock();
+  }
+});
 window.addEventListener('mouseup', () => { mouseDown = false; });
+// Release pointer lock when game pauses or ends
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement !== canvas) {
+    // Pointer was unlocked (Esc pressed, etc) — that's fine, clicking re-locks
+  }
+});
 
 // --- Constants ---
 const SHIP_TYPES = {
@@ -1771,13 +1811,13 @@ const STAR_TYPE = STAR_TYPES[Math.floor(Math.random() * STAR_TYPES.length)];
 const STAR_RADIUS = STAR_TYPE.radius;
 const STAR_COLOR = STAR_TYPE.color;
 const SHIP_SIZE = 10;
-let BULLET_SPEED = 200;
+let BULLET_SPEED = 320;
 let BULLET_LIFE = 10;
-let FIRE_RATE = 0.02;
-let MISSILE_SPEED = 190;
-let MISSILE_TURN = 4.0;
+let FIRE_RATE = 0.015;
+let MISSILE_SPEED = 300;
+let MISSILE_TURN = 5.0;
 let MISSILE_LIFE = 8.0;
-const MISSILE_COOLDOWN = 0.3;
+const MISSILE_COOLDOWN = 0.18;
 let TORPEDO_SPLASH = 80;
 let LASER_RANGE = 250;
 let LASER_DPS = 90;
@@ -1800,7 +1840,7 @@ let BAND_FORCE = 300;  // how hard the band pushes you back in
 let CAMERA_ZOOM = Math.max(0.3, 0.7 / STAR_TYPE.orbitScale);
 let SHAKE_MULT = 0.1;
 let SHIP_THRUST = 100;
-let SHIP_CLOCKWORK_IDLE = 0.04;  // very gentle — allows elliptical orbits
+let SHIP_CLOCKWORK_IDLE = 0.08;  // gentle — allows elliptical orbits, prevents drift
 let SHIP_CLOCKWORK_THRUST = 0.0;  // zero when thrusting — full player control
 let ORBIT_PERIOD = 15;
 let SUN_CORONA_SIZE = STAR_TYPE.corona;
@@ -2752,7 +2792,7 @@ function enforceBand(entity, bodies) {
 
 // Clockwork orbit enforcer — nudges entity velocity toward proper circular orbit
 // around the nearest body. Strength 0-1 controls how aggressively it corrects.
-function enforceCircularOrbit(entity, bodies, strength, period) {
+function enforceCircularOrbit(entity, bodies, strength) {
   let nearestD = Infinity, nearestB = null;
   for (const b of bodies) {
     const d = dist(entity, b);
@@ -2768,8 +2808,9 @@ function enforceCircularOrbit(entity, bodies, strength, period) {
   const currentTang = entity.vx * (-ry) + entity.vy * rx; // dot with tangent
   const dir = currentTang >= 0 ? 1 : -1;
   const tx = -ry * dir, ty = rx * dir;
-  // Target orbital speed for this radius
-  const targetSpeed = (2 * Math.PI * r) / (period || 45);
+  // Target orbital speed for this radius — derived from gravity (Kepler circular velocity)
+  // v_circular = sqrt(G * M / r) — this is the physically correct speed for a circular orbit
+  const targetSpeed = Math.sqrt(G * nearestB.mass / r);
   // Current velocity decomposed
   const vTang = entity.vx * tx + entity.vy * ty; // tangential component
   const vRad = entity.vx * rx + entity.vy * ry;  // radial component
@@ -3307,9 +3348,12 @@ class Ship {
     this.shipType = selectedShipType;
     const orbitR = planet.radius + ORBIT_MIN + 40; // middle of the band
     this.x = planet.x + orbitR; this.y = planet.y;
-    // Compute orbital velocity from gravity: v = sqrt(G*M/r)
+    // Compute orbital velocity from gravity: v = sqrt(G*M/r) for planet orbit
     const orbV = Math.sqrt(G * planet.mass / orbitR);
-    this.vx = 0; this.vy = -orbV;
+    // Planet's own velocity around the star (tangential to its orbit)
+    const planetVx = -Math.sin(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+    const planetVy = Math.cos(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+    this.vx = planetVx + 0; this.vy = planetVy + (-orbV);
     this.angle = -Math.PI/2;
     this.hp = 100; this.maxHp = 100;
     this.energy = ENERGY_MAX;
@@ -3366,18 +3410,14 @@ class Ship {
     const velAngle = Math.atan2(this.vy, this.vx); // direction of travel
     const thrustAmt = this.thrustPower * boost;
     if ((keys['w'] || keys['arrowup'])) {
-      // Prograde — accelerate along velocity (raises orbit on opposite side)
-      if (spd > 1) {
-        this.vx += (this.vx/spd)*thrustAmt*0.6*dt;
-        this.vy += (this.vy/spd)*thrustAmt*0.6*dt;
-      } else {
-        this.vx += Math.cos(this.angle)*thrustAmt*0.3*dt;
-        this.vy += Math.sin(this.angle)*thrustAmt*0.3*dt;
-      }
+      // Thrust toward mouse/aim direction — direct steering control
+      // Ship accelerates in the direction it's facing (set by mouse position)
+      this.vx += Math.cos(this.angle)*thrustAmt*0.6*dt;
+      this.vy += Math.sin(this.angle)*thrustAmt*0.6*dt;
       this.thrustOn = true;
       if (Math.random() < 0.7) {
-        const ba = velAngle + Math.PI;
-        particles.emitDir(this.x - Math.cos(velAngle)*SHIP_SIZE, this.y - Math.sin(velAngle)*SHIP_SIZE,
+        const ba = this.angle + Math.PI; // exhaust opposite to thrust direction
+        particles.emitDir(this.x - Math.cos(this.angle)*SHIP_SIZE, this.y - Math.sin(this.angle)*SHIP_SIZE,
           2, keys['shift'] ? '#4af' : '#f84', ba, 0.5, 150*boost, 0.3, 2);
       }
     }
@@ -3408,7 +3448,7 @@ class Ship {
     this.vx += band.ax*dt; this.vy += band.ay*dt;
     // Clockwork orbit — gentle correction toward circular orbit (thrust overrides)
     const thrustActive = (keys['w'] || keys['arrowup']) || (keys['s'] || keys['arrowdown']) || (keys['a'] || keys['arrowleft']) || (keys['d'] || keys['arrowright']);
-    enforceCircularOrbit(this, game.bodies, thrustActive ? SHIP_CLOCKWORK_THRUST : SHIP_CLOCKWORK_IDLE, ORBIT_PERIOD);
+    enforceCircularOrbit(this, game.bodies, thrustActive ? SHIP_CLOCKWORK_THRUST : SHIP_CLOCKWORK_IDLE);
 
     this.x += this.vx*dt; this.y += this.vy*dt;
 
@@ -3430,9 +3470,11 @@ class Ship {
       const a = Math.random() * Math.PI * 2;
       this.x = planet.x + Math.cos(a) * orbitR;
       this.y = planet.y + Math.sin(a) * orbitR;
-      const orbV = (2*Math.PI*orbitR)/45;
-      this.vx = Math.cos(a + Math.PI/2) * orbV;
-      this.vy = Math.sin(a + Math.PI/2) * orbV;
+      const orbV = Math.sqrt(G * planet.mass / orbitR);
+      const pvx = -Math.sin(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+      const pvy = Math.cos(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+      this.vx = pvx + Math.cos(a + Math.PI/2) * orbV;
+      this.vy = pvy + Math.sin(a + Math.PI/2) * orbV;
     }
 
     // No surface collision — planets are spheres, ship flies over/under them
@@ -3678,7 +3720,7 @@ class Ship {
 
         if (inv.hp <= 0) {
           emitDeathFlash(inv, particles);
-          playSound('explode'); game.score += inv.points; game.kills++;
+          playSound('explode'); game.score += inv.points; game.kills++; game.swarmKillLog.push(game.time);
           registerKill(inv.x, inv.y, inv.points, inv);
           bombKills++;
           invaders.splice(i, 1);
@@ -3765,10 +3807,12 @@ class Ship {
     const a = Math.random() * Math.PI * 2;
     this.x = planet.x + Math.cos(a) * orbitR;
     this.y = planet.y + Math.sin(a) * orbitR;
-    // Give proper orbital velocity
-    const orbV = (2*Math.PI*orbitR)/45;
-    this.vx = Math.cos(a + Math.PI/2) * orbV;
-    this.vy = Math.sin(a + Math.PI/2) * orbV;
+    // Proper orbital velocity: planet orbit around planet + planet's own motion
+    const orbV = Math.sqrt(G * planet.mass / orbitR);
+    const pvx = -Math.sin(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+    const pvy = Math.cos(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+    this.vx = pvx + Math.cos(a + Math.PI/2) * orbV;
+    this.vy = pvy + Math.sin(a + Math.PI/2) * orbV;
     this.hp = this.maxHp * 0.6; // respawn with 60% hp
     this.energy = ENERGY_MAX * 0.5;
     this.torpedoCooldown = 0;
@@ -4204,7 +4248,7 @@ function chainReaction(deadInv, invaders, particles) {
 
       if (other.hp <= 0 && !other.isBoss) {
         emitDeathFlash(other, particles);
-        if (game) { game.score += other.points; game.kills++; registerKill(other.x, other.y, other.points, other); }
+        if (game) { game.score += other.points; game.kills++; game.swarmKillLog.push(game.time); registerKill(other.x, other.y, other.points, other); }
         invaders.splice(i, 1);
         chainKills++;
         // Chain kills do NOT trigger further chains — prevents cascade wipeout
@@ -4355,14 +4399,17 @@ function createARH(x, y, typeName, generation, planet) {
   const size = 7 + gen*2 + (type.hpBase > 30 ? 4 : 0);
   const hp = type.hpBase + gen*8;
   const orbR = dist({x,y}, planet);
-  // Compute orbital velocity from gravity: v = sqrt(G*M/r)
+  // Compute orbital velocity: orbit around planet + planet's own orbital motion
   const orbV = Math.sqrt(G * planet.mass / orbR);
   const a2c = Math.atan2(planet.y - y, planet.x - x);
-  const dir = 1; // all orbit same direction — clockwork ring
+  const dir = 1;
+  // Planet's velocity from its orbit around the star
+  const pvx = -Math.sin(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
+  const pvy = Math.cos(planet.orbitAngle) * planet.orbitSpeed * planet.orbitRadius;
   return {
     x, y,
-    vx: Math.cos(a2c + Math.PI/2)*orbV*dir,
-    vy: Math.sin(a2c + Math.PI/2)*orbV*dir,
+    vx: pvx + Math.cos(a2c + Math.PI/2)*orbV*dir,
+    vy: pvy + Math.sin(a2c + Math.PI/2)*orbV*dir,
     size, hp, maxHp: hp, generation: gen,
     typeName, type,
     shape: type.shape, baseHue: type.colorH + Math.floor(Math.random() * 30 - 15),
@@ -4675,7 +4722,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   // Strength reduces when aggroed so they can break orbit to chase
   const dToShip = ship.alive ? dist(inv, ship) : 9999;
   const aggroFade = dToShip < inv.aggroRange ? clamp(1 - (inv.aggroRange - dToShip) / inv.aggroRange, 0.05, 1) : 1;
-  enforceCircularOrbit(inv, game.bodies, 0.04 * aggroFade, rng(42, 52));
+  enforceCircularOrbit(inv, game.bodies, 0.04 * aggroFade);
 
   // Speed limit
   const spdLimit = inv.isBoss ? 180 : 120;
@@ -4730,6 +4777,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       const child = createARH(planet.x + Math.cos(pa)*pr, planet.y + Math.sin(pa)*pr, childType, inv.generation+1, planet);
       child.vx = inv.vx; child.vy = inv.vy; // exact same orbit
       invaders.push(child);
+      if (game) game.swarmSpawnLog.push(game.time);
       playSound('reproduce');
       particles.emit(inv.x, inv.y, 10, '#fff', 80, 0.3, 2);
     }
@@ -5478,11 +5526,14 @@ function expRadius(i) {
 const expOS = STAR_TYPE.orbitScale; // orbit scale for expansion planets
 const expBaseInner = STAR_RADIUS + 300; // same clearance formula
 const expGap = 300 * expOS;
+// Kepler speed for expansion planets — same gravity-derived formula
+function expKeplerSpeed(r) { return Math.sqrt(G * STAR_TYPE.mass / (r*r*r)); }
+const expOrbs = [expBaseInner + expGap*2.5, expBaseInner + expGap*6, expBaseInner + expGap*8, expBaseInner + expGap*10];
 const SYSTEM_EXPANSION = [
-  { wave: 8, name: 'Luminara', radius: expRadius(0), color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, bands: shuffledExpColors[0].bands, orbitR: Math.round(expBaseInner + expGap*2.5), orbitSpeed: 0.02/expOS, moons: 1 },
-  { wave: 15, name: 'Umbra', radius: expRadius(1), color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, bands: shuffledExpColors[1].bands, orbitR: Math.round(expBaseInner + expGap*6), orbitSpeed: 0.007/expOS, rings: true, moons: 2 },
-  { wave: 25, name: 'Glacius', radius: expRadius(2), color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, bands: shuffledExpColors[2].bands, orbitR: Math.round(expBaseInner + expGap*8), orbitSpeed: 0.005/expOS, rings: true },
-  { wave: 35, name: 'Pyraxis', radius: expRadius(3), color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, bands: shuffledExpColors[3].bands, orbitR: Math.round(expBaseInner + expGap*10), orbitSpeed: 0.004/expOS, moons: 2 },
+  { wave: 8, name: 'Luminara', radius: expRadius(0), color1: shuffledExpColors[0].c1, color2: shuffledExpColors[0].c2, bands: shuffledExpColors[0].bands, orbitR: Math.round(expOrbs[0]), orbitSpeed: expKeplerSpeed(expOrbs[0]), moons: 1 },
+  { wave: 15, name: 'Umbra', radius: expRadius(1), color1: shuffledExpColors[1].c1, color2: shuffledExpColors[1].c2, bands: shuffledExpColors[1].bands, orbitR: Math.round(expOrbs[1]), orbitSpeed: expKeplerSpeed(expOrbs[1]), rings: true, moons: 2 },
+  { wave: 25, name: 'Glacius', radius: expRadius(2), color1: shuffledExpColors[2].c1, color2: shuffledExpColors[2].c2, bands: shuffledExpColors[2].bands, orbitR: Math.round(expOrbs[2]), orbitSpeed: expKeplerSpeed(expOrbs[2]), rings: true },
+  { wave: 35, name: 'Pyraxis', radius: expRadius(3), color1: shuffledExpColors[3].c1, color2: shuffledExpColors[3].c2, bands: shuffledExpColors[3].bands, orbitR: Math.round(expOrbs[3]), orbitSpeed: expKeplerSpeed(expOrbs[3]), moons: 2 },
 ];
 
 function expandSystem(wave) {
@@ -5561,17 +5612,20 @@ function initGame() {
   // Base orbits start well outside the star — clearance scales with star size
   const baseInner = STAR_RADIUS + 300; // guaranteed clearance from star surface
   const orbitGap = 300 * oS; // wider spacing between planet orbits
+  // Gravity-derived orbital speed: ω = sqrt(G*M/r³) — Kepler's 3rd law
+  // Inner planets orbit fast, outer planets slow — physically correct
+  function keplerSpeed(r) { return Math.sqrt(G * STAR_TYPE.mass / (r*r*r)); }
   const planet1 = new Planet(baseInner, 0, pRadius(0), shuffledColors[0].c1, shuffledColors[0].c2, 'Kepler', shuffledColors[0].bands);
-  planet1.orbitRadius = Math.round(baseInner); planet1.orbitAngle = 0; planet1.orbitSpeed = 0.035/oS;
+  planet1.orbitRadius = Math.round(baseInner); planet1.orbitAngle = 0; planet1.orbitSpeed = keplerSpeed(baseInner);
   const planet2 = new Planet(0, 0, pRadius(1), shuffledColors[1].c1, shuffledColors[1].c2, 'Rustica', shuffledColors[1].bands);
-  planet2.orbitRadius = Math.round(baseInner + orbitGap); planet2.orbitAngle = Math.PI*0.7; planet2.orbitSpeed = 0.022/oS;
+  planet2.orbitRadius = Math.round(baseInner + orbitGap); planet2.orbitAngle = Math.PI*0.7; planet2.orbitSpeed = keplerSpeed(baseInner + orbitGap);
   const planet3 = new Planet(0, 0, pRadius(2), shuffledColors[2].c1, shuffledColors[2].c2, 'Verdania', shuffledColors[2].bands);
-  planet3.orbitRadius = Math.round(baseInner + orbitGap*2); planet3.orbitAngle = Math.PI*1.5; planet3.orbitSpeed = 0.016/oS;
+  planet3.orbitRadius = Math.round(baseInner + orbitGap*2); planet3.orbitAngle = Math.PI*1.5; planet3.orbitSpeed = keplerSpeed(baseInner + orbitGap*2);
   const planet4 = new Planet(0, 0, pRadius(3), shuffledColors[3].c1, shuffledColors[3].c2, 'Cryos', shuffledColors[3].bands);
-  planet4.orbitRadius = Math.round(baseInner + orbitGap*3); planet4.orbitAngle = Math.PI*0.25; planet4.orbitSpeed = 0.012/oS;
+  planet4.orbitRadius = Math.round(baseInner + orbitGap*3); planet4.orbitAngle = Math.PI*0.25; planet4.orbitSpeed = keplerSpeed(baseInner + orbitGap*3);
   planet4.hasRings = true; planet4.ringTilt = 0.35;
   const planet5 = new Planet(0, 0, pRadius(4), shuffledColors[4].c1, shuffledColors[4].c2, 'Magmos', shuffledColors[4].bands);
-  planet5.orbitRadius = Math.round(baseInner + orbitGap*4); planet5.orbitAngle = Math.PI*1.1; planet5.orbitSpeed = 0.009/oS;
+  planet5.orbitRadius = Math.round(baseInner + orbitGap*4); planet5.orbitAngle = Math.PI*1.1; planet5.orbitSpeed = keplerSpeed(baseInner + orbitGap*4);
   // Gas giants automatically get rings (50% chance each)
   [planet1, planet2, planet3, planet5].forEach((p, i) => {
     if (shuffledColors[[0,1,2,4][i]].gasGiant && !p.hasRings && Math.random() < 0.5) {
@@ -5593,6 +5647,10 @@ function initGame() {
     bombRings: [], scanRings: [],
     cam: { x: ship.x, y: ship.y },
     score: 0, kills: 0, wave: 1, deaths: 0,
+    // Swarm tracking — rolling 10s window for kills vs reproductions
+    swarmKillLog: [],   // timestamps of recent kills
+    swarmSpawnLog: [],  // timestamps of recent reproductions
+    swarmCount: 0,      // current bot count (updated each frame)
     lives: gameMode === 'ranked' ? 5 : Infinity,
     waveTimer: 5, waveSpawnCount: 30,
     time: 0, respawnMsg: null,
@@ -6164,7 +6222,7 @@ function updateGame(dt) {
         if (inv.hp <= 0) {
           emitDeathFlash(inv, game.particles);
           if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
-          playSound('explode'); game.score += inv.points; game.kills++;
+          playSound('explode'); game.score += inv.points; game.kills++; game.swarmKillLog.push(game.time);
           registerKill(inv.x, inv.y, inv.points, inv);
           if (inv.isBoss) {
             game.boss = null;
@@ -6246,7 +6304,7 @@ function updateGame(dt) {
           if (inv.hp <= 0) {
             emitDeathFlash(inv, game.particles);
             if (!inv.isBoss) chainReaction(inv, game.invaders, game.particles);
-            game.score += inv.points; game.kills++;
+            game.score += inv.points; game.kills++; game.swarmKillLog.push(game.time);
             registerKill(inv.x, inv.y, inv.points, inv);
             game.invaders.splice(j, 1);
           }
@@ -6460,7 +6518,7 @@ function updateGame(dt) {
     if (game.invaders[i].hp <= 0) {
       const inv = game.invaders[i];
       game.particles.emit(inv.x, inv.y, 20, inv.color, 250, 0.5, 3);
-      playSound('explode'); game.score += inv.points; game.kills++;
+      playSound('explode'); game.score += inv.points; game.kills++; game.swarmKillLog.push(game.time);
       registerKill(inv.x, inv.y, inv.points, inv);
       // Track achievement progress
       if (!game.achievementTracking.firstKill) {
@@ -7331,6 +7389,25 @@ function updateHUD() {
   document.getElementById('hud-star-type').textContent = `★ ${STAR_TYPE.type} (${STAR_TYPE.class})`;
   document.getElementById('hud-kills').textContent = `KILLS: ${game.kills}${game.deaths ? '  DEATHS: '+game.deaths : ''}`;
 
+  // Swarm counter with rate trend (rolling 10s window)
+  const swarmNow = game.invaders.length;
+  const windowSec = 10;
+  const cutoff = game.time - windowSec;
+  // Prune old entries
+  while (game.swarmKillLog.length && game.swarmKillLog[0] < cutoff) game.swarmKillLog.shift();
+  while (game.swarmSpawnLog.length && game.swarmSpawnLog[0] < cutoff) game.swarmSpawnLog.shift();
+  const killRate = game.swarmKillLog.length / windowSec;  // kills/sec
+  const spawnRate = game.swarmSpawnLog.length / windowSec; // spawns/sec
+  const netRate = killRate - spawnRate; // positive = winning, negative = losing
+  let trendIcon, trendColor;
+  if (netRate > 0.3) { trendIcon = '▼▼'; trendColor = '#0f0'; }       // crushing it
+  else if (netRate > 0) { trendIcon = '▼'; trendColor = '#8f8'; }      // winning
+  else if (netRate > -0.3) { trendIcon = '—'; trendColor = '#fa0'; }   // holding
+  else if (netRate > -0.8) { trendIcon = '▲'; trendColor = '#f80'; }   // losing
+  else { trendIcon = '▲▲'; trendColor = '#f44'; }                      // overrun
+  const rateStr = Math.abs(netRate).toFixed(1);
+  document.getElementById('hud-swarm').innerHTML = `SWARM: ${swarmNow}/${MAX_SWARM} <span style="color:${trendColor}">${trendIcon} ${rateStr}/s</span>`;
+
   // Update lives display
   const livesEl = document.getElementById('hud-lives');
   if (gameMode === 'ranked') {
@@ -7522,6 +7599,7 @@ function togglePauseLeaderboard() {
 function gameOver() {
   if (gameMode !== 'ranked') return;
   gameRunning = false;
+  if (document.pointerLockElement) document.exitPointerLock();
   bulletToggle = false; torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
 
   const finalScore = Math.floor(game.score * getBossScoreMultiplier());
@@ -7914,6 +7992,7 @@ window.addEventListener('keydown', e => {
     gamePaused = !gamePaused;
     document.getElementById('pause-menu').style.display = gamePaused ? 'flex' : 'none';
     if (gamePaused) {
+      if (document.pointerLockElement) document.exitPointerLock();
       stopTorpedoSound();
       stopLaserSound();
       updatePauseAchievements();
