@@ -1861,8 +1861,8 @@ let PREDICTION_DT = 0.03;
 let AUTO_PAN = 0.15;
 let AUTO_ZOOM = 1;
 // Zoom limits scale with star type — bigger systems need to pull back more
-let ZOOM_MIN = Math.max(0.15, 0.4 / STAR_TYPE.orbitScale);
-let ZOOM_MAX = Math.max(0.5, 1.1 / STAR_TYPE.orbitScale);
+let ZOOM_MIN = Math.max(0.12, 0.32 / STAR_TYPE.orbitScale);
+let ZOOM_MAX = Math.max(0.4, 0.85 / STAR_TYPE.orbitScale);
 let ZOOM_SPEED = 1.5;
 let CAM_SMOOTH = 5;
 
@@ -4674,42 +4674,49 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
 
     if (inv.typeName === 'drone') {
       // Drones: tight swarm — close separation, attracted to same-type neighbors
-      if (d < 15 && d > 0) {
+      if (d < 12 && d > 0) {
         inv.vx += Math.cos(a)*40*dt; inv.vy += Math.sin(a)*40*dt;
-      } else if (d > 30 && d < 80 && other.typeName === 'drone') {
+      } else if (d > 22 && d < 110 && other.typeName === 'drone') {
         // Cohesion — pull toward nearby drones
-        inv.vx -= Math.cos(a)*15*dt; inv.vy -= Math.sin(a)*15*dt;
+        inv.vx -= Math.cos(a)*32*dt; inv.vy -= Math.sin(a)*32*dt;
       }
     } else if (inv.typeName === 'scout' || inv.typeName === 'phantom') {
-      // Scouts/Phantoms: wide spread — strong repulsion, lone wolves
-      if (d < 60 && d > 0) {
-        inv.vx += Math.cos(a)*80*dt; inv.vy += Math.sin(a)*80*dt;
+      // Scouts/Phantoms: medium spread — moderate repulsion
+      if (d < 45 && d > 0) {
+        inv.vx += Math.cos(a)*70*dt; inv.vy += Math.sin(a)*70*dt;
+      } else if (d > 60 && d < 130 && other.typeName === inv.typeName) {
+        // Loose cohesion with same type
+        inv.vx -= Math.cos(a)*14*dt; inv.vy -= Math.sin(a)*14*dt;
       }
     } else if (inv.typeName === 'brute' || inv.typeName === 'titan') {
       // Brutes/Titans: tight formation — march in clusters
-      if (d < 20 && d > 0) {
+      if (d < 16 && d > 0) {
         inv.vx += Math.cos(a)*50*dt; inv.vy += Math.sin(a)*50*dt;
-      } else if (d > 35 && d < 100 && (other.typeName === 'brute' || other.typeName === 'titan')) {
+      } else if (d > 28 && d < 130 && (other.typeName === 'brute' || other.typeName === 'titan')) {
         // Cohesion with similar heavy types
-        inv.vx -= Math.cos(a)*20*dt; inv.vy -= Math.sin(a)*20*dt;
+        inv.vx -= Math.cos(a)*36*dt; inv.vy -= Math.sin(a)*36*dt;
       }
     } else if (inv.typeName === 'stinger') {
       // Stingers: medium spacing — maintain firing distance from each other
-      if (d < 40 && d > 0) {
-        inv.vx += Math.cos(a)*70*dt; inv.vy += Math.sin(a)*70*dt;
+      if (d < 30 && d > 0) {
+        inv.vx += Math.cos(a)*60*dt; inv.vy += Math.sin(a)*60*dt;
+      } else if (d > 45 && d < 120 && other.typeName === 'stinger') {
+        inv.vx -= Math.cos(a)*16*dt; inv.vy -= Math.sin(a)*16*dt;
       }
     } else if (inv.typeName === 'hive') {
       // Hives: attract ALL nearby types — they are the cluster nucleus
-      if (d < 18 && d > 0) {
+      if (d < 16 && d > 0) {
         inv.vx += Math.cos(a)*30*dt; inv.vy += Math.sin(a)*30*dt;
-      } else if (d > 50 && d < 120 && other.typeName !== 'hive') {
+      } else if (d > 40 && d < 160 && other.typeName !== 'hive') {
         // Pull non-hive types toward hive (hive is the gravity well)
-        other.vx -= Math.cos(a)*10*dt; other.vy -= Math.sin(a)*10*dt;
+        other.vx -= Math.cos(a)*20*dt; other.vy -= Math.sin(a)*20*dt;
       }
     } else {
-      // Default separation
-      if (d < 25 && d > 0) {
+      // Default: separation + mild cohesion with same type
+      if (d < 20 && d > 0) {
         inv.vx += Math.cos(a)*60*dt; inv.vy += Math.sin(a)*60*dt;
+      } else if (d > 32 && d < 100 && other.typeName === inv.typeName) {
+        inv.vx -= Math.cos(a)*18*dt; inv.vy -= Math.sin(a)*18*dt;
       }
     }
   }
@@ -6619,28 +6626,28 @@ function updateGame(dt) {
 
   // Auto-zoom to keep action in frame — biased toward tighter view
   if (AUTO_ZOOM > 0) {
-    let maxDist = 180 * STAR_TYPE.orbitScale; // minimum view radius — scales with system size
+    let maxDist = 240 * STAR_TYPE.orbitScale; // minimum view radius — scales with system size
     // Check distance to nearest threats — only the closest 6, and reduced influence
     const threats = game.invaders
       .map(inv => dist(game.ship, inv))
       .sort((a,b) => a - b)
       .slice(0, 6);
     for (const td of threats) {
-      if (td < 500) maxDist = Math.max(maxDist, td * 0.55);
-      else if (td < 800) maxDist = Math.max(maxDist, td * 0.35);
+      if (td < 500) maxDist = Math.max(maxDist, td * 0.7);
+      else if (td < 800) maxDist = Math.max(maxDist, td * 0.5);
     }
     // Boss: keep in frame more aggressively
     if (game.boss && game.boss.alive) {
       const bd = dist(game.ship, game.boss);
-      if (bd < 600) maxDist = Math.max(maxDist, bd * 0.6);
+      if (bd < 600) maxDist = Math.max(maxDist, bd * 0.75);
     }
     // Check distance to nearest planet (reduced padding)
     for (const body of game.bodies) {
       const bd = dist(game.ship, body);
       if (bd < 400) maxDist = Math.max(maxDist, bd + body.radius + 30);
     }
-    // Target zoom: fit maxDist into 70% of screen half-width
-    const screenHalf = Math.min(canvas.width, canvas.height) * 0.5 * 0.70;
+    // Target zoom: fit maxDist into 58% of screen half-width
+    const screenHalf = Math.min(canvas.width, canvas.height) * 0.5 * 0.58;
     const targetZoom = clamp(screenHalf / maxDist, ZOOM_MIN, ZOOM_MAX);
     CAMERA_ZOOM = lerp(CAMERA_ZOOM, targetZoom, ZOOM_SPEED * dt);
   }
