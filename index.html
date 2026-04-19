@@ -518,9 +518,14 @@ canvas { display: block; cursor: crosshair; }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 10, patch: 2, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 11, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.11.0', date: '2026-04-19', changes: [
+    'NEW: Picket formation — 6+ drones cluster for 1.5s, lock into a formation, fire a coordinated volley every ~3.5s',
+    'NEW: Formation visuals — connecting web between members, pulsing centroid ring, member halo',
+    'TUNING: Formation mechanic gracefully degrades — volleys keep firing while 75%+ members alive; formation dissolves around ~35% survival',
+  ]},
   { version: '0.10.2', date: '2026-04-19', changes: [
     'NEW: Sign-in modal copy — explains anonymous vs Google and privacy posture',
     'NEW: Star-type intro card at the start of each run',
@@ -4353,6 +4358,267 @@ function getWaveTypes(wave) {
   return available;
 }
 
+// --- Formations ---
+// Formations are persistent, named groupings of ARH that form a recognizable unit.
+// Lifecycle: PENDING (cluster has been stable for <lockTime) → LOCKED (mechanic active
+// at ≥75% survival, visuals on) → DEGRADED (<75% alive, mechanic silenced but visuals
+// remain) → DISSOLVED (<35% alive or members drifted apart).
+const FORMATION_DEFS = {
+  picket: {
+    minMembers: 6,
+    memberType: 'drone',
+    lockTime: 1.5,
+    volleyCooldown: 3.5,
+    mechanicFloor: 0.75,   // ≥75% alive to fire mechanic
+    dissolveFloor: 0.35,   // <35% alive and it dissolves
+    maxSpread: 220,        // if member-to-centroid exceeds this, dissolve
+    name: 'PICKET',
+  },
+};
+
+function updateFormations(frameClusters, dt) {
+  if (!game) return;
+  if (!game.formations) game.formations = [];
+  if (!game._pendingFormations) game._pendingFormations = [];
+
+  // 1. Update existing formations
+  for (let fi = game.formations.length - 1; fi >= 0; fi--) {
+    const f = game.formations[fi];
+    const def = FORMATION_DEFS[f.type];
+    if (!def) { game.formations.splice(fi, 1); continue; }
+
+    // Filter alive members
+    const alive = f.members.filter(m => m && m.alive !== false && m.hp > 0);
+    // Recompute centroid
+    let cx = 0, cy = 0;
+    for (const m of alive) { cx += m.x; cy += m.y; }
+    if (alive.length > 0) { cx /= alive.length; cy /= alive.length; }
+
+    // Dissolve if too few remain or members drifted apart
+    const aliveRatio = alive.length / Math.max(1, f.originalCount);
+    let maxSpread = 0;
+    for (const m of alive) {
+      const d = Math.hypot(m.x - cx, m.y - cy);
+      if (d > maxSpread) maxSpread = d;
+    }
+    if (aliveRatio < def.dissolveFloor || maxSpread > def.maxSpread || alive.length < 3) {
+      for (const m of f.members) if (m && m._formation === f) m._formation = null;
+      // Dissolve poof
+      game.particles.emit(f.cx, f.cy, 10, '#888', 80, 0.3, 2);
+      game.formations.splice(fi, 1);
+      continue;
+    }
+
+    f.cx = cx; f.cy = cy;
+    f.aliveMembers = alive;
+    f.aliveCount = alive.length;
+    f.age = (f.age || 0) + dt;
+    f._pulseT = (f._pulseT || 0) + dt;
+
+    // Tag alive members
+    for (const m of alive) m._formation = f;
+
+    // Mechanic — graceful degradation. Fires while ≥75% alive; silenced below, but
+    // formation visuals persist.
+    const canFire = aliveRatio >= def.mechanicFloor;
+    if (canFire) {
+      f.mechanicTimer -= dt;
+      if (f.mechanicTimer <= 0) {
+        f.mechanicTimer = def.volleyCooldown + Math.random() * 0.8;
+        if (f.type === 'picket') firePicketVolley(f);
+      }
+    } else {
+      // Keep timer ready so coming back above 75% doesn't immediately fire
+      f.mechanicTimer = Math.max(f.mechanicTimer, def.volleyCooldown * 0.6);
+    }
+  }
+
+  // 2. Promote pending clusters into formations
+  // Age existing pending entries — drop any not observed this frame
+  for (const p of game._pendingFormations) p._observed = false;
+
+  for (const cluster of frameClusters) {
+    // Pull out same-type unassigned members
+    const droneMembers = cluster.members
+      .map(idx => game.invaders[idx])
+      .filter(m => m && m.typeName === 'drone' && !m._formation);
+    if (droneMembers.length < FORMATION_DEFS.picket.minMembers) continue;
+
+    // Match to an existing pending entry by proximity (within 140 units)
+    let pending = null;
+    for (const p of game._pendingFormations) {
+      if (Math.hypot(p.cx - cluster.cx, p.cy - cluster.cy) < 140) { pending = p; break; }
+    }
+    if (pending) {
+      pending._observed = true;
+      pending.cx = cluster.cx;
+      pending.cy = cluster.cy;
+      pending.members = droneMembers;
+      pending.time += dt;
+      if (pending.time >= FORMATION_DEFS.picket.lockTime) {
+        // Promote!
+        const f = {
+          id: Math.random().toString(36).slice(2, 8),
+          type: 'picket',
+          members: droneMembers.slice(),
+          aliveMembers: droneMembers.slice(),
+          aliveCount: droneMembers.length,
+          originalCount: droneMembers.length,
+          cx: cluster.cx, cy: cluster.cy,
+          age: 0, _pulseT: 0,
+          mechanicTimer: FORMATION_DEFS.picket.volleyCooldown,
+          lockFlash: 1.0,
+        };
+        game.formations.push(f);
+        for (const m of droneMembers) m._formation = f;
+        // Lock effect
+        game.bossSubMessage = 'PICKET FORMED';
+        game.bossSubMessageTimer = 2;
+        game.particles.emit(cluster.cx, cluster.cy, 22, '#fff', 180, 0.5, 3);
+        game.particles.emit(cluster.cx, cluster.cy, 14, '#fe8', 140, 0.7, 4);
+        try { playSound('reproduce'); } catch (e) {}
+        // Remove pending entry
+        const idx = game._pendingFormations.indexOf(pending);
+        if (idx >= 0) game._pendingFormations.splice(idx, 1);
+      }
+    } else {
+      game._pendingFormations.push({
+        cx: cluster.cx, cy: cluster.cy,
+        members: droneMembers,
+        time: 0,
+        _observed: true,
+      });
+    }
+  }
+
+  // Drop unobserved pending entries — the cluster broke up before locking
+  for (let i = game._pendingFormations.length - 1; i >= 0; i--) {
+    if (!game._pendingFormations[i]._observed) game._pendingFormations.splice(i, 1);
+  }
+}
+
+function drawFormations(ctx, cam) {
+  if (!game || !game.formations || game.formations.length === 0) return;
+  const hw = canvas.width / 2, hh = canvas.height / 2;
+  for (const f of game.formations) {
+    const members = f.aliveMembers || [];
+    if (members.length === 0) continue;
+    const def = FORMATION_DEFS[f.type] || FORMATION_DEFS.picket;
+    const aliveRatio = f.aliveCount / Math.max(1, f.originalCount);
+    const isFiring = aliveRatio >= def.mechanicFloor;
+
+    const cx = f.cx - cam.x + hw;
+    const cy = f.cy - cam.y + hh;
+
+    // Pulsing centroid ring — radius scales gently with the formation's spread
+    let maxR = 40;
+    for (const m of members) {
+      const d = Math.hypot(m.x - f.cx, m.y - f.cy);
+      if (d > maxR) maxR = d;
+    }
+    const pulse = (Math.sin((f._pulseT || 0) * 3.2) + 1) * 0.5;
+    const ringAlpha = (isFiring ? 0.35 : 0.18) + pulse * 0.15;
+    const ringColor = isFiring ? '#fe8' : '#8ab';
+    ctx.save();
+    ctx.strokeStyle = ringColor;
+    ctx.globalAlpha = ringAlpha;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 6]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR + 14 + pulse * 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Connecting web — each member drawn to its two nearest neighbors in the formation
+    ctx.globalAlpha = (isFiring ? 0.32 : 0.16) + pulse * 0.08;
+    ctx.strokeStyle = ringColor;
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      // Find two nearest neighbors
+      let n1 = null, n2 = null, d1 = Infinity, d2 = Infinity;
+      for (let j = 0; j < members.length; j++) {
+        if (i === j) continue;
+        const o = members[j];
+        const d = Math.hypot(m.x - o.x, m.y - o.y);
+        if (d < d1) { d2 = d1; n2 = n1; d1 = d; n1 = o; }
+        else if (d < d2) { d2 = d; n2 = o; }
+      }
+      const msx = m.x - cam.x + hw, msy = m.y - cam.y + hh;
+      if (n1) {
+        ctx.moveTo(msx, msy);
+        ctx.lineTo(n1.x - cam.x + hw, n1.y - cam.y + hh);
+      }
+      if (n2 && d2 < 120) {
+        ctx.moveTo(msx, msy);
+        ctx.lineTo(n2.x - cam.x + hw, n2.y - cam.y + hh);
+      }
+    }
+    ctx.stroke();
+
+    // Member halo — faint outline ring around each member
+    ctx.globalAlpha = (isFiring ? 0.4 : 0.22) + pulse * 0.08;
+    ctx.strokeStyle = isFiring ? '#ffd' : '#9ac';
+    ctx.lineWidth = 1;
+    for (const m of members) {
+      const msx = m.x - cam.x + hw, msy = m.y - cam.y + hh;
+      ctx.beginPath();
+      ctx.arc(msx, msy, (m.size || 10) * 1.25 + 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // Volley flash — briefly brighten everything after firing
+    if (f.volleyFlash > 0) {
+      f.volleyFlash -= 0.016; // approximate; render is called each frame
+      const flash = Math.max(0, f.volleyFlash);
+      ctx.globalAlpha = flash * 0.9;
+      ctx.fillStyle = '#fe8';
+      ctx.beginPath();
+      ctx.arc(cx, cy, maxR + 22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Lock-in title flash — shown for ~1 second after the formation forms
+    if (f.lockFlash > 0) {
+      f.lockFlash -= 0.02;
+      const lf = Math.max(0, f.lockFlash);
+      ctx.globalAlpha = lf;
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 14px Courier New';
+      ctx.fillStyle = '#fe8';
+      ctx.shadowColor = '#fe8';
+      ctx.shadowBlur = 10;
+      ctx.fillText(def.name, cx, cy - maxR - 22);
+      ctx.shadowBlur = 0;
+      ctx.textAlign = 'left';
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+function firePicketVolley(f) {
+  if (!game || !game.ship || !game.ship.alive) return;
+  const a = Math.atan2(game.ship.y - f.cy, game.ship.x - f.cx);
+  const count = 5 + Math.min(3, Math.floor(f.aliveCount * 0.25));
+  for (let i = 0; i < count; i++) {
+    const spread = (i - (count - 1) / 2) * 0.18;
+    const speed = 115 + Math.random() * 35;
+    game.enemyBullets.push({
+      x: f.cx + Math.cos(a + spread) * 24,
+      y: f.cy + Math.sin(a + spread) * 24,
+      vx: Math.cos(a + spread) * speed,
+      vy: Math.sin(a + spread) * speed,
+      life: 3.5, damage: 5, color: '#fe8',
+    });
+  }
+  game.particles.emit(f.cx, f.cy, 14, '#fe8', 130, 0.4, 2);
+  try { playSound('enemy_shoot'); } catch (e) {}
+  f.volleyFlash = 0.4;
+}
+
 // Chain reaction: when an ARH dies in a dense cluster, nearby ARH take splash damage
 function chainReaction(deadInv, invaders, particles) {
   // Count nearby ARH
@@ -5805,6 +6071,8 @@ function initGame() {
     boss: null, bossMessage: null, bossMessageTimer: 0,
     bossSubMessage: null, bossSubMessageTimer: 0,
     waveMessage: null, waveMessageTimer: 0,
+    formations: [],          // active ARH formations (Picket, etc.)
+    _pendingFormations: [],  // candidate clusters building toward a lock
     pendingShipSwap: null,
     topSpeed: 0,
     achievements: {},
@@ -6486,11 +6754,12 @@ function updateGame(dt) {
   for (const inv of game.invaders) updateARH(inv, dt, planet1, game.ship, game.invaders, game.particles, game.wave);
 
   // Cluster swarm behavior: densely packed ARH form emergent "machines"
+  let _frameClusters = []; // hoisted so updateFormations can read this frame's clusters
   if (game.invaders.length > 7) {
     // Build cluster map
     const clusterMap = new Map(); // invader index -> cluster id
     let clusterId = 0;
-    const clusters = []; // { members: [indices], cx, cy, count }
+    const clusters = _frameClusters; // { members: [indices], cx, cy, count }
 
     for (let i = 0; i < game.invaders.length; i++) {
       if (clusterMap.has(i) || game.invaders[i].isBoss) continue;
@@ -6660,6 +6929,12 @@ function updateGame(dt) {
       }
     }
   }
+
+  // Formations — persistent, lockable entities that live on top of cluster detection.
+  // Unlike the cluster "machines" above (which evaluate every frame), formations persist
+  // across frames, lock in after a short pending period, and gracefully degrade when
+  // damaged rather than immediately disabling their mechanic.
+  updateFormations(_frameClusters, dt);
 
   // Remove dead
   for (let i = game.invaders.length-1; i >= 0; i--) {
@@ -7156,6 +7431,9 @@ function drawGame() {
   } else {
     game._clusters = [];
   }
+
+  // Formation web — drawn BEFORE invaders so the lattice sits beneath the ARH silhouettes
+  drawFormations(ctx, cam);
 
   // Invaders
   for (const inv of game.invaders) drawARH(ctx, inv, cam);
