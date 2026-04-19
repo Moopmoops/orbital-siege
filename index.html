@@ -10,7 +10,10 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #000; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: 'Courier New', monospace; }
-canvas { display: block; cursor: crosshair; }
+canvas { display: block; cursor: crosshair; transition: filter 0.5s ease; }
+canvas.aberration-subtle { filter: url(#chromatic-subtle); }
+canvas.aberration-mid    { filter: url(#chromatic-mid); }
+canvas.aberration-high   { filter: url(#chromatic-high); }
 #ui-overlay {
   position: fixed; top: 0; left: 0; width: 100%; pointer-events: none; z-index: 10;
   padding: 15px 20px; display: flex; justify-content: space-between; color: #0ff; font-size: 13px;
@@ -300,6 +303,75 @@ canvas { display: block; cursor: crosshair; }
 </head>
 <body>
 
+<!-- Chromatic aberration filters — applied to the canvas at runtime via classes -->
+<svg class="aberration-defs" style="position:absolute;width:0;height:0;pointer-events:none;" aria-hidden="true">
+  <defs>
+    <filter id="chromatic-subtle">
+      <feColorMatrix in="SourceGraphic" type="matrix" result="r"
+        values="1 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 1 0"/>
+      <feOffset in="r" dx="0.7" dy="0" result="rOff"/>
+      <feColorMatrix in="SourceGraphic" type="matrix" result="g"
+        values="0 0 0 0 0
+                0 1 0 0 0
+                0 0 0 0 0
+                0 0 0 1 0"/>
+      <feColorMatrix in="SourceGraphic" type="matrix" result="b"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 1 0 0
+                0 0 0 1 0"/>
+      <feOffset in="b" dx="-0.7" dy="0" result="bOff"/>
+      <feBlend in="rOff" in2="g" mode="screen" result="rg"/>
+      <feBlend in="rg" in2="bOff" mode="screen"/>
+    </filter>
+    <filter id="chromatic-mid">
+      <feColorMatrix in="SourceGraphic" type="matrix" result="r"
+        values="1 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 1 0"/>
+      <feOffset in="r" dx="2.0" dy="0" result="rOff"/>
+      <feColorMatrix in="SourceGraphic" type="matrix" result="g"
+        values="0 0 0 0 0
+                0 1 0 0 0
+                0 0 0 0 0
+                0 0 0 1 0"/>
+      <feColorMatrix in="SourceGraphic" type="matrix" result="b"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 1 0 0
+                0 0 0 1 0"/>
+      <feOffset in="b" dx="-2.0" dy="0" result="bOff"/>
+      <feBlend in="rOff" in2="g" mode="screen" result="rg"/>
+      <feBlend in="rg" in2="bOff" mode="screen"/>
+    </filter>
+    <filter id="chromatic-high">
+      <feColorMatrix in="SourceGraphic" type="matrix" result="r"
+        values="1 0 0 0 0
+                0 0 0 0 0
+                0 0 0 0 0
+                0 0 0 1 0"/>
+      <feOffset in="r" dx="4.0" dy="0" result="rOff"/>
+      <feColorMatrix in="SourceGraphic" type="matrix" result="g"
+        values="0 0 0 0 0
+                0 1 0 0 0
+                0 0 0 0 0
+                0 0 0 1 0"/>
+      <feColorMatrix in="SourceGraphic" type="matrix" result="b"
+        values="0 0 0 0 0
+                0 0 0 0 0
+                0 0 1 0 0
+                0 0 0 1 0"/>
+      <feOffset in="b" dx="-4.0" dy="0" result="bOff"/>
+      <feBlend in="rOff" in2="g" mode="screen" result="rg"/>
+      <feBlend in="rg" in2="bOff" mode="screen"/>
+    </filter>
+  </defs>
+</svg>
+
 <div id="start-screen">
   <div class="studio">FORWARD COMPATIBLE</div>
   <h1>ORBITAL SIEGE</h1>
@@ -518,9 +590,13 @@ canvas { display: block; cursor: crosshair; }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 11, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 12, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.12.0', date: '2026-04-19', changes: [
+    'NEW: Chromatic aberration — subtle ambient RGB split that intensifies as the ship loses health',
+    'NEW: ARH evasion AI — savvy enemies dodge bullets and try to outrun torpedoes; phantoms are nearly torpedo-proof until cornered, drones never flee',
+  ]},
   { version: '0.11.0', date: '2026-04-19', changes: [
     'NEW: Picket formation — 6+ drones cluster for 1.5s, lock into a formation, fire a coordinated volley every ~3.5s',
     'NEW: Formation visuals — connecting web between members, pulsing centroid ring, member halo',
@@ -4340,15 +4416,17 @@ class Ship {
 // ============================================================
 
 // ARH types by wave theme
+// `savvy` (0..1) controls evasion AI — how aggressively this ARH dodges bullets
+// and flees missiles. 0 = oblivious (drones), 1 = nearly torpedo-proof (phantoms).
 const ARH_TYPES = {
-  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0.08 },
-  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0.12 },
-  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0.06 },
-  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.35 },
-  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0.04 },
-  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.25 },
-  titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.5 },
-  overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 350, shootChance: 0.8, isBoss: true },
+  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0.08, savvy: 0.0 },
+  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0.12, savvy: 0.75 },
+  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0.06, savvy: 0.1 },
+  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.35, savvy: 0.5 },
+  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0.04, savvy: 0.1 },
+  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.25, savvy: 1.0 },
+  titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.5, savvy: 0.15 },
+  overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 350, shootChance: 0.8, isBoss: true, savvy: 0 },
 };
 
 function getWaveTypes(wave) {
@@ -5131,8 +5209,75 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   const aggroFade = dToShip < inv.aggroRange ? clamp(1 - (inv.aggroRange - dToShip) / inv.aggroRange, 0.05, 1) : 1;
   enforceCircularOrbit(inv, game.bodies, 0.04 * aggroFade);
 
-  // Speed limit
-  const spdLimit = inv.isBoss ? 180 : 120;
+  // --- Evasion AI ---
+  // Savvy ARH dodge bullets (perpendicular juke) and flee missiles (away + perpendicular drift).
+  // The most savvy types (phantoms, scouts) get a temporary speed-cap boost while fleeing,
+  // letting them almost-but-not-quite outrun a torpedo before the missile re-acquires.
+  const savvy = inv.type ? (inv.type.savvy || 0) : 0;
+  if (savvy > 0.05 && !inv.isBoss) {
+    const fleeRange = 90 + savvy * 260;
+    let fleeX = 0, fleeY = 0, fleeWeight = 0;
+
+    // Player bullets — perpendicular juke
+    if (game && game.bullets) {
+      for (const b of game.bullets) {
+        const dx = b.x - inv.x, dy = b.y - inv.y;
+        const d = Math.hypot(dx, dy);
+        if (d > fleeRange) continue;
+        const bspd = Math.hypot(b.vx, b.vy);
+        if (bspd < 1) continue;
+        // Bullet must be moving toward inv
+        const closing = -(dx * b.vx + dy * b.vy);
+        if (closing < 0) continue;
+        // Perpendicular distance the bullet would pass at
+        const cross = Math.abs(dx * b.vy - dy * b.vx) / bspd;
+        const hitWindow = (inv.size || 10) * 4;
+        if (cross > hitWindow) continue;
+        // Sidestep direction perpendicular to bullet velocity, away from current crossing
+        const perpX = -b.vy / bspd, perpY = b.vx / bspd;
+        const side = (dx * perpX + dy * perpY) > 0 ? 1 : -1;
+        const w = (1 - d / fleeRange) * (1 - cross / hitWindow);
+        fleeX += perpX * side * w;
+        fleeY += perpY * side * w;
+        if (w > fleeWeight) fleeWeight = w;
+      }
+    }
+
+    // Player missiles — flee directly + perpendicular drift to avoid predictable straight-line dodges
+    if (game && game.missiles) {
+      for (const m of game.missiles) {
+        const dx = m.x - inv.x, dy = m.y - inv.y;
+        const d = Math.hypot(dx, dy);
+        if (d > fleeRange * 1.4) continue;
+        const w = (1 - d / (fleeRange * 1.4)) * 1.6; // missiles weighted higher than bullets
+        const dn = d > 0.001 ? d : 0.001;
+        // Pure flee component
+        fleeX -= (dx / dn) * w;
+        fleeY -= (dy / dn) * w;
+        // Drift component — alternates per-ARH and over time so missiles can't predict
+        const phase = Math.sin((game.time || 0) * 1.2 + (inv.spawnTime || 0) * 7.3);
+        const perpX = -dy / dn, perpY = dx / dn;
+        fleeX += perpX * phase * w * 0.4;
+        fleeY += perpY * phase * w * 0.4;
+        if (w > fleeWeight) fleeWeight = w;
+      }
+    }
+
+    if (fleeWeight > 0) {
+      const thrust = 220 * savvy * fleeWeight;
+      const fn = Math.hypot(fleeX, fleeY);
+      if (fn > 0.01) {
+        inv.vx += (fleeX / fn) * thrust * dt;
+        inv.vy += (fleeY / fn) * thrust * dt;
+      }
+      inv._fleeingTimer = 0.4; // keep speed-cap boost active for a moment after threat passes
+    }
+  }
+  if (inv._fleeingTimer > 0) inv._fleeingTimer -= dt;
+
+  // Speed limit — savvy ARH get a brief cap boost while actively fleeing
+  let spdLimit = inv.isBoss ? 180 : 120;
+  if (inv._fleeingTimer > 0) spdLimit *= 1 + savvy * 0.6;
   const spd = Math.hypot(inv.vx, inv.vy);
   if (spd > spdLimit) { inv.vx = (inv.vx/spd)*spdLimit; inv.vy = (inv.vy/spd)*spdLimit; }
 
@@ -7110,6 +7255,7 @@ function updateGame(dt) {
   if (game.bossMessageTimer > 0) game.bossMessageTimer -= dt;
   if (game.bossSubMessageTimer > 0) game.bossSubMessageTimer -= dt;
   if (game.starIntro && game.starIntro.timer > 0) game.starIntro.timer -= dt;
+  updateAberrationLevel();
   if (game.waveMessageTimer > 0) game.waveMessageTimer -= dt;
 
   updateHUD();
@@ -8293,6 +8439,7 @@ function togglePauseLeaderboard() {
 function gameOver() {
   if (gameMode !== 'ranked') return;
   gameRunning = false;
+  setAberrationLevel('off');
   if (document.pointerLockElement) document.exitPointerLock();
   bulletToggle = false; torpedoToggle = false; laserToggle = false; keys['e'] = false; keys['q'] = false;
 
@@ -8650,8 +8797,30 @@ function startGame() {
     timer: 4.5,
   };
   gameRunning = true;
+  setAberrationLevel('subtle');
   buildDebugPanel();
   console.log('Game started with ship:', selectedShipType, 'mode:', gameMode, 'invaders:', game.invaders.length);
+}
+
+// --- Chromatic aberration ---
+// Applied via SVG filter on the canvas element. Three pre-defined intensities:
+// subtle (always on during play), mid (~30-60% HP), high (<30% HP).
+let _currentAberration = null;
+function setAberrationLevel(level) {
+  if (_currentAberration === level) return;
+  _currentAberration = level;
+  const c = document.getElementById('gameCanvas');
+  if (!c) return;
+  c.classList.remove('aberration-subtle', 'aberration-mid', 'aberration-high');
+  if (level && level !== 'off') c.classList.add('aberration-' + level);
+}
+function updateAberrationLevel() {
+  if (!gameRunning || !game || !game.ship) { setAberrationLevel('off'); return; }
+  if (!game.ship.alive) { setAberrationLevel('high'); return; }
+  const hpFrac = game.ship.hp / game.ship.maxHp;
+  if (hpFrac < 0.3) setAberrationLevel('high');
+  else if (hpFrac < 0.6) setAberrationLevel('mid');
+  else setAberrationLevel('subtle');
 }
 
 // --- Ship Swap Overlay (V key) ---
