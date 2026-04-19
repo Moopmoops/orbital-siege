@@ -649,9 +649,16 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 13, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 14, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.14.0', date: '2026-04-19', changes: [
+    'NEW: Each ARH type has a signature attack — scout burst, brute heavy shell, stinger fan, phantom fast dart, titan giant slug, drone/hive single shot',
+    'TUNING: Enemy speed cap raised — fastest ARH (phantom fleeing) now within ~5 units of torpedo speed',
+    'TUNING: Base speeds bumped per type so all enemies feel faster',
+    'TUNING: Evasion juke thrust up ~45% — savvy ARH dodge bullets more visibly',
+    'TUNING: Projectiles live longer on screen — enemy bullets 2.0→4.5s, boss spread 3→5s, Picket volley 3.5→5.5s, torpedoes 8→10s',
+  ]},
   { version: '0.13.1', date: '2026-04-19', changes: [
     'TUNING: ARH are 5× larger when Wide Camera is on — readable at zoom without sacrificing the wide view',
     'FIX: Laser now shows ACTIVE when on but not hitting a target, FIRING only when actually beaming an enemy',
@@ -2110,7 +2117,7 @@ let BULLET_LIFE = 10;
 let FIRE_RATE = 0.015;
 let MISSILE_SPEED = 300;
 let MISSILE_TURN = 5.0;
-let MISSILE_LIFE = 8.0;
+let MISSILE_LIFE = 10.0;
 const MISSILE_COOLDOWN = 0.18;
 let TORPEDO_SPLASH = 80;
 let LASER_RANGE = 250;
@@ -4526,13 +4533,13 @@ class Ship {
 // `savvy` (0..1) controls evasion AI — how aggressively this ARH dodges bullets
 // and flees missiles. 0 = oblivious (drones), 1 = nearly torpedo-proof (phantoms).
 const ARH_TYPES = {
-  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0.14, savvy: 0.0 },
-  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0.18, savvy: 0.75 },
-  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0.11, savvy: 0.1 },
-  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.42, savvy: 0.5 },
-  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0.08, savvy: 0.1 },
-  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.32, savvy: 1.0 },
-  titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.58, savvy: 0.15 },
+  drone:    { name: 'Drone',    hpBase: 15, speedBase: 80,  shape: 'diamond',  colorH: 45,  shootChance: 0.14, savvy: 0.0 },
+  scout:    { name: 'Scout',    hpBase: 12, speedBase: 135, shape: 'tri',      colorH: 25,  shootChance: 0.18, savvy: 0.75 },
+  brute:    { name: 'Brute',    hpBase: 40, speedBase: 55,  shape: 'hex',      colorH: 220, shootChance: 0.11, savvy: 0.1 },
+  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 100, shape: 'arrow',    colorH: 270, shootChance: 0.42, savvy: 0.5 },
+  hive:     { name: 'Hive',     hpBase: 50, speedBase: 40,  shape: 'octagon',  colorH: 55,  shootChance: 0.08, savvy: 0.1 },
+  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 160, shape: 'crescent', colorH: 190, shootChance: 0.32, savvy: 1.0 },
+  titan:    { name: 'Titan',    hpBase: 80, speedBase: 40,  shape: 'star6',    colorH: 330, shootChance: 0.58, savvy: 0.15 },
   overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 350, shootChance: 0.8, isBoss: true, savvy: 0 },
 };
 
@@ -4781,6 +4788,57 @@ function drawFormations(ctx, cam) {
 
     ctx.globalAlpha = 1;
     ctx.restore();
+  }
+}
+
+// Each ARH type has a signature shot pattern so combat reads distinctly.
+// `size` on the bullet is a visual/collision multiplier used by the enemy bullet
+// draw code — heavier shells from brutes/titans look and hit differently than
+// a phantom's fast dart.
+function fireARHShot(inv, aimAngle, accuracy, baseDmg) {
+  const t = inv.typeName;
+  const shake = (1 - accuracy) * 0.8;
+  const sa = (off) => aimAngle + off + (Math.random() - 0.5) * shake * 0.35;
+  const push = (vx, vy, life, damage, color, size) => {
+    game.enemyBullets.push({
+      x: inv.x, y: inv.y,
+      vx: inv.vx + vx, vy: inv.vy + vy,
+      life, damage, color, size: size || 1,
+    });
+  };
+
+  if (t === 'scout') {
+    // Rapid tight burst — 3 bullets close together
+    for (let i = 0; i < 3; i++) {
+      const off = (i - 1) * 0.06;
+      push(Math.cos(sa(off)) * 160, Math.sin(sa(off)) * 160, 4.5, baseDmg, '#f88', 1);
+    }
+  } else if (t === 'brute') {
+    // Heavy slow shell — single big blue slug
+    const ang = sa(0);
+    push(Math.cos(ang) * 85, Math.sin(ang) * 85, 6.5, Math.round(baseDmg * 2.5), '#6af', 1.9);
+  } else if (t === 'stinger') {
+    // Wide 5-bullet fan
+    for (let i = -2; i <= 2; i++) {
+      const off = i * 0.18;
+      push(Math.cos(sa(off)) * 135, Math.sin(sa(off)) * 135, 4.5, baseDmg, '#f4f', 1);
+    }
+  } else if (t === 'phantom') {
+    // Fast single dart — harder to dodge but low damage
+    const ang = sa(0);
+    push(Math.cos(ang) * 195, Math.sin(ang) * 195, 4.0, baseDmg, '#a4f', 0.85);
+  } else if (t === 'titan') {
+    // Artillery slug — huge, slow, massive damage
+    const ang = sa(0);
+    push(Math.cos(ang) * 105, Math.sin(ang) * 105, 7.0, Math.round(baseDmg * 3.0), '#fc4', 2.4);
+  } else if (t === 'hive') {
+    // Soft long-range lob — pairs well with hives being support nuclei
+    const ang = sa(0);
+    push(Math.cos(ang) * 115, Math.sin(ang) * 115, 5.5, Math.max(2, Math.round(baseDmg * 0.7)), '#fa0', 1.1);
+  } else {
+    // Drone / default — single aimed shot
+    const ang = sa(0);
+    push(Math.cos(ang) * 125, Math.sin(ang) * 125, 4.5, baseDmg, '#f66', 1);
   }
 }
 
@@ -5235,28 +5293,18 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     }
   }
 
-  // Shooting (later waves)
+  // Shooting (later waves) — each ARH type has a signature attack pattern
   if (ship.alive && inv.shootChance > 0 && wave >= 3) {
     inv.shootTimer -= dt;
     if (inv.shootTimer <= 0) {
       const d = dist(inv, ship);
       const accuracy = clamp((wave - 3) / 10, 0.1, 0.8);
-      const shootRange = inv.typeName === 'stinger' ? 500 : 400;
+      const shootRange = inv.typeName === 'stinger' ? 500 : inv.typeName === 'titan' ? 550 : 400;
       const shootAccuracy = inv.typeName === 'stinger' ? accuracy * 1.5 : accuracy;
       if (d < shootRange && Math.random() < inv.shootChance * clamp(shootAccuracy, 0, 0.95)) {
         const a = angle(inv, ship);
-        const spread = (1 - accuracy) * 1.0;
-        const sa = a + (Math.random()-0.5)*spread;
-        let bulletColor = '#f66';
-        if (inv.typeName === 'stinger') bulletColor = '#f4f';
-        else if (inv.typeName === 'phantom') bulletColor = '#a4f';
-        else if (inv.typeName === 'titan') bulletColor = '#fa4';
-        game.enemyBullets.push({
-          x: inv.x, y: inv.y,
-          vx: inv.vx + Math.cos(sa)*120, vy: inv.vy + Math.sin(sa)*120,
-          life: 2.0, damage: 3 + Math.floor(wave/4),
-          color: bulletColor
-        });
+        const base = 3 + Math.floor(wave / 4);
+        fireARHShot(inv, a, accuracy, base);
         playSound('enemy_shoot');
         particles.emitDir(inv.x, inv.y, 3, '#f44', a, 0.3, 100, 0.15, 1);
       }
@@ -5384,7 +5432,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     }
 
     if (fleeWeight > 0) {
-      const thrust = 220 * savvy * fleeWeight;
+      const thrust = 320 * savvy * fleeWeight;
       const fn = Math.hypot(fleeX, fleeY);
       if (fn > 0.01) {
         inv.vx += (fleeX / fn) * thrust * dt;
@@ -5395,8 +5443,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   }
   if (inv._fleeingTimer > 0) inv._fleeingTimer -= dt;
 
-  // Speed limit — savvy ARH get a brief cap boost while actively fleeing
-  let spdLimit = inv.isBoss ? 180 : 120;
+  // Speed limit — fastest fleeing ARH (phantom) tops out ~5 units below torpedo speed (300)
+  let spdLimit = inv.isBoss ? 220 : 185;
   if (inv._fleeingTimer > 0) spdLimit *= 1 + savvy * 0.6;
   const spd = Math.hypot(inv.vx, inv.vy);
   if (spd > spdLimit) { inv.vx = (inv.vx/spd)*spdLimit; inv.vy = (inv.vy/spd)*spdLimit; }
@@ -7008,7 +7056,9 @@ function updateGame(dt) {
       if (dist(b, body) < body.radius) { game.enemyBullets.splice(i, 1); b.life = -1; break; }
     }
     if (b.life < 0) continue;
-    if (game.ship.alive && dist(b, game.ship) < SHIP_SIZE + 3) {
+    // Larger shells hit from further away — matches their bigger visual footprint
+    const bulletR = 3 * (b.size || 1);
+    if (game.ship.alive && dist(b, game.ship) < SHIP_SIZE + bulletR) {
       game.ship.takeDamage(b.damage, game.particles);
       game.enemyBullets.splice(i, 1);
     }
@@ -7705,26 +7755,28 @@ function drawGame() {
   for (const inv of game.invaders) drawARH(ctx, inv, cam);
 
   // Enemy bullets — distinct pulsing red threat glow so they read as "avoid me"
-  // separately from the player's bullets and friendly projectiles.
+  // separately from the player's bullets and friendly projectiles. `size` on the
+  // bullet scales its visual/collision footprint so heavy slugs look genuinely heavy.
   const ebPulse = 0.5 + 0.5 * Math.sin((game.time || 0) * 6);
   for (const b of game.enemyBullets) {
     const sx = b.x - cam.x + canvas.width/2, sy = b.y - cam.y + canvas.height/2;
     const coreColor = b.color || '#fe8';
+    const s = b.size || 1;
     // Red warning halo — outer ring, pulses
-    ctx.globalAlpha = 0.25 + 0.25 * ebPulse;
+    ctx.globalAlpha = (0.25 + 0.25 * ebPulse) * Math.min(1, 0.7 + s * 0.3);
     ctx.fillStyle = '#f44';
-    ctx.beginPath(); ctx.arc(sx, sy, 10 + ebPulse * 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx, sy, (10 + ebPulse * 2) * s, 0, Math.PI * 2); ctx.fill();
     // Inner bright halo
     ctx.globalAlpha = 0.55;
     ctx.fillStyle = '#f66';
-    ctx.beginPath(); ctx.arc(sx, sy, 6.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx, sy, 6.5 * s, 0, Math.PI * 2); ctx.fill();
     // Core — keeps the original color so varied bullet types still read visually
     ctx.globalAlpha = 1;
     ctx.fillStyle = coreColor;
-    ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI * 2); ctx.fill();
-    // Bright white pin-hot center
+    ctx.beginPath(); ctx.arc(sx, sy, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    // Bright white pin-hot center — scales less so dense shots still read as points
     ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(sx, sy, 1.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(sx, sy, 1.5 * Math.min(s, 1.4), 0, Math.PI * 2); ctx.fill();
   }
 
   // Bullets
