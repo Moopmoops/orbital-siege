@@ -4854,7 +4854,7 @@ function firePicketVolley(f) {
       y: f.cy + Math.sin(a + spread) * 24,
       vx: Math.cos(a + spread) * speed,
       vy: Math.sin(a + spread) * speed,
-      life: 3.5, damage: 5, color: '#fe8',
+      life: 5.5, damage: 5, color: '#fe8',
     });
   }
   game.particles.emit(f.cx, f.cy, 14, '#fe8', 130, 0.4, 2);
@@ -5136,7 +5136,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
           game.enemyBullets.push({
             x: inv.x, y: inv.y,
             vx: inv.vx + Math.cos(sa)*120, vy: inv.vy + Math.sin(sa)*120,
-            life: 3.0, damage: 8 + Math.floor(wave/3),
+            life: 5.0, damage: 8 + Math.floor(wave/3),
             color: '#f84'
           });
         }
