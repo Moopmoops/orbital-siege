@@ -164,6 +164,29 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 #profile-modal .profile-close { text-align: center; }
 #profile-modal .profile-close button { background: transparent; border: 1px solid #0ff; color: #0ff; font-family: 'Courier New', monospace; font-size: 12px; padding: 8px 28px; cursor: pointer; letter-spacing: 3px; border-radius: 4px; }
 #profile-modal .profile-close button:hover { background: rgba(0,255,255,0.1); }
+
+/* Settings slide-out panel */
+#settings-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 320px; max-width: 90vw;
+  background: rgba(0,10,28,0.97); border-left: 1px solid rgba(0,255,255,0.3);
+  color: #8cf; font-family: 'Courier New', monospace;
+  padding: 24px 22px;
+  transform: translateX(100%); transition: transform 0.3s ease;
+  z-index: 310; overflow-y: auto; pointer-events: none;
+  box-shadow: -8px 0 24px rgba(0,0,0,0.4);
+}
+#settings-panel.show { transform: translateX(0); pointer-events: all; }
+#settings-panel .settings-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid rgba(0,255,255,0.2); }
+#settings-panel .settings-title { color: #0ff; font-size: 14px; letter-spacing: 5px; }
+#settings-panel .settings-close { background: transparent; border: 1px solid #888; color: #aaa; width: 28px; height: 28px; cursor: pointer; font-size: 18px; line-height: 1; border-radius: 4px; }
+#settings-panel .settings-close:hover { background: rgba(255,80,80,0.1); border-color: #f88; color: #f88; }
+#settings-panel .settings-section-label { color: #68a; font-size: 9px; letter-spacing: 3px; margin-bottom: 6px; }
+#settings-panel .settings-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin-bottom: 4px; background: rgba(0,20,40,0.5); border-left: 2px solid rgba(0,255,255,0.3); }
+#settings-panel .settings-label { color: #9cd; font-size: 11px; letter-spacing: 1px; }
+#settings-panel .settings-toggle { background: transparent; border: 1px solid #0ff; color: #0ff; font-family: 'Courier New', monospace; font-size: 10px; padding: 4px 14px; cursor: pointer; letter-spacing: 2px; border-radius: 3px; min-width: 50px; }
+#settings-panel .settings-toggle:hover { background: rgba(0,255,255,0.1); }
+#settings-panel .settings-toggle.off { border-color: #666; color: #888; }
+#settings-panel .settings-footnote { color: #555; font-size: 9px; margin-top: 24px; font-style: italic; line-height: 1.5; }
 #ship-select {
   display: none; flex-direction: column; align-items: center; margin-top: 20px;
 }
@@ -396,6 +419,10 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <button class="start-btn" id="profile-btn" onclick="openProfileModal()">PROFILE</button>
     <button class="start-btn" id="fullscreen-btn" onclick="toggleFullscreen()" style="font-size:10px;padding:8px 16px;">⛶ FULLSCREEN</button>
   </div>
+  <div id="resume-section" style="margin-top:14px;font-family:'Courier New',monospace;font-size:11px;display:none;">
+    <div style="color:#4af;letter-spacing:2px;margin-bottom:6px;">CONTINUE WHERE YOU LEFT OFF</div>
+    <button id="resume-wave-btn" onclick="startFromResume()" style="pointer-events:all;cursor:pointer;font-family:'Courier New',monospace;font-size:13px;color:#0ff;background:rgba(0,255,255,0.1);border:2px solid #0ff;padding:8px 24px;letter-spacing:3px;border-radius:4px;"></button>
+  </div>
   <div id="checkpoint-section" style="margin-top:15px;font-family:'Courier New',monospace;font-size:11px;">
     <div style="color:#4af;letter-spacing:2px;margin-bottom:8px;">CHECKPOINTS</div>
     <div id="checkpoint-list"></div>
@@ -539,12 +566,34 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
   <div style="margin-top:8px;">
     <button onclick="openProfileModal()" style="pointer-events:all;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;color:#0ff;background:none;border:1px solid #0ff;padding:6px 16px;letter-spacing:2px;">PROFILE</button>
   </div>
+  <div style="margin-top:8px;">
+    <button onclick="toggleSettingsPanel()" style="pointer-events:all;cursor:pointer;font-family:'Courier New',monospace;font-size:11px;color:#0ff;background:none;border:1px solid #0ff;padding:6px 16px;letter-spacing:2px;">⚙ SETTINGS</button>
+  </div>
   <div id="pause-leaderboard" style="display:none;margin-top:10px;max-height:250px;overflow-y:auto;"></div>
   <button id="resume-btn" onclick="gamePaused=false;document.getElementById('pause-menu').style.display='none';" style="pointer-events:all;cursor:pointer;font-family:'Courier New',monospace;font-size:14px;color:#0ff;background:rgba(0,255,255,0.1);border:2px solid #0ff;padding:12px 32px;letter-spacing:3px;margin-top:25px;border-radius:6px;">RESUME</button>
   <div class="resume-hint">PRESS P OR TAP RESUME</div>
   <div id="pause-achievements" style="margin-top:20px;"></div>
 </div>
 <div id="boss-rush-picker"></div>
+
+<!-- Settings side panel — slides in from the right when opened from the pause menu -->
+<div id="settings-panel">
+  <div class="settings-header">
+    <div class="settings-title">SETTINGS</div>
+    <button class="settings-close" onclick="toggleSettingsPanel()" title="Close">×</button>
+  </div>
+  <div class="settings-section-label">VISUAL</div>
+  <div class="settings-row">
+    <span class="settings-label">Chromatic Aberration</span>
+    <button id="aberration-toggle-btn" class="settings-toggle" onclick="toggleAberrationEnabled()">ON</button>
+  </div>
+  <div class="settings-section-label" style="margin-top:18px;">CAMERA</div>
+  <div class="settings-row">
+    <span class="settings-label">Wide Camera</span>
+    <button id="settings-wide-camera-btn" class="settings-toggle" onclick="setWideCamera(!WIDE_CAMERA); syncSettingsPanel();">ON</button>
+  </div>
+  <div class="settings-footnote">More settings will appear here as new options are added.</div>
+</div>
 
 <div id="achievement-journal">
   <h1>ACHIEVEMENTS</h1>
@@ -566,12 +615,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
       <input type="text" id="profile-name-input" placeholder="DISPLAY NAME" maxlength="20">
       <button onclick="saveDisplayName()">SAVE</button>
     </div>
+    <div class="profile-explainer" id="profile-explainer">
+      <div class="exp-row"><span class="exp-label">ANONYMOUS</span><span class="exp-body">Your stats live in this browser. Clear site data or use another device and you'll start fresh.</span></div>
+      <div class="exp-row"><span class="exp-label">GOOGLE</span><span class="exp-body">Same stats, synced across your devices. We ask for your profile (your name) and nothing else — not your email.</span></div>
+      <div class="exp-promise">We don't contact players. No marketing. No ads. Ever. Your stats are yours — we only use them to show them back to you.</div>
+    </div>
     <div class="profile-signin" id="profile-signin">
-      <div class="profile-explainer">
-        <div class="exp-row"><span class="exp-label">ANONYMOUS</span><span class="exp-body">You are already signed in. Your stats live in this browser. If you clear site data or use another device, you'll start fresh.</span></div>
-        <div class="exp-row"><span class="exp-label">GOOGLE</span><span class="exp-body">Same stats, but synced across your devices. We ask for your profile (your name) and nothing else — not your email.</span></div>
-        <div class="exp-promise">We don't contact players. No marketing. No ads. Ever. Your stats are yours — we only use them to show them back to you.</div>
-      </div>
       <button class="signin-btn google" onclick="signInWithGoogle()">
         <svg width="16" height="16" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:8px;"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.836.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
         SIGN IN WITH GOOGLE
@@ -590,9 +639,19 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 12, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 13, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.13.0', date: '2026-04-19', changes: [
+    'DIFFICULTY: ARH spawn count scales more aggressively per wave (+7/wave instead of +4)',
+    'DIFFICULTY: ARH fire more often — light types bumped, fire-rate wave scaling stronger',
+    'GAMEPLAY: Stronger planet gravity pull — ARH cluster around planets more visibly again',
+    'CLARITY: Enemy bullets now have a distinct red pulsing glow so threats are easier to read',
+    'CLARITY: Off-screen enemy projectiles heading at the ship get a warning arrow at the screen edge',
+    'NEW: Settings panel (right slide-out from pause menu) — includes chromatic aberration toggle',
+    'NEW: Resume from last wave for signed-in players — profile tracks lastWave, start screen shows a RESUME button',
+    'UI: Profile explainer copy now shows to everyone (not just anonymous) so signed-in players see the privacy posture too',
+  ]},
   { version: '0.12.0', date: '2026-04-19', changes: [
     'NEW: Chromatic aberration — subtle ambient RGB split that intensifies as the ship loses health',
     'NEW: ARH evasion AI — savvy enemies dodge bullets and try to outrun torpedoes; phantoms are nearly torpedo-proof until cornered, drones never flee',
@@ -892,6 +951,37 @@ function updateCheckpointList() {
     html += `<button onclick="startFromCheckpoint(${w})" style="margin:3px;padding:5px 12px;background:transparent;border:1px solid #4af;color:#4af;font-family:'Courier New',monospace;font-size:10px;cursor:pointer;letter-spacing:1px;">WAVE ${w}</button>`;
   }
   container.innerHTML = html;
+}
+
+// Resume from the player's furthest wave reached — counts for leaderboard, no debug flag.
+// Uses currentProfile.bestWave (synced to Firebase) so signed-in players carry it
+// across devices. Anonymous players also get this via their anonymous profile.
+function updateResumeButton() {
+  const section = document.getElementById('resume-section');
+  const btn = document.getElementById('resume-wave-btn');
+  if (!section || !btn) return;
+  const resumeWave = currentProfile && currentProfile.bestWave ? currentProfile.bestWave : 0;
+  if (resumeWave >= 2) {
+    section.style.display = 'block';
+    btn.textContent = `▶ RESUME FROM WAVE ${resumeWave}`;
+  } else {
+    section.style.display = 'none';
+  }
+}
+function startFromResume() {
+  const resumeWave = currentProfile && currentProfile.bestWave ? currentProfile.bestWave : 1;
+  if (resumeWave < 2) { startGame(); return; }
+  // Kick off a normal ranked run, then jump to the resume wave.
+  if (!gameMode) gameMode = 'ranked';
+  selectedShipType = shipTypeKeys[shipSelectIndex];
+  startGame();
+  game.wave = resumeWave;
+  game.invaders = [];
+  game.boss = null;
+  for (let w = 1; w <= resumeWave; w++) expandSystem(w);
+  spawnWave();
+  game.bossMessage = `WAVE ${resumeWave}`;
+  game.bossMessageTimer = 2.5;
 }
 
 function startFromCheckpoint(wave) {
@@ -4419,13 +4509,13 @@ class Ship {
 // `savvy` (0..1) controls evasion AI — how aggressively this ARH dodges bullets
 // and flees missiles. 0 = oblivious (drones), 1 = nearly torpedo-proof (phantoms).
 const ARH_TYPES = {
-  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0.08, savvy: 0.0 },
-  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0.12, savvy: 0.75 },
-  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0.06, savvy: 0.1 },
-  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.35, savvy: 0.5 },
-  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0.04, savvy: 0.1 },
-  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.25, savvy: 1.0 },
-  titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.5, savvy: 0.15 },
+  drone:    { name: 'Drone',    hpBase: 15, speedBase: 50,  shape: 'diamond',  colorH: 45,  shootChance: 0.14, savvy: 0.0 },
+  scout:    { name: 'Scout',    hpBase: 12, speedBase: 80,  shape: 'tri',      colorH: 25,  shootChance: 0.18, savvy: 0.75 },
+  brute:    { name: 'Brute',    hpBase: 40, speedBase: 30,  shape: 'hex',      colorH: 220, shootChance: 0.11, savvy: 0.1 },
+  stinger:  { name: 'Stinger',  hpBase: 20, speedBase: 60,  shape: 'arrow',    colorH: 270, shootChance: 0.42, savvy: 0.5 },
+  hive:     { name: 'Hive',     hpBase: 50, speedBase: 20,  shape: 'octagon',  colorH: 55,  shootChance: 0.08, savvy: 0.1 },
+  phantom:  { name: 'Phantom',  hpBase: 18, speedBase: 90,  shape: 'crescent', colorH: 190, shootChance: 0.32, savvy: 1.0 },
+  titan:    { name: 'Titan',    hpBase: 80, speedBase: 15,  shape: 'star6',    colorH: 330, shootChance: 0.58, savvy: 0.15 },
   overlord: { name: 'Overlord', hpBase: 500, speedBase: 10, shape: 'star6', colorH: 350, shootChance: 0.8, isBoss: true, savvy: 0 },
 };
 
@@ -5140,7 +5230,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
         playSound('enemy_shoot');
         particles.emitDir(inv.x, inv.y, 3, '#f44', a, 0.3, 100, 0.15, 1);
       }
-      inv.shootTimer = rng(1.2, 3.0) / (1 + wave*0.05);
+      inv.shootTimer = rng(0.9, 2.2) / (1 + wave*0.09);
     }
   }
 
@@ -5207,7 +5297,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   // Strength reduces when aggroed so they can break orbit to chase
   const dToShip = ship.alive ? dist(inv, ship) : 9999;
   const aggroFade = dToShip < inv.aggroRange ? clamp(1 - (inv.aggroRange - dToShip) / inv.aggroRange, 0.05, 1) : 1;
-  enforceCircularOrbit(inv, game.bodies, 0.04 * aggroFade);
+  enforceCircularOrbit(inv, game.bodies, 0.14 * aggroFade);
 
   // --- Evasion AI ---
   // Savvy ARH dodge bullets (perpendicular juke) and flee missiles (away + perpendicular drift).
@@ -6385,7 +6475,7 @@ function spawnWave() {
 
   expandSystem(game.wave);
 
-  const count = game.waveSpawnCount + game.wave*4;
+  const count = game.waveSpawnCount + game.wave*7;
   const types = getWaveTypes(game.wave);
 
   // Boss wave — frequency depends on player setting
@@ -7584,17 +7674,27 @@ function drawGame() {
   // Invaders
   for (const inv of game.invaders) drawARH(ctx, inv, cam);
 
-  // Enemy bullets
+  // Enemy bullets — distinct pulsing red threat glow so they read as "avoid me"
+  // separately from the player's bullets and friendly projectiles.
+  const ebPulse = 0.5 + 0.5 * Math.sin((game.time || 0) * 6);
   for (const b of game.enemyBullets) {
     const sx = b.x - cam.x + canvas.width/2, sy = b.y - cam.y + canvas.height/2;
-    const ebColor = b.color || getPalette().enemyBullet;
-    ctx.fillStyle = ebColor;
-    ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI*2); ctx.fill();
-    // Bright glow halo for visibility
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = ebColor;
-    ctx.beginPath(); ctx.arc(sx, sy, 7, 0, Math.PI*2); ctx.fill();
+    const coreColor = b.color || '#fe8';
+    // Red warning halo — outer ring, pulses
+    ctx.globalAlpha = 0.25 + 0.25 * ebPulse;
+    ctx.fillStyle = '#f44';
+    ctx.beginPath(); ctx.arc(sx, sy, 10 + ebPulse * 2, 0, Math.PI * 2); ctx.fill();
+    // Inner bright halo
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#f66';
+    ctx.beginPath(); ctx.arc(sx, sy, 6.5, 0, Math.PI * 2); ctx.fill();
+    // Core — keeps the original color so varied bullet types still read visually
     ctx.globalAlpha = 1;
+    ctx.fillStyle = coreColor;
+    ctx.beginPath(); ctx.arc(sx, sy, 3.5, 0, Math.PI * 2); ctx.fill();
+    // Bright white pin-hot center
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(sx, sy, 1.5, 0, Math.PI * 2); ctx.fill();
   }
 
   // Bullets
@@ -7689,6 +7789,56 @@ function drawGame() {
         ctx.globalAlpha = 1;
         ctx.font = '10px Courier New'; ctx.fillStyle = col;
         ctx.fillText(label, edgeX+12, edgeY+3);
+      }
+    }
+
+    // Incoming projectile warnings — off-screen enemy bullets heading at the ship
+    // get a red pulsing arrow at the screen edge so the player knows where threats
+    // are coming from even when zoomed out or focused elsewhere.
+    if (game.ship.alive) {
+      const shipX = game.ship.x, shipY = game.ship.y;
+      const pulse = 0.55 + 0.45 * Math.sin((game.time || 0) * 8);
+      for (const b of game.enemyBullets) {
+        const bsx = b.x - cam.x + cx2, bsy = b.y - cam.y + cy2;
+        const bdx = bsx - cx2, bdy = bsy - cy2;
+        // On-screen bullets already draw their own threat glow — skip them here
+        if (Math.abs(bdx) <= visHalfX && Math.abs(bdy) <= visHalfY) continue;
+        // Is the bullet heading at the ship?
+        const rx = shipX - b.x, ry = shipY - b.y;
+        const relD = Math.hypot(rx, ry);
+        if (relD < 60 || relD > 1200) continue;
+        const bspd = Math.hypot(b.vx, b.vy);
+        if (bspd < 10) continue;
+        // Closest point of approach from b to ship
+        const closing = (rx * b.vx + ry * b.vy) / bspd; // positive = approaching
+        if (closing < 0) continue;
+        const crossMiss = Math.abs(rx * b.vy - ry * b.vx) / bspd;
+        if (crossMiss > 140) continue; // not actually heading at ship
+        // Time to closest approach (seconds)
+        const tta = closing / bspd;
+        if (tta > 2.5) continue; // only warn for imminent threats
+        // Draw red arrow at screen edge pointing from center toward projectile
+        const ang = Math.atan2(bsy - cy2, bsx - cx2);
+        const edgeX = clamp(bsx, margin, canvas.width - margin);
+        const edgeY = clamp(bsy, margin, canvas.height - margin);
+        const urgency = 1 - (tta / 2.5);
+        ctx.save();
+        ctx.globalAlpha = (0.55 + urgency * 0.35) * (0.7 + pulse * 0.3);
+        ctx.fillStyle = '#f44';
+        ctx.beginPath();
+        ctx.moveTo(edgeX + Math.cos(ang) * 12, edgeY + Math.sin(ang) * 12);
+        ctx.lineTo(edgeX + Math.cos(ang + 2.4) * 7, edgeY + Math.sin(ang + 2.4) * 7);
+        ctx.lineTo(edgeX + Math.cos(ang - 2.4) * 7, edgeY + Math.sin(ang - 2.4) * 7);
+        ctx.closePath();
+        ctx.fill();
+        // Pulsing outer ring for urgency
+        ctx.strokeStyle = '#f88';
+        ctx.lineWidth = 1.2;
+        ctx.globalAlpha = pulse * 0.5;
+        ctx.beginPath();
+        ctx.arc(edgeX, edgeY, 10 + pulse * 3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
       }
     }
   }
@@ -8115,6 +8265,7 @@ function initAuth() {
       currentUser = user;
       await loadOrCreateProfile(user);
       refreshProfileUI();
+      updateResumeButton();
     } else {
       // Signed out — immediately sign back in anonymously so stats always accrue
       try { await firebase.auth().signInAnonymously(); }
@@ -8192,6 +8343,8 @@ function refreshProfileUI() {
   if (bestScoreEl) bestScoreEl.textContent = String(currentProfile.bestScore || 0);
   if (bestWaveEl) bestWaveEl.textContent = String(currentProfile.bestWave || 0);
 
+  // Sign-in buttons only shown for anonymous users (they can link their account).
+  // The explainer text is always shown so signed-in players can still see the privacy posture.
   if (signinEl) signinEl.style.display = isAnon ? 'flex' : 'none';
   if (signoutEl) signoutEl.style.display = isAnon ? 'none' : 'block';
   if (nameRow) nameRow.style.display = 'flex';
@@ -8303,6 +8456,7 @@ async function recordGameEnd(score, wave) {
   if (updates.bestWave) currentProfile.bestWave = updates.bestWave;
   try { await firebase.database().ref('profiles/' + currentUser.uid).update(updates); }
   catch (e) { console.error('Profile update failed:', e); }
+  updateResumeButton();
 }
 
 // Flush on tab hide and page unload
@@ -8806,6 +8960,10 @@ function startGame() {
 // Applied via SVG filter on the canvas element. Three pre-defined intensities:
 // subtle (always on during play), mid (~30-60% HP), high (<30% HP).
 let _currentAberration = null;
+let ABERRATION_ENABLED = (() => {
+  try { const v = localStorage.getItem('orbital_aberration_enabled'); return v === null ? true : v === '1'; }
+  catch (e) { return true; }
+})();
 function setAberrationLevel(level) {
   if (_currentAberration === level) return;
   _currentAberration = level;
@@ -8815,12 +8973,41 @@ function setAberrationLevel(level) {
   if (level && level !== 'off') c.classList.add('aberration-' + level);
 }
 function updateAberrationLevel() {
+  if (!ABERRATION_ENABLED) { setAberrationLevel('off'); return; }
   if (!gameRunning || !game || !game.ship) { setAberrationLevel('off'); return; }
   if (!game.ship.alive) { setAberrationLevel('high'); return; }
   const hpFrac = game.ship.hp / game.ship.maxHp;
   if (hpFrac < 0.3) setAberrationLevel('high');
   else if (hpFrac < 0.6) setAberrationLevel('mid');
   else setAberrationLevel('subtle');
+}
+function toggleAberrationEnabled() {
+  ABERRATION_ENABLED = !ABERRATION_ENABLED;
+  try { localStorage.setItem('orbital_aberration_enabled', ABERRATION_ENABLED ? '1' : '0'); } catch (e) {}
+  // Force immediate re-evaluation rather than waiting for the next tick
+  _currentAberration = null;
+  updateAberrationLevel();
+  syncSettingsPanel();
+}
+
+// --- Settings panel ---
+function toggleSettingsPanel() {
+  const p = document.getElementById('settings-panel');
+  if (!p) return;
+  p.classList.toggle('show');
+  if (p.classList.contains('show')) syncSettingsPanel();
+}
+function syncSettingsPanel() {
+  const ab = document.getElementById('aberration-toggle-btn');
+  if (ab) {
+    ab.textContent = ABERRATION_ENABLED ? 'ON' : 'OFF';
+    ab.classList.toggle('off', !ABERRATION_ENABLED);
+  }
+  const wc = document.getElementById('settings-wide-camera-btn');
+  if (wc) {
+    wc.textContent = WIDE_CAMERA ? 'ON' : 'OFF';
+    wc.classList.toggle('off', !WIDE_CAMERA);
+  }
 }
 
 // --- Ship Swap Overlay (V key) ---
