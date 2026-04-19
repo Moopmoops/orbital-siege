@@ -493,10 +493,6 @@ canvas { display: block; cursor: crosshair; }
         <svg width="16" height="16" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:8px;"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.836.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
         SIGN IN WITH GOOGLE
       </button>
-      <button class="signin-btn apple" onclick="signInWithApple()">
-        <svg width="14" height="16" viewBox="0 0 14 16" style="vertical-align:middle;margin-right:8px;"><path fill="#fff" d="M11.182 8.486c-.016-1.803 1.474-2.668 1.542-2.71-.84-1.232-2.147-1.4-2.614-1.42-1.114-.112-2.173.656-2.737.656-.575 0-1.444-.64-2.373-.622-1.22.018-2.347.71-2.976 1.802-1.266 2.197-.324 5.45.91 7.237.6.876 1.32 1.862 2.262 1.826.91-.037 1.254-.593 2.354-.593 1.1 0 1.41.593 2.373.576.98-.017 1.602-.896 2.203-1.775.694-1.02.982-2.01.998-2.061-.022-.01-1.918-.736-1.942-2.916zm-1.88-5.36c.506-.61.847-1.46.754-2.304-.728.03-1.611.484-2.135 1.093-.47.539-.88 1.402-.769 2.23.812.062 1.643-.41 2.15-1.018z"/></svg>
-        SIGN IN WITH APPLE
-      </button>
     </div>
     <div class="profile-signout" id="profile-signout" style="display:none;">
       <button onclick="signOutUser()" style="background:transparent;border:1px solid #844;color:#c88;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">SIGN OUT</button>
@@ -511,9 +507,14 @@ canvas { display: block; cursor: crosshair; }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 10, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 10, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.10.1', date: '2026-04-19', changes: [
+    'FIX: Ship rotation was blocked on some sides when camera auto-panned — now rotates freely in all directions',
+    'PRIVACY: Google sign-in no longer requests email access (only profile name)',
+    'NEW: Apple sign-in hidden until provider is fully configured',
+  ]},
   { version: '0.10.0', date: '2026-04-19', changes: [
     'NEW: Player profiles — anonymous by default, link to Google or Apple for cross-device sync',
     'NEW: Playtime tracking — counts active time only (excludes pause + background tabs)',
@@ -3490,10 +3491,17 @@ class Ship {
   }
   update(dt, particles) {
     if (!this.alive) return;
-    // Aim at mouse
-    const wmx = mouseX - canvas.width/2 + game.cam.x;
-    const wmy = mouseY - canvas.height/2 + game.cam.y;
-    this.angle = Math.atan2(wmy - this.y, wmx - this.x);
+    // Aim: when pointer-locked, use the virtual joystick direction directly so camera pan
+    // can't block any rotation direction. When not locked (menu/touch), fall back to cursor.
+    if (document.pointerLockElement === canvas) {
+      if (Math.hypot(virtualAimX, virtualAimY) > 1) {
+        this.angle = Math.atan2(virtualAimY, virtualAimX);
+      }
+    } else {
+      const wmx = mouseX - canvas.width/2 + game.cam.x;
+      const wmy = mouseY - canvas.height/2 + game.cam.y;
+      this.angle = Math.atan2(wmy - this.y, wmx - this.x);
+    }
 
     // Orbital thrust — W = prograde (accelerate), S = retrograde (lower orbit), Shift = boost
     this.thrustOn = false;
@@ -7634,20 +7642,23 @@ async function loadOrCreateProfile(user) {
     currentProfile = snap.val();
     currentProfile.lastSeen = now;
     if (!user.isAnonymous) {
-      currentProfile.email = user.email || currentProfile.email || null;
       currentProfile.displayName = currentProfile.displayName || user.displayName || 'PLAYER';
       currentProfile.provider = (user.providerData[0] && user.providerData[0].providerId) || currentProfile.provider || 'anonymous';
     }
-    await ref.update({
+    // Wipe any legacy email field — we no longer collect emails.
+    const updates = {
       lastSeen: now,
-      email: currentProfile.email || null,
       displayName: currentProfile.displayName,
       provider: currentProfile.provider,
-    });
+    };
+    if (currentProfile.email !== undefined && currentProfile.email !== null) {
+      updates.email = null;
+      delete currentProfile.email;
+    }
+    await ref.update(updates);
   } else {
     currentProfile = {
       displayName: user.displayName || 'PLAYER',
-      email: user.email || null,
       provider: (user.providerData[0] && user.providerData[0].providerId) || 'anonymous',
       createdAt: now,
       lastSeen: now,
@@ -7743,7 +7754,8 @@ async function linkOrSignIn(provider) {
 function signInWithGoogle() {
   const p = new firebase.auth.GoogleAuthProvider();
   p.addScope('profile');
-  p.addScope('email');
+  // We intentionally do NOT request the 'email' scope — we don't need it and
+  // omitting it makes the consent screen less intrusive for players.
   linkOrSignIn(p);
 }
 
