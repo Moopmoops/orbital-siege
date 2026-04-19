@@ -649,9 +649,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 14, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 14, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.14.1', date: '2026-04-19', changes: [
+    'NEW: Speed-reactive camera — zooms in slightly when still, pulls back as the ship accelerates or moves fast. Thrust intent anticipates zoom-out even before velocity builds.',
+  ]},
   { version: '0.14.0', date: '2026-04-19', changes: [
     'NEW: Each ARH type has a signature attack — scout burst, brute heavy shell, stinger fan, phantom fast dart, titan giant slug, drone/hive single shot',
     'TUNING: Enemy speed cap raised — fastest ARH (phantom fleeing) now within ~5 units of torpedo speed',
@@ -7357,9 +7360,30 @@ function updateGame(dt) {
 
   // Auto-zoom to keep action in frame — biased toward tighter view
   if (AUTO_ZOOM > 0) {
+    // --- Speed-reactive zoom ---
+    // Thrust intent: grows while the player holds accel keys, decays slowly when
+    // released so a quick tap doesn't swing the camera. The decay acts as the
+    // "buffer" — short presses barely move the view, sustained presses pull it out.
+    const accelHeld = !!(keys['w'] || keys['arrowup'] || keys['s'] || keys['arrowdown'] || keys['shift']);
+    if (game._thrustIntent === undefined) game._thrustIntent = 0;
+    if (accelHeld) game._thrustIntent = Math.min(1, game._thrustIntent + dt * 3.2);
+    else           game._thrustIntent = Math.max(0, game._thrustIntent - dt * 1.1);
+
+    // Smooth speed factor, referenced to ~max cruising speed. Uses lerp-smoothed
+    // value so brief velocity spikes (from nudges) don't jitter the camera.
+    const shipSpeed = Math.hypot(game.ship.vx, game.ship.vy);
+    const speedNorm = Math.max(0, Math.min(1, shipSpeed / 260));
+    if (game._speedZoom === undefined) game._speedZoom = 0;
+    game._speedZoom = lerp(game._speedZoom, speedNorm, 2.5 * dt);
+
+    // Motion factor: whichever is bigger wins. Intent leads; speed sustains.
+    const motionFactor = Math.max(game._speedZoom, game._thrustIntent);
+
     // Wide Camera: hold a pulled-back framing. Default: slightly more dynamic.
     const minViewRadius = WIDE_CAMERA ? 380 : 200;
-    const fitFactor = WIDE_CAMERA ? 0.48 : 0.66;
+    const baseFit = WIDE_CAMERA ? 0.48 : 0.66;
+    // fit range: +0.14 at rest (zoom in for detail) .. -0.14 at full motion (pull back)
+    const fitFactor = baseFit + (1 - motionFactor * 2) * 0.14;
     const threatNearMul = WIDE_CAMERA ? 0.85 : 0.60;
     const threatFarMul  = WIDE_CAMERA ? 0.65 : 0.42;
     const bossMul       = WIDE_CAMERA ? 0.85 : 0.65;
