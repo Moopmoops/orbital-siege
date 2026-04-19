@@ -140,7 +140,14 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 #profile-modal.show { display: flex; }
 #profile-modal .profile-card { background: rgba(0,10,30,0.95); border: 1px solid #0ff; border-radius: 8px; padding: 28px 32px; min-width: 360px; max-width: 90vw; color: #8cf; box-shadow: 0 0 40px rgba(0,255,255,0.2); }
 #profile-modal .profile-title { color: #0ff; font-size: 22px; letter-spacing: 6px; text-align: center; margin-bottom: 4px; }
-#profile-modal .profile-subtitle { color: #4af; font-size: 11px; letter-spacing: 3px; text-align: center; margin-bottom: 20px; opacity: 0.8; }
+#profile-modal .profile-subtitle { color: #4af; font-size: 11px; letter-spacing: 3px; text-align: center; margin-bottom: 8px; opacity: 0.8; }
+#profile-modal .profile-status { text-align: center; margin-bottom: 20px; }
+#profile-modal .profile-status .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 10px; letter-spacing: 2px; }
+#profile-modal .profile-status .badge.signed-in { background: rgba(0,200,80,0.12); border: 1px solid #0c8; color: #0f8; }
+#profile-modal .profile-status .badge.anon { background: rgba(100,140,200,0.08); border: 1px solid #68a; color: #9cd; }
+#profile-modal .profile-status .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
+#profile-modal .profile-status .badge.signed-in .dot { background: #0f8; box-shadow: 0 0 6px #0f8; }
+#profile-modal .profile-status .badge.anon .dot { background: #68a; }
 #profile-modal .profile-stats { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 #profile-modal .profile-stats .stat-row { display: flex; justify-content: space-between; font-size: 12px; padding: 6px 10px; background: rgba(0,20,40,0.6); border-left: 2px solid #0ff; }
 #profile-modal .profile-stats .stat-row span:first-child { color: #4af; letter-spacing: 2px; }
@@ -159,7 +166,9 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 #profile-modal .signin-btn.apple:hover { background: #111; border-color: #888; }
 #profile-modal .profile-name-row { display: flex; gap: 8px; margin-bottom: 14px; }
 #profile-modal .profile-name-row input { flex: 1; background: rgba(0,0,0,0.5); border: 1px solid #4af; color: #fff; padding: 8px 10px; font-family: 'Courier New', monospace; font-size: 12px; letter-spacing: 2px; }
-#profile-modal .profile-name-row button { background: transparent; border: 1px solid #0ff; color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; padding: 4px 14px; cursor: pointer; letter-spacing: 2px; }
+#profile-modal .profile-name-row button { background: transparent; border: 1px solid #0ff; color: #0ff; font-family: 'Courier New', monospace; font-size: 11px; padding: 6px 18px; cursor: pointer; letter-spacing: 3px; border-radius: 4px; transition: background 0.15s; }
+#profile-modal .profile-name-row button:hover { background: rgba(0,255,255,0.12); box-shadow: 0 0 8px rgba(0,255,255,0.3); }
+#profile-modal .profile-name-row button.saved { background: rgba(0,255,100,0.15); border-color: #0f8; color: #0f8; }
 #profile-modal .profile-signout { text-align: center; margin-bottom: 12px; }
 #profile-modal .profile-close { text-align: center; }
 #profile-modal .profile-close button { background: transparent; border: 1px solid #0ff; color: #0ff; font-family: 'Courier New', monospace; font-size: 12px; padding: 8px 28px; cursor: pointer; letter-spacing: 3px; border-radius: 4px; }
@@ -605,6 +614,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
   <div class="profile-card">
     <div class="profile-title">PROFILE</div>
     <div class="profile-subtitle" id="profile-subtitle">ANONYMOUS PLAYER</div>
+    <div class="profile-status" id="profile-status"></div>
     <div class="profile-stats" id="profile-stats">
       <div class="stat-row"><span>PLAYTIME</span><span id="profile-playtime">0h 0m</span></div>
       <div class="stat-row"><span>GAMES PLAYED</span><span id="profile-games">0</span></div>
@@ -639,9 +649,14 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 13, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 13, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.13.1', date: '2026-04-19', changes: [
+    'TUNING: ARH are 5× larger when Wide Camera is on — readable at zoom without sacrificing the wide view',
+    'FIX: Laser now shows ACTIVE when on but not hitting a target, FIRING only when actually beaming an enemy',
+    'UI: Profile screen has a clearer signed-in badge and a properly-styled SAVE button',
+  ]},
   { version: '0.13.0', date: '2026-04-19', changes: [
     'DIFFICULTY: ARH spawn count scales more aggressively per wave (+7/wave instead of +4)',
     'DIFFICULTY: ARH fire more often — light types bumped, fire-rate wave scaling stronger',
@@ -2154,6 +2169,8 @@ function setWideCamera(v) {
   try { localStorage.setItem('orbital_wide_camera', WIDE_CAMERA ? '1' : '0'); } catch (e) {}
   const btn = document.getElementById('wide-camera-btn');
   if (btn) btn.textContent = WIDE_CAMERA ? '⛶ WIDE CAMERA: ON' : '⛶ WIDE CAMERA: OFF';
+  // ARH scale with the camera so they stay readable when zoomed out
+  if (typeof refreshARHSizes === 'function') refreshARHSizes();
 }
 
 // --- Helpers ---
@@ -4961,10 +4978,23 @@ function emitDeathFlash(inv, particles) {
   }
 }
 
+// ARH are 5× larger when Wide Camera is on so they stay readable at zoom.
+// `baseSize` is the true size; `size` = baseSize * getARHSizeMul(). When the
+// toggle flips, refreshARHSizes() walks existing invaders to re-apply the mul.
+function getARHSizeMul() { return WIDE_CAMERA ? 5 : 1; }
+function refreshARHSizes() {
+  if (!game || !game.invaders) return;
+  const mul = getARHSizeMul();
+  for (const inv of game.invaders) {
+    if (inv.baseSize) inv.size = inv.baseSize * mul;
+  }
+}
+
 function createARH(x, y, typeName, generation, planet) {
   const type = ARH_TYPES[typeName] || ARH_TYPES.drone;
   const gen = Math.min(generation, 4);
-  const size = 9 + gen*2 + (type.hpBase > 30 ? 5 : 0);
+  const baseSize = 9 + gen*2 + (type.hpBase > 30 ? 5 : 0);
+  const size = baseSize * getARHSizeMul();
   const hp = type.hpBase + gen*8;
   const orbR = dist({x,y}, planet);
   // Compute orbital velocity: orbit around planet + planet's own orbital motion
@@ -4978,7 +5008,7 @@ function createARH(x, y, typeName, generation, planet) {
     x, y,
     vx: pvx + Math.cos(a2c + Math.PI/2)*orbV*dir,
     vy: pvy + Math.sin(a2c + Math.PI/2)*orbV*dir,
-    size, hp, maxHp: hp, generation: gen,
+    baseSize, size, hp, maxHp: hp, generation: gen,
     typeName, type,
     shape: type.shape, baseHue: type.colorH + Math.floor(Math.random() * 30 - 15),
     color: hsl(type.colorH + Math.floor(Math.random() * 30 - 15), 35 + Math.floor(Math.random() * 25), 28 + Math.floor(Math.random() * 20)),
@@ -8194,7 +8224,14 @@ function updateHUD() {
 
   const torpStatus = torpedoToggle ? (game.ship.torpedoCooldown > 0 ? '<span style="color:#fa0">ACTIVE</span>' : '<span style="color:#0f0">FIRING</span>') : 'READY';
   const laserWave = (SHIP_TYPES[game.ship.shipType] && SHIP_TYPES[game.ship.shipType].laserWave) || 3;
-  const laserStatus = game.wave >= laserWave ? (laserToggle ? '<span style="color:#0f0">FIRING</span>' : 'READY') : `LOCKED (Wave ${laserWave})`;
+  // Laser: READY when toggle off; ACTIVE when on but not beaming a target; FIRING only when actually hitting
+  const laserStatus = game.wave >= laserWave
+    ? (laserToggle
+        ? (game.ship.laserActive && game.ship.laserTarget
+            ? '<span style="color:#0f0">FIRING</span>'
+            : '<span style="color:#fa0">ACTIVE</span>')
+        : 'READY')
+    : `LOCKED (Wave ${laserWave})`;
   const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
   let solarInfo = '';
   if (game.ship.solarBombs > 0 || game.ship.solarCharge > 0.1) {
@@ -8333,7 +8370,16 @@ function refreshProfileUI() {
   const provider = currentProfile.provider || 'anonymous';
   const displayName = currentProfile.displayName || 'PLAYER';
   const providerLabel = provider === 'google.com' ? 'GOOGLE' : provider === 'apple.com' ? 'APPLE' : 'ANONYMOUS';
-  if (sub) sub.textContent = `${displayName.toUpperCase()} · ${providerLabel}`;
+  if (sub) sub.textContent = displayName;
+  // Prominent signed-in / anonymous badge so the player can see their state at a glance
+  const statusEl = document.getElementById('profile-status');
+  if (statusEl) {
+    if (isAnon) {
+      statusEl.innerHTML = '<span class="badge anon"><span class="dot"></span>ANONYMOUS · NOT SYNCED</span>';
+    } else {
+      statusEl.innerHTML = `<span class="badge signed-in"><span class="dot"></span>SIGNED IN WITH ${providerLabel} · SYNCED</span>`;
+    }
+  }
 
   const totalSec = (currentProfile.totalPlaySec || 0) + activePlaySec;
   const hours = Math.floor(totalSec / 3600);
@@ -8369,6 +8415,14 @@ async function saveDisplayName() {
   currentProfile.displayName = name;
   await firebase.database().ref('profiles/' + currentUser.uid).update({ displayName: name });
   refreshProfileUI();
+  // Green flash on the SAVE button so the player sees confirmation
+  const saveBtn = document.querySelector('#profile-modal .profile-name-row button');
+  if (saveBtn) {
+    const orig = saveBtn.textContent;
+    saveBtn.textContent = 'SAVED';
+    saveBtn.classList.add('saved');
+    setTimeout(() => { saveBtn.textContent = orig; saveBtn.classList.remove('saved'); }, 1400);
+  }
 }
 
 async function linkOrSignIn(provider) {
