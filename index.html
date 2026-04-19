@@ -447,9 +447,12 @@ canvas { display: block; cursor: crosshair; }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 9, patch: 2, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 9, patch: 3, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.9.3', date: '2026-04-19', changes: [
+    'VISUAL: ARH enemies ~25% larger across the board for better visibility',
+  ]},
   { version: '0.9.2', date: '2026-04-19', changes: [
     'TUNING: Wide Camera pulled back significantly — lower max zoom, larger default view radius',
   ]},
@@ -4423,7 +4426,7 @@ function emitDeathFlash(inv, particles) {
 function createARH(x, y, typeName, generation, planet) {
   const type = ARH_TYPES[typeName] || ARH_TYPES.drone;
   const gen = Math.min(generation, 4);
-  const size = 7 + gen*2 + (type.hpBase > 30 ? 4 : 0);
+  const size = 9 + gen*2 + (type.hpBase > 30 ? 5 : 0);
   const hp = type.hpBase + gen*8;
   const orbR = dist({x,y}, planet);
   // Compute orbital velocity: orbit around planet + planet's own orbital motion
