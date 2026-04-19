@@ -649,9 +649,16 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 14, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 15, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.15.0', date: '2026-04-19', changes: [
+    'NEW: Camera velocity lookahead — pans slightly in the direction the ship is moving so you see what is ahead',
+    'NEW: Hit zoom punch — brief 5% inward zoom whenever the ship takes damage; sells the hit',
+    'NEW: ARH spawn-in build phase — enemies materialize over ~1.2s with a wireframe lattice; they do not shoot or chase until 75% built',
+    'VISUAL: Removed the whole-ship breathing pulse (looked wobbly). Replaced with small satellite orbs that orbit each ARH and pulse independently',
+    'CAMERA: Pan no longer drifts toward very distant lone survivors — caps the action-center pull when the nearest threat is beyond 900 units',
+  ]},
   { version: '0.14.1', date: '2026-04-19', changes: [
     'NEW: Speed-reactive camera — zooms in slightly when still, pulls back as the ship accelerates or moves fast. Thrust intent anticipates zoom-out even before velocity builds.',
   ]},
@@ -4099,6 +4106,8 @@ class Ship {
     this.hp -= amount;
     this.invulnTimer = 0.25;
     game.shake.add(4);
+    // Brief inward zoom punch — sells the hit, decays over ~0.45s
+    game._hitZoomPunch = Math.max(game._hitZoomPunch || 0, Math.min(1, amount / 12));
     playSound('hit');
     particles.emit(this.x, this.y, 12, '#f44', 200, 0.3, 2);
     if (this.hp <= 0) {
@@ -5082,13 +5091,26 @@ function createARH(x, y, typeName, generation, planet) {
     shootTimer: rng(2,5),
     shootChance: type.shootChance,
     pulsePhase: Math.random()*Math.PI*2,
-    growScale: 1,  // full size immediately
+    // Bosses spawn at full presence; regular ARH "build" into existence over ~1.2s
+    buildProgress: type.isBoss ? 1 : 0,
+    growScale: type.isBoss ? 1 : 0.1,
     alive: true
   };
 }
 
 function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   if (!inv.alive) return;
+
+  // Spawn-in build phase — regular ARH materialize over ~1.2s with visible
+  // wireframe construction. They don't chase, shoot, or reproduce until 75%
+  // built, but orbital physics still apply so the assembly isn't frozen.
+  if (inv.buildProgress === undefined) inv.buildProgress = 1;
+  if (!inv.isBoss && inv.buildProgress < 1) {
+    inv.buildProgress = Math.min(1, inv.buildProgress + dt * 0.85);
+    // Eased ramp so it snaps into full size late rather than lerping linearly
+    inv.growScale = 0.1 + 0.9 * Math.pow(inv.buildProgress, 0.75);
+  }
+  const isBuilding = !inv.isBoss && inv.buildProgress < 0.75;
 
   // Boss-specific behavior
   if (inv.isBoss) {
@@ -5219,8 +5241,8 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
   inv.facingAngle += angleDiff * Math.min(1, 1.5 * dt); // smooth turn
 
-  // Type-specific behavior
-  if (ship.alive) {
+  // Type-specific behavior — skipped while ARH is still building in
+  if (ship.alive && !isBuilding) {
     const d = dist(inv, ship);
     const aggroSkill = clamp((wave - 1) / 8, 0, 1);
 
@@ -5296,8 +5318,9 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
     }
   }
 
-  // Shooting (later waves) — each ARH type has a signature attack pattern
-  if (ship.alive && inv.shootChance > 0 && wave >= 3) {
+  // Shooting (later waves) — each ARH type has a signature attack pattern.
+  // Building ARH can't shoot.
+  if (ship.alive && inv.shootChance > 0 && wave >= 3 && !isBuilding) {
     inv.shootTimer -= dt;
     if (inv.shootTimer <= 0) {
       const d = dist(inv, ship);
@@ -5489,7 +5512,7 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   const inRange = inv.typeName === 'hive' || dToShipForRepro < REPRO_RANGE;
   // Wave scaling: each wave slows reproduction by ~6%
   const waveSlow = 1 / (1 + Math.max(0, wave - 1) * 0.06);
-  if (invaders.length < MAX_SWARM && inRange) {
+  if (invaders.length < MAX_SWARM && inRange && !isBuilding) {
     const reproduceSpeed = (inv.typeName === 'hive' ? 2.5 : 1) * waveSlow;
     inv.reproduceTimer -= dt * reproduceSpeed;
     const repTotal = REPRODUCE_TIME_BASE + rng(-2,3);
@@ -5531,9 +5554,11 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
 function drawARH(ctx, inv, cam) {
   if (!inv.alive) return;
   const sx = inv.x - cam.x + canvas.width/2, sy = inv.y - cam.y + canvas.height/2;
-  const pulse = 1 + Math.sin(inv.pulsePhase)*0.1;
-  const s = inv.size * pulse * inv.growScale;
+  // Body no longer breathes in/out (looked wobbly). The pulsing is now carried
+  // by small satellite orbs drawn after the body.
+  const s = inv.size * inv.growScale;
   if (s < 1) return;
+  const building = !inv.isBoss && inv.buildProgress !== undefined && inv.buildProgress < 1;
 
   const gen = inv.generation;
   const h = inv.baseHue;
@@ -5885,6 +5910,73 @@ function drawARH(ctx, inv, cam) {
   }
 
   ctx.restore();
+
+  // --- Satellite orbs ---
+  // Small glowing orbs that orbit each (non-boss) ARH and pulse independently.
+  // This replaces the whole-body breathing pulse which felt wobbly.
+  if (!inv.isBoss && inv.growScale > 0.3) {
+    const orbCount = 2 + (inv.generation > 1 ? 1 : 0);
+    const orbitR = s * 1.15;
+    const t = game ? game.time : 0;
+    for (let i = 0; i < orbCount; i++) {
+      const spin = t * 1.3 + i * (Math.PI * 2 / orbCount) + (inv.spawnTime || 0) * 0.5;
+      const ox = sx + Math.cos(spin) * orbitR;
+      const oy = sy + Math.sin(spin) * orbitR;
+      const orbPulse = 0.6 + 0.4 * Math.sin(t * 4 + i * 1.7);
+      const orbR = 1.6 * orbPulse + 1.2;
+      ctx.save();
+      // Outer halo
+      ctx.globalAlpha = 0.35 * inv.growScale;
+      ctx.fillStyle = hsl(inv.baseHue, 85, 65);
+      ctx.beginPath(); ctx.arc(ox, oy, orbR * 2.4, 0, Math.PI * 2); ctx.fill();
+      // Core
+      ctx.globalAlpha = 0.85 * inv.growScale;
+      ctx.fillStyle = hsl(inv.baseHue, 95, 75);
+      ctx.beginPath(); ctx.arc(ox, oy, orbR, 0, Math.PI * 2); ctx.fill();
+      // Hot center
+      ctx.globalAlpha = inv.growScale;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(ox, oy, orbR * 0.45, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // --- Spawn-in construction effect ---
+  // Wireframe lattice + inward scan arcs while the ARH is being built.
+  // Fades as buildProgress approaches 1.
+  if (building) {
+    const bp = inv.buildProgress;
+    const t = game ? game.time : 0;
+    ctx.save();
+    // Thin expanding/contracting ring
+    const ringR = s * (1.8 - bp * 0.8);
+    ctx.globalAlpha = 0.7 * (1 - bp);
+    ctx.strokeStyle = '#0ff';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath(); ctx.arc(sx, sy, ringR, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    // Rotating scan arc — assembly sweep
+    ctx.globalAlpha = 0.55 * (1 - bp);
+    ctx.strokeStyle = '#8ff';
+    ctx.lineWidth = 2;
+    const scanStart = (t * 3) % (Math.PI * 2);
+    ctx.beginPath(); ctx.arc(sx, sy, s * 1.3, scanStart, scanStart + Math.PI * 0.6); ctx.stroke();
+    // Lattice cross — two perpendicular lines fading in
+    ctx.globalAlpha = 0.4 * (1 - bp);
+    ctx.beginPath();
+    ctx.moveTo(sx - s * 1.1, sy); ctx.lineTo(sx + s * 1.1, sy);
+    ctx.moveTo(sx, sy - s * 1.1); ctx.lineTo(sx, sy + s * 1.1);
+    ctx.stroke();
+    // Converging particles toward the center (cheap effect — just sparks)
+    if (Math.random() < 0.4) {
+      const pa = Math.random() * Math.PI * 2;
+      const pr = s * (2.0 + Math.random() * 1.0);
+      game.particles.emit(inv.x + Math.cos(pa) * pr, inv.y + Math.sin(pa) * pr,
+        1, '#8ff', 40, 0.25, 1);
+    }
+    ctx.restore();
+  }
 
   // Beam cannon visual — drawn in screen coords after restore (matches drawARH coord system)
   if (inv.isBoss) {
@@ -7331,24 +7423,43 @@ function updateGame(dt) {
     game.ship.vx = 0; game.ship.vy = 0;
   }
   let camTargetX = game.ship.x, camTargetY = game.ship.y;
+
+  // Velocity lookahead — pan slightly in the direction the ship is moving
+  // so the player sees what's ahead more than what's behind. Scales with speed
+  // and clamps to a modest offset so the ship never leaves the frame entirely.
+  const shipVel = Math.hypot(game.ship.vx, game.ship.vy);
+  if (shipVel > 30) {
+    const lookDist = Math.min(shipVel * 0.7, 220);
+    camTargetX += (game.ship.vx / shipVel) * lookDist;
+    camTargetY += (game.ship.vy / shipVel) * lookDist;
+  }
+
   if (AUTO_PAN > 0 && game.invaders.length > 0) {
-    // Find action center: nearest threats + nearest planet
-    let actionX = 0, actionY = 0, actionW = 0;
-    // Nearest 8 invaders by distance
+    // Find action center from the nearest threats. Skip entirely when the
+    // nearest threat is far away — prevents the camera snapping to lone
+    // distant survivors and parking on empty space.
     const nearby = game.invaders
       .map(inv => ({ inv, d: dist(game.ship, inv) }))
       .sort((a,b) => a.d - b.d)
       .slice(0, 8);
-    for (const n of nearby) {
-      const w = 1 / (1 + n.d * 0.005);
-      actionX += n.inv.x * w; actionY += n.inv.y * w; actionW += w;
-    }
-    if (actionW > 0) {
-      actionX /= actionW; actionY /= actionW;
-      camTargetX = lerp(game.ship.x, actionX, AUTO_PAN);
-      camTargetY = lerp(game.ship.y, actionY, AUTO_PAN);
+    if (nearby.length > 0 && nearby[0].d < 900) {
+      let actionX = 0, actionY = 0, actionW = 0;
+      for (const n of nearby) {
+        if (n.d > 900) continue; // ignore distant members of the sample
+        const w = 1 / (1 + n.d * 0.005);
+        actionX += n.inv.x * w; actionY += n.inv.y * w; actionW += w;
+      }
+      if (actionW > 0) {
+        actionX /= actionW; actionY /= actionW;
+        camTargetX = lerp(camTargetX, actionX, AUTO_PAN);
+        camTargetY = lerp(camTargetY, actionY, AUTO_PAN);
+      }
     }
   }
+
+  // Hit zoom punch — small inward snap that decays; fed by takeDamage() via game._hitZoomPunch
+  if (game._hitZoomPunch === undefined) game._hitZoomPunch = 0;
+  game._hitZoomPunch = Math.max(0, game._hitZoomPunch - dt * 2.2); // ~0.45s decay
   game.cam.x = lerp(game.cam.x, camTargetX, CAM_SMOOTH*dt);
   game.cam.y = lerp(game.cam.y, camTargetY, CAM_SMOOTH*dt);
 
@@ -7410,7 +7521,9 @@ function updateGame(dt) {
       if (bd < 400) maxDist = Math.max(maxDist, bd + body.radius + 30);
     }
     const screenHalf = Math.min(canvas.width, canvas.height) * 0.5 * fitFactor;
-    const targetZoom = clamp(screenHalf / maxDist, ZOOM_MIN, zoomMaxCap);
+    let targetZoom = clamp(screenHalf / maxDist, ZOOM_MIN, zoomMaxCap);
+    // Apply hit zoom punch — up to +5% zoom-in that decays over ~0.45s
+    targetZoom *= 1 + (game._hitZoomPunch || 0) * 0.05;
     CAMERA_ZOOM = lerp(CAMERA_ZOOM, targetZoom, ZOOM_SPEED * dt);
   }
   game.particles.update(dt);
