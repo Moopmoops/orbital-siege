@@ -15,7 +15,9 @@ canvas { display: block; cursor: crosshair; }
   position: fixed; top: 0; left: 0; width: 100%; pointer-events: none; z-index: 10;
   padding: 15px 20px; display: flex; justify-content: space-between; color: #0ff; font-size: 13px;
 }
-#ui-overlay .left, #ui-overlay .right { text-shadow: 0 0 8px #0ff; }
+#ui-overlay .left, #ui-overlay .right { text-shadow: 0 0 6px rgba(0,255,255,0.6); }
+#ui-overlay .left > div { line-height: 1.5; margin-bottom: 2px; }
+#ui-overlay .right > div { line-height: 1.5; }
 #start-screen {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100;
   display: flex; flex-direction: column; justify-content: center; align-items: center;
@@ -142,6 +144,11 @@ canvas { display: block; cursor: crosshair; }
 #profile-modal .profile-stats .stat-row span:last-child { color: #fff; font-weight: bold; }
 #profile-modal .profile-section-label { color: #68a; font-size: 9px; letter-spacing: 3px; text-align: center; margin-bottom: 8px; }
 #profile-modal .profile-signin { margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+#profile-modal .profile-explainer { background: rgba(0,10,30,0.6); border: 1px solid rgba(0,255,255,0.15); border-radius: 4px; padding: 10px 12px; margin-bottom: 6px; }
+#profile-modal .profile-explainer .exp-row { display: flex; gap: 10px; margin-bottom: 8px; font-size: 11px; align-items: flex-start; }
+#profile-modal .profile-explainer .exp-label { color: #0ff; letter-spacing: 2px; min-width: 84px; flex-shrink: 0; font-weight: bold; }
+#profile-modal .profile-explainer .exp-body { color: #9cd; line-height: 1.5; }
+#profile-modal .profile-explainer .exp-promise { color: #7b9; font-size: 10px; font-style: italic; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(0,255,255,0.1); line-height: 1.5; }
 #profile-modal .signin-btn { display: flex; align-items: center; justify-content: center; padding: 10px 16px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 12px; letter-spacing: 2px; cursor: pointer; border: none; }
 #profile-modal .signin-btn.google { background: #fff; color: #222; }
 #profile-modal .signin-btn.google:hover { background: #eee; }
@@ -390,7 +397,7 @@ canvas { display: block; cursor: crosshair; }
   <div class="left">
     <div id="hud-score">SCORE: 0</div>
     <div id="hud-wave">WAVE: 1</div>
-    <div id="hud-star-type" style="color:#fa8;font-size:9px;letter-spacing:1px;opacity:0.7;"></div>
+    <div id="hud-star-type" style="color:#fa8;font-size:10px;letter-spacing:1px;opacity:0.9;margin-bottom:4px;"></div>
     <div id="hud-kills">KILLS: 0</div>
     <div id="hud-swarm" style="color:#f88;font-size:10px;letter-spacing:1px;"></div>
     <div id="hud-lives" style="color:#0ff;">LIVES: ♦♦♦♦♦</div>
@@ -488,7 +495,11 @@ canvas { display: block; cursor: crosshair; }
       <button onclick="saveDisplayName()">SAVE</button>
     </div>
     <div class="profile-signin" id="profile-signin">
-      <div class="profile-section-label">SIGN IN TO SYNC ACROSS DEVICES</div>
+      <div class="profile-explainer">
+        <div class="exp-row"><span class="exp-label">ANONYMOUS</span><span class="exp-body">You are already signed in. Your stats live in this browser. If you clear site data or use another device, you'll start fresh.</span></div>
+        <div class="exp-row"><span class="exp-label">GOOGLE</span><span class="exp-body">Same stats, but synced across your devices. We ask for your profile (your name) and nothing else — not your email.</span></div>
+        <div class="exp-promise">We don't contact players. No marketing. No ads. Ever. Your stats are yours — we only use them to show them back to you.</div>
+      </div>
       <button class="signin-btn google" onclick="signInWithGoogle()">
         <svg width="16" height="16" viewBox="0 0 18 18" style="vertical-align:middle;margin-right:8px;"><path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/><path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.836.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z"/><path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z"/><path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"/></svg>
         SIGN IN WITH GOOGLE
@@ -507,9 +518,16 @@ canvas { display: block; cursor: crosshair; }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 10, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 10, patch: 2, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.10.2', date: '2026-04-19', changes: [
+    'NEW: Sign-in modal copy — explains anonymous vs Google and privacy posture',
+    'NEW: Star-type intro card at the start of each run',
+    'FIX: Particle confetti was cut off by a hidden edge when zoomed out — now renders across the whole visible view',
+    'FIX: HUD text no longer overlaps when score/kills counters grow',
+    'FIX: Off-screen arrows fade as the enemy approaches instead of staying pinned to the edge',
+  ]},
   { version: '0.10.1', date: '2026-04-19', changes: [
     'FIX: Ship rotation was blocked on some sides when camera auto-panned — now rotates freely in all directions',
     'PRIVACY: Google sign-in no longer requests email access (only profile name)',
@@ -2979,10 +2997,18 @@ class Particles {
   }
   draw(ctx, cam) {
     const hw = canvas.width/2, hh = canvas.height/2;
+    // Particles render inside the camera-zoom transform, so the visible area
+    // in unscaled screen coords extends by 1/CAMERA_ZOOM from center. Without
+    // this adjustment, particles beyond the unscaled canvas edge get culled
+    // even though they're visible under Wide Camera — producing a hard line
+    // through the explosion.
+    const zoom = (typeof CAMERA_ZOOM === 'number' && CAMERA_ZOOM > 0) ? CAMERA_ZOOM : 1;
+    const visHalfX = hw / zoom + 50;
+    const visHalfY = hh / zoom + 50;
     for (const p of this.list) {
       const sx = p.x - cam.x + hw, sy = p.y - cam.y + hh;
-      // Cull offscreen particles
-      if (sx < -50 || sx > canvas.width+50 || sy < -50 || sy > canvas.height+50) continue;
+      // Cull offscreen particles (zoom-aware)
+      if (Math.abs(sx - hw) > visHalfX || Math.abs(sy - hh) > visHalfY) continue;
       const alpha = Math.max(0, p.life / p.maxLife);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
@@ -6808,6 +6834,7 @@ function updateGame(dt) {
   // Boss message timer
   if (game.bossMessageTimer > 0) game.bossMessageTimer -= dt;
   if (game.bossSubMessageTimer > 0) game.bossSubMessageTimer -= dt;
+  if (game.starIntro && game.starIntro.timer > 0) game.starIntro.timer -= dt;
   if (game.waveMessageTimer > 0) game.waveMessageTimer -= dt;
 
   updateHUD();
@@ -7176,36 +7203,54 @@ function drawGame() {
   // Always-on edge-of-screen indicators for off-screen ARH
   {
     const margin = 40;
+    // Visible bounds account for camera zoom — Wide Camera shows more world
+    // than the unscaled canvas, so "off-screen" must be computed against the
+    // actual visible half-extents, otherwise arrows pin at the edge for enemies
+    // the player can clearly see.
+    const zoom = (typeof CAMERA_ZOOM === 'number' && CAMERA_ZOOM > 0) ? CAMERA_ZOOM : 1;
+    const visHalfX = (canvas.width / 2) / zoom;
+    const visHalfY = (canvas.height / 2) / zoom;
+    const cx2 = canvas.width/2, cy2 = canvas.height/2;
+
     // Show arrows for closest N invaders that are off-screen
     const offscreen = game.invaders.map(inv => {
-      const sx2 = inv.x - cam.x + canvas.width/2, sy2 = inv.y - cam.y + canvas.height/2;
-      const isOff = sx2 < 0 || sx2 > canvas.width || sy2 < 0 || sy2 > canvas.height;
-      return { inv, sx: sx2, sy: sy2, isOff, d: dist(game.ship, inv) };
+      const sx2 = inv.x - cam.x + cx2, sy2 = inv.y - cam.y + cy2;
+      const dx = sx2 - cx2, dy = sy2 - cy2;
+      const isOff = Math.abs(dx) > visHalfX || Math.abs(dy) > visHalfY;
+      // How far outside the visible area — used to fade arrow in as the enemy leaves view
+      const outside = Math.max(Math.abs(dx) - visHalfX, Math.abs(dy) - visHalfY, 0);
+      return { inv, sx: sx2, sy: sy2, isOff, outside, d: dist(game.ship, inv) };
     }).filter(o => o.isOff).sort((a,b) => a.d - b.d).slice(0, 8);
 
     for (const o of offscreen) {
-      const cx2 = canvas.width/2, cy2 = canvas.height/2;
       const a = Math.atan2(o.sy - cy2, o.sx - cx2);
       const edgeX = clamp(o.sx, margin, canvas.width-margin);
       const edgeY = clamp(o.sy, margin, canvas.height-margin);
       const isScanTarget = game.ship.scanTarget === o.inv && game.ship.scanTimer > 0;
       const col = isScanTarget ? '#0f0' : o.inv.color;
-      ctx.fillStyle = col; ctx.globalAlpha = isScanTarget ? 0.9 : 0.5;
+      // Fade in over the first 200 world units past the visible edge so the arrow
+      // gently appears as the enemy leaves the screen instead of popping in hard
+      const edgeFade = clamp(o.outside / 200, 0, 1);
+      const baseAlpha = isScanTarget ? 0.9 : 0.5;
+      ctx.fillStyle = col; ctx.globalAlpha = baseAlpha * edgeFade;
       ctx.beginPath();
       ctx.moveTo(edgeX + Math.cos(a)*10, edgeY + Math.sin(a)*10);
       ctx.lineTo(edgeX + Math.cos(a+2.5)*6, edgeY + Math.sin(a+2.5)*6);
       ctx.lineTo(edgeX + Math.cos(a-2.5)*6, edgeY + Math.sin(a-2.5)*6);
       ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
-      if (isScanTarget || o.d < 600) {
+      if (edgeFade > 0.3 && (isScanTarget || o.d < 600)) {
         ctx.font = '9px Courier New'; ctx.fillStyle = col;
+        ctx.globalAlpha = edgeFade;
         ctx.fillText(`${Math.floor(o.d)}m`, edgeX+12, edgeY+3);
+        ctx.globalAlpha = 1;
       }
     }
 
     // Also show planet/star indicators when off-screen
     for (const body of game.bodies) {
       const bsx = body.x - cam.x + canvas.width/2, bsy = body.y - cam.y + canvas.height/2;
-      if (bsx < -50 || bsx > canvas.width+50 || bsy < -50 || bsy > canvas.height+50) {
+      const bdx = bsx - cx2, bdy = bsy - cy2;
+      if (Math.abs(bdx) > visHalfX + 50 || Math.abs(bdy) > visHalfY + 50) {
         const a = Math.atan2(bsy - canvas.height/2, bsx - canvas.width/2);
         const edgeX = clamp(bsx, margin, canvas.width-margin);
         const edgeY = clamp(bsy, margin, canvas.height-margin);
@@ -7278,6 +7323,31 @@ function drawGame() {
       ctx.fillStyle = '#fa0';
       ctx.fillText(game.bossSubMessage || '', canvas.width/2, msgY + 40);
     }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  // Star-type intro banner — shown once at start of run so the player knows their system
+  if (game.starIntro && game.starIntro.timer > 0) {
+    ctx.save();
+    const t = game.starIntro.timer;
+    // Fade in for the first 0.4s, hold, then fade out in the last 0.8s
+    const fadeIn = Math.min(1, (4.5 - t) / 0.4);
+    const fadeOut = Math.min(1, t / 0.8);
+    ctx.globalAlpha = Math.max(0, Math.min(fadeIn, fadeOut));
+    ctx.textAlign = 'center';
+    // Subtle label
+    ctx.font = '10px Courier New';
+    ctx.fillStyle = '#68a';
+    ctx.fillText('ORBITING', canvas.width/2, canvas.height * 0.12);
+    // Main star title
+    ctx.font = 'bold 22px Courier New';
+    ctx.fillStyle = '#fa8';
+    ctx.shadowColor = '#fa8';
+    ctx.shadowBlur = 18;
+    ctx.fillText(game.starIntro.title, canvas.width/2, canvas.height * 0.12 + 26);
+    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
     ctx.restore();
@@ -8296,6 +8366,11 @@ function startGame() {
   document.getElementById('leaderboard').classList.remove('show');
   try { document.getElementById('ship-swap-overlay').classList.remove('show'); } catch(e) {}
   initGame();
+  // Star-type intro banner so the player knows what system they're in
+  game.starIntro = {
+    title: `${STAR_TYPE.type.toUpperCase()}  ·  CLASS ${STAR_TYPE.class}`,
+    timer: 4.5,
+  };
   gameRunning = true;
   buildDebugPanel();
   console.log('Game started with ship:', selectedShipType, 'mode:', gameMode, 'invaders:', game.invaders.length);
