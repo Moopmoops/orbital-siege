@@ -649,9 +649,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 2, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 3, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.3', date: '2026-04-20', changes: [
+    'UI: Regular ARH now use a warm orange-red on radar/arrows (#f75); bosses use a deeper angry red (#e22) so they stand out as the primary threat',
+  ]},
   { version: '0.18.2', date: '2026-04-20', changes: [
     'UI: Enemies are now RED on radar and for off-screen arrows — matches universal convention, easier to read at a glance',
     'UI: Score/combo popups no longer float over the battlefield — they stack as a column on the left side below the HUD so you see accumulating points without visual obstruction',
@@ -6667,7 +6670,7 @@ function drawMinimap(ctx) {
     let dx = (inv.x - shipX)/scale*MINIMAP_SIZE;
     let dy = (inv.y - shipY)/scale*MINIMAP_SIZE;
     const dd = Math.hypot(dx, dy);
-    const color = inv.isBoss ? '#f80' : '#f44';
+    const color = inv.isBoss ? '#e22' : '#f75';
     if (dd > ms - 4) {
       dx = (dx/dd)*(ms-4);
       dy = (dy/dd)*(ms-4);
@@ -8519,7 +8522,7 @@ function drawGame() {
       const isScanTarget = game.ship.scanTarget === o.inv && game.ship.scanTimer > 0;
       // Universal enemy convention: red. Boss gets orange so you can spot it
       // amid the reds. Scan target stays green as the player's own marker.
-      const col = isScanTarget ? '#0f0' : (o.inv.isBoss ? '#f80' : '#f44');
+      const col = isScanTarget ? '#0f0' : (o.inv.isBoss ? '#e22' : '#f75');
       // Fade in over the first 200 world units past the visible edge so the arrow
       // gently appears as the enemy leaves the screen instead of popping in hard
       const edgeFade = clamp(o.outside / 200, 0, 1);
