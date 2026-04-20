@@ -344,7 +344,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
                 0 0 0 0 0
                 0 0 0 0 0
                 0 0 0 1 0"/>
-      <feOffset in="r" dx="0.7" dy="0" result="rOff"/>
+      <feOffset in="r" dx="1.1" dy="0" result="rOff"/>
       <feColorMatrix in="SourceGraphic" type="matrix" result="g"
         values="0 0 0 0 0
                 0 1 0 0 0
@@ -355,7 +355,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
                 0 0 0 0 0
                 0 0 1 0 0
                 0 0 0 1 0"/>
-      <feOffset in="b" dx="-0.7" dy="0" result="bOff"/>
+      <feOffset in="b" dx="-1.1" dy="0" result="bOff"/>
       <feBlend in="rOff" in2="g" mode="screen" result="rg"/>
       <feBlend in="rg" in2="bOff" mode="screen"/>
     </filter>
@@ -594,7 +594,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
   <div class="settings-section-label">VISUAL</div>
   <div class="settings-row">
     <span class="settings-label">Chromatic Aberration</span>
-    <button id="aberration-toggle-btn" class="settings-toggle" onclick="toggleAberrationEnabled()">ON</button>
+    <button id="aberration-toggle-btn" class="settings-toggle" onclick="cycleAberrationLevel()">SUBTLE</button>
   </div>
   <div class="settings-section-label" style="margin-top:18px;">CAMERA</div>
   <div class="settings-row">
@@ -649,9 +649,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 16, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 16, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.16.1', date: '2026-04-19', changes: [
+    'TUNING: Default chromatic aberration nudged up a touch (dx 0.7 → 1.1)',
+    'NEW: Aberration setting is now a 3-state cycle — OFF / SUBTLE / STRONG. STRONG uses the next tier up at every HP bracket for a more pronounced split.',
+  ]},
   { version: '0.16.0', date: '2026-04-19', changes: [
     'DIFFICULTY: ARH start firing from wave 2 (was 3); shoot chances bumped ~40% across types; wave-scaling timer divisor steeper',
     'VISUAL: ARH now have a per-instance time offset — phantoms (and everything else) pulse out of sync with each other',
@@ -9303,10 +9307,19 @@ function startGame() {
 // --- Chromatic aberration ---
 // Applied via SVG filter on the canvas element. Three pre-defined intensities:
 // subtle (always on during play), mid (~30-60% HP), high (<30% HP).
+// User setting `ABERRATION_LEVEL` cycles 'off' → 'subtle' → 'strong'. STRONG
+// promotes every HP bracket up one tier so the effect is more pronounced.
 let _currentAberration = null;
-let ABERRATION_ENABLED = (() => {
-  try { const v = localStorage.getItem('orbital_aberration_enabled'); return v === null ? true : v === '1'; }
-  catch (e) { return true; }
+const ABERRATION_LEVELS = ['off', 'subtle', 'strong'];
+let ABERRATION_LEVEL = (() => {
+  try {
+    const v = localStorage.getItem('orbital_aberration_level');
+    if (v && ABERRATION_LEVELS.indexOf(v) >= 0) return v;
+    // Migrate from old boolean key
+    const legacy = localStorage.getItem('orbital_aberration_enabled');
+    if (legacy === '0') return 'off';
+    return 'subtle';
+  } catch (e) { return 'subtle'; }
 })();
 function setAberrationLevel(level) {
   if (_currentAberration === level) return;
@@ -9317,22 +9330,26 @@ function setAberrationLevel(level) {
   if (level && level !== 'off') c.classList.add('aberration-' + level);
 }
 function updateAberrationLevel() {
-  if (!ABERRATION_ENABLED) { setAberrationLevel('off'); return; }
+  if (ABERRATION_LEVEL === 'off') { setAberrationLevel('off'); return; }
   if (!gameRunning || !game || !game.ship) { setAberrationLevel('off'); return; }
+  const strong = ABERRATION_LEVEL === 'strong';
   if (!game.ship.alive) { setAberrationLevel('high'); return; }
   const hpFrac = game.ship.hp / game.ship.maxHp;
   if (hpFrac < 0.3) setAberrationLevel('high');
-  else if (hpFrac < 0.6) setAberrationLevel('mid');
-  else setAberrationLevel('subtle');
+  else if (hpFrac < 0.6) setAberrationLevel(strong ? 'high' : 'mid');
+  else setAberrationLevel(strong ? 'mid' : 'subtle');
 }
-function toggleAberrationEnabled() {
-  ABERRATION_ENABLED = !ABERRATION_ENABLED;
-  try { localStorage.setItem('orbital_aberration_enabled', ABERRATION_ENABLED ? '1' : '0'); } catch (e) {}
+function cycleAberrationLevel() {
+  const idx = ABERRATION_LEVELS.indexOf(ABERRATION_LEVEL);
+  ABERRATION_LEVEL = ABERRATION_LEVELS[(idx + 1) % ABERRATION_LEVELS.length];
+  try { localStorage.setItem('orbital_aberration_level', ABERRATION_LEVEL); } catch (e) {}
   // Force immediate re-evaluation rather than waiting for the next tick
   _currentAberration = null;
   updateAberrationLevel();
   syncSettingsPanel();
 }
+// Back-compat shim — old code path still calls toggleAberrationEnabled
+function toggleAberrationEnabled() { cycleAberrationLevel(); }
 
 // --- Settings panel ---
 function toggleSettingsPanel() {
@@ -9344,8 +9361,10 @@ function toggleSettingsPanel() {
 function syncSettingsPanel() {
   const ab = document.getElementById('aberration-toggle-btn');
   if (ab) {
-    ab.textContent = ABERRATION_ENABLED ? 'ON' : 'OFF';
-    ab.classList.toggle('off', !ABERRATION_ENABLED);
+    const label = ABERRATION_LEVEL === 'off' ? 'OFF'
+      : ABERRATION_LEVEL === 'strong' ? 'STRONG' : 'SUBTLE';
+    ab.textContent = label;
+    ab.classList.toggle('off', ABERRATION_LEVEL === 'off');
   }
   const wc = document.getElementById('settings-wide-camera-btn');
   if (wc) {
