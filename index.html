@@ -649,9 +649,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 5, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 6, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.6', date: '2026-04-20', changes: [
+    'VISUAL: Giant stars doubled in size so they finally feel giant-y (Blue Giant 1500 → 3000, Amber Giant 1275 → 2700, Red Giant 2100 → 4500)',
+    'TUNING: Ship-body collision is now more of an angle deflection than a bounce — tangential-velocity conversion 30% → 80%, so the ship naturally glances off surfaces along the tangent instead of springing straight back',
+  ]},
   { version: '0.18.5', date: '2026-04-20', changes: [
     'VISUAL: All star radii scaled up 1.5× uniformly so stars outsize gas giants across every star type while preserving the size relationships between star classes',
   ]},
@@ -2162,15 +2166,17 @@ const STAR_TYPES = [
   { type: 'Blue-White Star', class: 'A', radius: 1125, mass: 40000, corona: 5.5,
     color: { rBase: 170, gBase: 200, bBase: 250, rBright: 240, gBright: 250, bBright: 255, rDark: 50, gDark: 70, bDark: 130 },
     orbitScale: 1.5 },
-  { type: 'Blue Giant', class: 'B', radius: 1500, mass: 60000, corona: 6,
+  // Giants — doubled from main-sequence proportional size so they actually look
+  // giant. Still artistically compressed (real red giants are ~50× the Sun, here ~7×).
+  { type: 'Blue Giant', class: 'B', radius: 3000, mass: 60000, corona: 6,
     color: { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100 },
-    orbitScale: 2.0 }, // wide system, massive star
-  { type: 'Red Giant', class: 'M-III', radius: 2100, mass: 35000, corona: 7,
+    orbitScale: 2.8 }, // wider orbits so planets aren't inside the corona
+  { type: 'Red Giant', class: 'M-III', radius: 4500, mass: 35000, corona: 7,
     color: { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0 },
-    orbitScale: 2.5 }, // enormous but diffuse — completely fills the screen
-  { type: 'Amber Giant', class: 'K-III', radius: 1275, mass: 38000, corona: 6,
+    orbitScale: 3.5 }, // dominates the frame like a real red giant
+  { type: 'Amber Giant', class: 'K-III', radius: 2700, mass: 38000, corona: 6,
     color: { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5 },
-    orbitScale: 1.7 },
+    orbitScale: 2.4 },
 ];
 const STAR_TYPE = STAR_TYPES[Math.floor(Math.random() * STAR_TYPES.length)];
 const STAR_RADIUS = STAR_TYPE.radius;
@@ -2217,7 +2223,10 @@ let HEAT_RANGE_OUTER = 130;
 
 // Band tuning variables
 let BAND_PUSH_MULT = 1.5;
-let BAND_TANGENT_CONVERT = 0.3;
+// Fraction of inward velocity converted to tangential when hitting a surface.
+// Higher = more of an angled deflection / "skim along the surface" feel.
+// Lower = more of a direct bounce back. 0.8 reads as a glancing graze.
+let BAND_TANGENT_CONVERT = 0.8;
 let RADIAL_DAMPING = 0.1;  // low — lets elliptical orbits persist naturally
 let PREDICTION_STEPS = 400;
 let PREDICTION_DT = 0.03;
