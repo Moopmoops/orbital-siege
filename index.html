@@ -649,9 +649,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 16, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 16, patch: 2, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.16.2', date: '2026-04-20', changes: [
+    'VISUAL: ARH bodies now have shaded textures (not just decals) — radial gradient with directional light + per-type surface pattern: drone diagonal grain, scout longitudinal streaks, brute speckled grunge, stinger lateral bands, hive membrane patches, phantom wavy highlights, titan plate rivets',
+  ]},
   { version: '0.16.1', date: '2026-04-19', changes: [
     'TUNING: Default chromatic aberration nudged up a touch (dx 0.7 → 1.1)',
     'NEW: Aberration setting is now a 3-state cycle — OFF / SUBTLE / STRONG. STRONG uses the next tier up at every HP bracket for a more pronounced split.',
@@ -5566,6 +5569,26 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   inv.pulsePhase += dt*3;
 }
 
+// --- ARH body shading helpers ---
+// Replaces flat hsl() fills with radial gradients (3D-shaded, light from upper-left)
+// plus per-type surface patterns. Lets ARH bodies read like textured volumes
+// rather than uniform color fields.
+function arhBodyGrad(ctx, h, sat, light, size, lx, ly) {
+  // lx, ly default to upper-left light direction
+  const dx = (lx === undefined ? -size * 0.25 : lx);
+  const dy = (ly === undefined ? -size * 0.25 : ly);
+  const g = ctx.createRadialGradient(dx, dy, 0, 0, 0, size);
+  g.addColorStop(0, hsl(h, Math.max(20, sat - 15), Math.min(85, light + 25)));
+  g.addColorStop(0.55, hsl(h, sat, light));
+  g.addColorStop(1, hsl(h, Math.min(95, sat + 10), Math.max(10, light - 18)));
+  return g;
+}
+// Deterministic per-instance pseudo-random — keeps texture stable across frames
+function arhRand(inv, n) {
+  const x = Math.sin(((inv.spawnTime || 0) * 9173 + n * 1731 + (inv.timeOffset || 0) * 311)) * 43758.5453;
+  return x - Math.floor(x);
+}
+
 function drawARH(ctx, inv, cam) {
   if (!inv.alive) return;
   const sx = inv.x - cam.x + canvas.width/2, sy = inv.y - cam.y + canvas.height/2;
@@ -5600,15 +5623,27 @@ function drawARH(ctx, inv, cam) {
     ctx.fillStyle = hsl(h, 80, 70);
     ctx.beginPath(); ctx.arc(0, 0, glowSize, 0, Math.PI*2); ctx.fill();
 
-    // Diamond core
-    ctx.fillStyle = hsl(h, 70, 45);
+    // Diamond core — shaded gradient, then diagonal grain texture
     ctx.beginPath();
     ctx.moveTo(0, -s*0.4);
     ctx.lineTo(s*0.3, 0);
     ctx.lineTo(0, s*0.4);
     ctx.lineTo(-s*0.3, 0);
     ctx.closePath();
+    ctx.fillStyle = arhBodyGrad(ctx, h, 70, 45, s*0.5);
     ctx.fill();
+    // Body grain — diagonal panel hatching, clipped to the diamond
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = hsla(h, 50, 22, 0.32);
+    ctx.lineWidth = 0.6;
+    for (let i = -4; i <= 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-s*0.5, i * s * 0.09 - s*0.4);
+      ctx.lineTo(s*0.5, i * s * 0.09 + s*0.1);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // 4 flutter wings (animated oscillating lines)
     ctx.strokeStyle = hsla(h, 65, 55, 0.6);
@@ -5655,15 +5690,27 @@ function drawARH(ctx, inv, cam) {
       }
     }
 
-    // Narrow dart body
-    ctx.fillStyle = hsl(h, 70, 50);
+    // Narrow dart body — shaded with longitudinal grain streaks
     ctx.beginPath();
     ctx.moveTo(s*0.5, 0);
     ctx.lineTo(-s*0.3, -s*0.2);
     ctx.lineTo(-s*0.2, 0);
     ctx.lineTo(-s*0.3, s*0.2);
     ctx.closePath();
+    ctx.fillStyle = arhBodyGrad(ctx, h, 70, 50, s*0.5, -s*0.1, -s*0.18);
     ctx.fill();
+    // Longitudinal streaks running with the airflow
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = hsla(h, 55, 28, 0.35);
+    ctx.lineWidth = 0.6;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-s*0.35, i * s * 0.06);
+      ctx.lineTo(s*0.55, i * s * 0.04);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // Swept fins
     ctx.strokeStyle = hsl(h, 65, 55);
@@ -5691,6 +5738,30 @@ function drawARH(ctx, inv, cam) {
   } else if (inv.typeName === 'brute') {
     // Brute: chunky hexagon with armor plating
     const rot = t * 0.3; // slow rotation
+
+    // Filled hex body — shaded gradient with grunge speckles
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = (i/6)*Math.PI*2 + rot;
+      const x = Math.cos(angle)*s*0.5;
+      const y = Math.sin(angle)*s*0.5;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = arhBodyGrad(ctx, h, 50, 38, s*0.55);
+    ctx.fill();
+    // Speckled grunge — battle wear
+    ctx.save();
+    ctx.clip();
+    for (let i = 0; i < 14; i++) {
+      const sx2 = (arhRand(inv, i * 2) - 0.5) * s * 0.95;
+      const sy2 = (arhRand(inv, i * 2 + 1) - 0.5) * s * 0.95;
+      const sr = s * (0.025 + arhRand(inv, i * 2 + 50) * 0.04);
+      ctx.fillStyle = hsla(h, 40, 18, 0.45);
+      ctx.beginPath(); ctx.arc(sx2, sy2, sr, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
 
     // Double outline for armor
     ctx.strokeStyle = hsl(h, 50, 30);
@@ -5752,9 +5823,21 @@ function drawARH(ctx, inv, cam) {
     // Stinger: velocity-oriented wasp — override planet facing
     ctx.rotate(-facing + Math.atan2(inv.vy, inv.vx));
 
-    // Small oval body
-    ctx.fillStyle = hsl(h, 65, 45);
-    ctx.beginPath(); ctx.ellipse(0, 0, s*0.25, s*0.4, 0, 0, Math.PI*2); ctx.fill();
+    // Small oval body — shaded with lateral banding stripes
+    ctx.beginPath(); ctx.ellipse(0, 0, s*0.25, s*0.4, 0, 0, Math.PI*2);
+    ctx.fillStyle = arhBodyGrad(ctx, h, 65, 45, s*0.45, -s*0.08, -s*0.18);
+    ctx.fill();
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = hsla(h, 45, 22, 0.45);
+    ctx.lineWidth = 0.7;
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-s*0.3, i * s * 0.08);
+      ctx.lineTo(s*0.3, i * s * 0.08);
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // Wing arcs
     for (let side = -1; side <= 1; side += 2) {
@@ -5794,9 +5877,7 @@ function drawARH(ctx, inv, cam) {
     // Hive: fat octagon with pulsing internal cells
     const rot = t * 0.2;
 
-    // Octagonal body
-    const bodyColor = hsl(h, 75, 45);
-    ctx.fillStyle = bodyColor;
+    // Octagonal body — shaded with organic membrane patches
     ctx.beginPath();
     for (let i = 0; i < 8; i++) {
       const angle = (i/8)*Math.PI*2 + rot;
@@ -5806,7 +5887,19 @@ function drawARH(ctx, inv, cam) {
       else ctx.lineTo(x, y);
     }
     ctx.closePath();
+    ctx.fillStyle = arhBodyGrad(ctx, h, 75, 45, s*0.55);
     ctx.fill();
+    // Organic patches — irregular darker blobs suggest membrane / chitin
+    ctx.save();
+    ctx.clip();
+    for (let i = 0; i < 8; i++) {
+      const px = (arhRand(inv, i * 3) - 0.5) * s * 0.9;
+      const py = (arhRand(inv, i * 3 + 1) - 0.5) * s * 0.9;
+      const pr = s * (0.06 + arhRand(inv, i * 3 + 2) * 0.07);
+      ctx.fillStyle = hsla((h + 15) % 360, 60, 28, 0.4);
+      ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
 
     // Pulsing outline (intensifies with reproduce progress)
     const outlineAlpha = 0.5 + inv.reproduceProgress * 0.5;
@@ -5856,14 +5949,30 @@ function drawARH(ctx, inv, cam) {
       ctx.fill();
     }
 
-    // Main crescent body
+    // Main crescent body — shaded with wavy bright highlights
     ctx.globalAlpha = shimmer;
-    ctx.fillStyle = hsl(h, 75, 55);
     ctx.beginPath();
     ctx.arc(0, 0, s*0.3, 0.5, 2.5);
     ctx.lineTo(0, 0);
     ctx.closePath();
+    ctx.fillStyle = arhBodyGrad(ctx, h, 75, 55, s*0.4, -s*0.05, -s*0.08);
     ctx.fill();
+    // Wavy ethereal highlights — moves with t
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = hsla(h, 100, 80, shimmer * 0.4);
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      const yOff = (i - 1) * s * 0.08;
+      for (let xi = -10; xi <= 10; xi++) {
+        const xc = xi * s * 0.04;
+        const yc = yOff + Math.sin(xc * 8 + t * 2 + i) * s * 0.02;
+        if (xi === -10) ctx.moveTo(xc, yc); else ctx.lineTo(xc, yc);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
 
     // Ethereal glow aura
     ctx.strokeStyle = hsla(h, 80, 65, shimmer*0.3);
@@ -5897,13 +6006,24 @@ function drawARH(ctx, inv, cam) {
       ctx.restore();
     }
 
-    // Thick armored core circle
-    const coreG = ctx.createRadialGradient(0, 0, 0, 0, 0, s*0.5);
-    coreG.addColorStop(0, hsl(h, 75, 70));
-    coreG.addColorStop(0.5, hsl(h, 70, 50));
-    coreG.addColorStop(1, hsl(h, 60, 30));
-    ctx.fillStyle = coreG;
-    ctx.beginPath(); ctx.arc(0, 0, s*0.5, 0, Math.PI*2); ctx.fill();
+    // Thick armored core circle — directional gradient + plate rivets
+    ctx.beginPath(); ctx.arc(0, 0, s*0.5, 0, Math.PI*2);
+    ctx.fillStyle = arhBodyGrad(ctx, h, 70, 50, s*0.55, -s*0.18, -s*0.18);
+    ctx.fill();
+    // Plate rivets distributed around the core
+    ctx.save();
+    ctx.clip();
+    for (let i = 0; i < 10; i++) {
+      const ra = (i / 10) * Math.PI * 2 + (inv.timeOffset || 0);
+      const rr = s * (0.18 + (i % 3) * 0.1);
+      const rx = Math.cos(ra) * rr;
+      const ry = Math.sin(ra) * rr;
+      ctx.fillStyle = hsla(h, 50, 22, 0.6);
+      ctx.beginPath(); ctx.arc(rx, ry, s*0.025, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = hsla(h, 70, 78, 0.4);
+      ctx.beginPath(); ctx.arc(rx - s*0.008, ry - s*0.008, s*0.012, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
 
     // Multiple glow layers
     ctx.strokeStyle = hsla(h, 80, 60, 0.6);
