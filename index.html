@@ -649,9 +649,16 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 17, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.0', date: '2026-04-20', changes: [
+    'NEW: Cross formation — 5 ARH lock into a rotating X shape and hold position around their centroid, firing a synchronized outward 5-beam volley every ~3.2s. They do NOT disperse to chase the player.',
+    'FIX (BOSS): Real culprit for bosses plunging into the sun — the "preferred orbit" was hardcoded at r=350 which is inside every star. Now scales with star radius (star.radius + 500).',
+    'FIX: ARH size is now consistent across camera zoom — scales inversely with CAMERA_ZOOM so enemies read the same size on-screen whether Wide Camera is on or off',
+    'TUNING: Enemy firing range extended ~60-75% across all types (drone 400→700, hive 400→800, etc.) — ARH engage from much farther out',
+    'UI: Radar colors simplified — single cyan for in-range, amber for off-radar (was varied per spawn + red)',
+  ]},
   { version: '0.17.1', date: '2026-04-20', changes: [
     'NEW: K key toggles Wide Camera on/off so you can A/B it live',
     'FIX: Boss sun avoidance reinforced with inward-velocity damping — ambient drift can no longer carry a boss into the star; solar bombs still kill as intended',
@@ -4605,6 +4612,21 @@ const FORMATION_DEFS = {
     dissolveFloor: 0.35,   // <35% alive and it dissolves
     maxSpread: 220,        // if member-to-centroid exceeds this, dissolve
     name: 'PICKET',
+    hold: false,           // picket members free-roam within cluster (default)
+  },
+  cross: {
+    minMembers: 5,
+    maxMembers: 5,         // exactly 5 members: center + 4 arms
+    memberType: 'brute',   // brutes get held — matches their "tank" feel
+    lockTime: 1.2,
+    volleyCooldown: 3.2,
+    mechanicFloor: 0.6,
+    dissolveFloor: 0.3,
+    maxSpread: 260,
+    name: 'CROSS',
+    hold: true,            // members lock into rotating X slots
+    armRadius: 70,         // world-space distance from center to arm members
+    rotationSpeed: 0.5,    // radians per second
   },
 };
 
@@ -4634,7 +4656,12 @@ function updateFormations(frameClusters, dt) {
       if (d > maxSpread) maxSpread = d;
     }
     if (aliveRatio < def.dissolveFloor || maxSpread > def.maxSpread || alive.length < 3) {
-      for (const m of f.members) if (m && m._formation === f) m._formation = null;
+      for (const m of f.members) {
+        if (m && m._formation === f) {
+          m._formation = null;
+          m._heldByFormation = false;
+        }
+      }
       // Dissolve poof
       game.particles.emit(f.cx, f.cy, 10, '#888', 80, 0.3, 2);
       game.formations.splice(fi, 1);
@@ -4648,19 +4675,51 @@ function updateFormations(frameClusters, dt) {
     f._pulseT = (f._pulseT || 0) + dt;
 
     // Tag alive members
-    for (const m of alive) m._formation = f;
+    for (const m of alive) {
+      m._formation = f;
+      m._heldByFormation = !!def.hold;
+    }
 
-    // Mechanic — graceful degradation. Fires while ≥75% alive; silenced below, but
-    // formation visuals persist.
+    // Hold behavior — formations with def.hold pull members to slot positions.
+    // This overrides normal type-specific chase. The X rotates around centroid.
+    if (def.hold && f.type === 'cross') {
+      const rot = (game.time || 0) * def.rotationSpeed;
+      const r = def.armRadius;
+      // 5 slots: center + 4 arms (NE, SE, SW, NW after rotation). Slot 0 = center.
+      for (let i = 0; i < alive.length; i++) {
+        const m = alive[i];
+        if (i === 0) {
+          // Center member — pulled to centroid
+          const fx = (cx - m.x) * 4.0;
+          const fy = (cy - m.y) * 4.0;
+          m.vx += fx * dt; m.vy += fy * dt;
+        } else {
+          // Arm member — target position on rotating X
+          const slotAngle = ((i - 1) / 4) * Math.PI * 2 + Math.PI / 4 + rot;
+          const tx = cx + Math.cos(slotAngle) * r;
+          const ty = cy + Math.sin(slotAngle) * r;
+          const fx = (tx - m.x) * 4.0;
+          const fy = (ty - m.y) * 4.0;
+          m.vx += fx * dt; m.vy += fy * dt;
+        }
+        // Damp residual velocity so they settle into position
+        m.vx *= Math.max(0, 1 - 1.5 * dt);
+        m.vy *= Math.max(0, 1 - 1.5 * dt);
+      }
+    }
+
+    // Mechanic — graceful degradation. Fires while ≥ mechanicFloor alive;
+    // silenced below but formation visuals persist.
     const canFire = aliveRatio >= def.mechanicFloor;
     if (canFire) {
       f.mechanicTimer -= dt;
       if (f.mechanicTimer <= 0) {
         f.mechanicTimer = def.volleyCooldown + Math.random() * 0.8;
         if (f.type === 'picket') firePicketVolley(f);
+        else if (f.type === 'cross') fireCrossVolley(f);
       }
     } else {
-      // Keep timer ready so coming back above 75% doesn't immediately fire
+      // Keep timer ready so coming back above floor doesn't immediately fire
       f.mechanicTimer = Math.max(f.mechanicTimer, def.volleyCooldown * 0.6);
     }
   }
@@ -4669,58 +4728,69 @@ function updateFormations(frameClusters, dt) {
   // Age existing pending entries — drop any not observed this frame
   for (const p of game._pendingFormations) p._observed = false;
 
-  for (const cluster of frameClusters) {
-    // Pull out same-type unassigned members
-    const droneMembers = cluster.members
+  // Try detecting each formation type against each cluster. Generalize the old
+  // drone-only Picket path to a table-driven check so adding formations is cheap.
+  function tryFormationDetection(cluster, formationType) {
+    const def = FORMATION_DEFS[formationType];
+    const candidates = cluster.members
       .map(idx => game.invaders[idx])
-      .filter(m => m && m.typeName === 'drone' && !m._formation);
-    if (droneMembers.length < FORMATION_DEFS.picket.minMembers) continue;
+      .filter(m => m && m.typeName === def.memberType && !m._formation);
+    if (candidates.length < def.minMembers) return;
+    // Formations with a maxMembers cap (e.g. Cross needs exactly 5) take that many;
+    // open formations (e.g. Picket) take every candidate in the cluster.
+    const needed = def.maxMembers || candidates.length;
+    const members = candidates.slice(0, needed);
 
-    // Match to an existing pending entry by proximity (within 140 units)
+    // Match to an existing pending entry by proximity, same type
     let pending = null;
     for (const p of game._pendingFormations) {
-      if (Math.hypot(p.cx - cluster.cx, p.cy - cluster.cy) < 140) { pending = p; break; }
+      if (p.type === formationType &&
+          Math.hypot(p.cx - cluster.cx, p.cy - cluster.cy) < 140) { pending = p; break; }
     }
     if (pending) {
       pending._observed = true;
       pending.cx = cluster.cx;
       pending.cy = cluster.cy;
-      pending.members = droneMembers;
+      pending.members = members;
       pending.time += dt;
-      if (pending.time >= FORMATION_DEFS.picket.lockTime) {
-        // Promote!
+      if (pending.time >= def.lockTime) {
         const f = {
           id: Math.random().toString(36).slice(2, 8),
-          type: 'picket',
-          members: droneMembers.slice(),
-          aliveMembers: droneMembers.slice(),
-          aliveCount: droneMembers.length,
-          originalCount: droneMembers.length,
+          type: formationType,
+          members: members.slice(),
+          aliveMembers: members.slice(),
+          aliveCount: members.length,
+          originalCount: members.length,
           cx: cluster.cx, cy: cluster.cy,
           age: 0, _pulseT: 0,
-          mechanicTimer: FORMATION_DEFS.picket.volleyCooldown,
+          mechanicTimer: def.volleyCooldown,
           lockFlash: 1.0,
         };
         game.formations.push(f);
-        for (const m of droneMembers) m._formation = f;
+        for (const m of members) { m._formation = f; m._heldByFormation = !!def.hold; }
         // Lock effect
-        game.bossSubMessage = 'PICKET FORMED';
+        game.bossSubMessage = def.name + ' FORMED';
         game.bossSubMessageTimer = 2;
+        const lockColor = formationType === 'cross' ? '#8af' : '#fe8';
         game.particles.emit(cluster.cx, cluster.cy, 22, '#fff', 180, 0.5, 3);
-        game.particles.emit(cluster.cx, cluster.cy, 14, '#fe8', 140, 0.7, 4);
+        game.particles.emit(cluster.cx, cluster.cy, 14, lockColor, 140, 0.7, 4);
         try { playSound('reproduce'); } catch (e) {}
-        // Remove pending entry
         const idx = game._pendingFormations.indexOf(pending);
         if (idx >= 0) game._pendingFormations.splice(idx, 1);
       }
     } else {
       game._pendingFormations.push({
+        type: formationType,
         cx: cluster.cx, cy: cluster.cy,
-        members: droneMembers,
-        time: 0,
-        _observed: true,
+        members, time: 0, _observed: true,
       });
     }
+  }
+
+  for (const cluster of frameClusters) {
+    // Try each formation type. Cross first (more specific) then Picket.
+    tryFormationDetection(cluster, 'cross');
+    tryFormationDetection(cluster, 'picket');
   }
 
   // Drop unobserved pending entries — the cluster broke up before locking
@@ -4881,6 +4951,39 @@ function fireARHShot(inv, aimAngle, accuracy, baseDmg) {
     const ang = sa(0);
     push(Math.cos(ang) * 160, Math.sin(ang) * 160, 5.0, baseDmg, '#f66', 1);
   }
+}
+
+function fireCrossVolley(f) {
+  // Each arm member fires a bullet outward along the arm direction, and the
+  // center fires a fast tracking shot at the ship. Synchronized — all at once.
+  if (!game || !game.ship || !game.ship.alive) return;
+  const def = FORMATION_DEFS.cross;
+  const rot = (game.time || 0) * def.rotationSpeed;
+  const alive = f.aliveMembers || [];
+  for (let i = 0; i < alive.length; i++) {
+    const m = alive[i];
+    if (i === 0) {
+      // Center: direct fast dart at the ship
+      const a = Math.atan2(game.ship.y - m.y, game.ship.x - m.x);
+      game.enemyBullets.push({
+        x: m.x, y: m.y,
+        vx: Math.cos(a) * 220, vy: Math.sin(a) * 220,
+        life: 5.0, damage: 8, color: '#8cf', size: 1.2,
+      });
+    } else {
+      // Arm: fires outward along its arm direction (radial from centroid)
+      const slotAngle = ((i - 1) / 4) * Math.PI * 2 + Math.PI / 4 + rot;
+      const ax = Math.cos(slotAngle), ay = Math.sin(slotAngle);
+      game.enemyBullets.push({
+        x: m.x, y: m.y,
+        vx: ax * 180, vy: ay * 180,
+        life: 5.5, damage: 7, color: '#48f', size: 1.5,
+      });
+    }
+  }
+  game.particles.emit(f.cx, f.cy, 18, '#8cf', 180, 0.5, 3);
+  try { playSound('enemy_shoot'); } catch (e) {}
+  f.volleyFlash = 0.5;
 }
 
 function firePicketVolley(f) {
@@ -5084,10 +5187,14 @@ function emitDeathFlash(inv, particles) {
   }
 }
 
-// ARH are 5× larger when Wide Camera is on so they stay readable at zoom.
-// `baseSize` is the true size; `size` = baseSize * getARHSizeMul(). When the
-// toggle flips, refreshARHSizes() walks existing invaders to re-apply the mul.
-function getARHSizeMul() { return WIDE_CAMERA ? 5 : 1; }
+// ARH size scales inversely with CAMERA_ZOOM so enemies read roughly the same
+// on-screen regardless of whether Wide Camera is on or how far the auto-zoom
+// has pulled back. Target is ~baseSize * 2.5 in screen pixels at any moment.
+// Clamped so ARH never shrink below base or balloon past 5× (would feel wrong).
+function getARHSizeMul() {
+  const z = (typeof CAMERA_ZOOM === 'number' && CAMERA_ZOOM > 0.1) ? CAMERA_ZOOM : 0.7;
+  return clamp(2.5 / z, 1.2, 5.5);
+}
 function refreshARHSizes() {
   if (!game || !game.invaders) return;
   const mul = getARHSizeMul();
@@ -5208,14 +5315,17 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
           inv.vy -= Math.sin(radialAngle) * radialVel * 0.3;
         }
       }
-      // NO velocity cancellation within 50 units of star surface — gravity wins here
-      // Preferred orbit is closer now, so boss doesn't flee to far corners
+      // Preferred orbit — keeps bosses positioned in the active combat zone
+      // rather than drifting to the corners. CRITICAL: this radius must be
+      // OUTSIDE the star. Was hardcoded at 350 which is inside every star
+      // type (yellow dwarf radius is 450, red giant is 1400) — the #1 reason
+      // bosses were diving into the sun.
       const distFromCenter = Math.hypot(inv.x, inv.y);
-      if (distFromCenter > 0.1) {
-        const preferredRadius = 350; // closer to action
+      if (distFromCenter > 0.1 && game.star) {
+        const preferredRadius = game.star.radius + 500;
         const radiusDiff = distFromCenter - preferredRadius;
-        if (Math.abs(radiusDiff) > 50) {
-          const correction = (preferredRadius - distFromCenter) * 0.1; // gentler correction
+        if (Math.abs(radiusDiff) > 80) {
+          const correction = (preferredRadius - distFromCenter) * 0.1;
           const radiusAngle = Math.atan2(inv.y, inv.x);
           inv.vx += Math.cos(radiusAngle) * correction;
           inv.vy += Math.sin(radiusAngle) * correction;
@@ -5314,8 +5424,10 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
   while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
   inv.facingAngle += angleDiff * Math.min(1, 1.5 * dt); // smooth turn
 
-  // Type-specific behavior — skipped while ARH is still building in
-  if (ship.alive && !isBuilding) {
+  // Type-specific behavior — skipped while ARH is still building in,
+  // and also skipped when locked inside a holding formation (Cross).
+  // The formation's hold logic will pull them to slot positions instead.
+  if (ship.alive && !isBuilding && !inv._heldByFormation) {
     const d = dist(inv, ship);
     const aggroSkill = clamp((wave - 1) / 8, 0, 1);
 
@@ -5399,7 +5511,18 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       const d = dist(inv, ship);
       // Accuracy starts higher and tops out higher so early waves still feel threatening
       const accuracy = clamp((wave - 2) / 8, 0.25, 0.9);
-      const shootRange = inv.typeName === 'stinger' ? 500 : inv.typeName === 'titan' ? 550 : 400;
+      // Per-type firing range — extended so ARH engage from much farther.
+      // Hive lobs long-range, stinger/titan snipe, scouts/phantoms strafe long,
+      // brutes and drones fire at middle range.
+      const shootRange = (
+        inv.typeName === 'hive' ? 850 :
+        inv.typeName === 'stinger' ? 800 :
+        inv.typeName === 'titan' ? 850 :
+        inv.typeName === 'scout' ? 720 :
+        inv.typeName === 'phantom' ? 780 :
+        inv.typeName === 'brute' ? 680 :
+        700 // drone / default
+      );
       const shootAccuracy = inv.typeName === 'stinger' ? accuracy * 1.5 : accuracy;
       if (d < shootRange && Math.random() < inv.shootChance * clamp(shootAccuracy, 0, 0.95)) {
         const a = angle(inv, ship);
@@ -6534,7 +6657,10 @@ function drawMinimap(ctx) {
     ctx.fillText(p.name[0], cx+dx, cy+dy-5); ctx.textAlign = 'left';
   }
 
-  // ARH as dots — pin to edge if beyond radar range
+  // ARH as dots — simplified color scheme for readability:
+  //   in-range  → a single cyan tone (not per-enemy varied)
+  //   off-range → amber dot pinned to edge (not red — red is reserved for hard threats)
+  //   boss      → bright orange regardless of range
   for (const inv of game.invaders) {
     let dx = (inv.x - shipX)/scale*MINIMAP_SIZE;
     let dy = (inv.y - shipY)/scale*MINIMAP_SIZE;
@@ -6543,11 +6669,12 @@ function drawMinimap(ctx) {
       // Pin to edge of radar circle
       dx = (dx/dd)*(ms-4);
       dy = (dy/dd)*(ms-4);
-      ctx.fillStyle = '#f44'; // red = off-range
-      ctx.beginPath(); ctx.arc(cx+dx, cy+dy, 2.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = inv.isBoss ? '#f80' : '#fa4';
+      ctx.beginPath(); ctx.arc(cx+dx, cy+dy, inv.isBoss ? 3.5 : 2.2, 0, Math.PI*2); ctx.fill();
     } else {
-      ctx.fillStyle = inv.color;
-      ctx.fillRect(cx+dx-1, cy+dy-1, 2, 2);
+      ctx.fillStyle = inv.isBoss ? '#f80' : '#6ef';
+      const sz = inv.isBoss ? 3 : 2;
+      ctx.fillRect(cx+dx - sz/2, cy+dy - sz/2, sz, sz);
     }
   }
 
@@ -7570,6 +7697,8 @@ function updateGame(dt) {
 
   // Invaders
   const planet1 = game.planets[0];
+  // Keep ARH sizes in sync with the current camera zoom (zoom-responsive sizing).
+  refreshARHSizes();
   for (const inv of game.invaders) updateARH(inv, dt, planet1, game.ship, game.invaders, game.particles, game.wave);
 
   // Cluster swarm behavior: densely packed ARH form emergent "machines"
