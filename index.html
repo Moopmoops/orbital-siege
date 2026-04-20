@@ -649,9 +649,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.1', date: '2026-04-20', changes: [
+    'FIX: ARH now scale with the camera the same way planets, the star, and the ship do — fixed 2.5× world-size multiplier, no more inverse-zoom math. Zoom in → ARH look bigger; zoom out → ARH look smaller. Just like everything else.',
+  ]},
   { version: '0.18.0', date: '2026-04-20', changes: [
     'NEW: Cross formation — 5 ARH lock into a rotating X shape and hold position around their centroid, firing a synchronized outward 5-beam volley every ~3.2s. They do NOT disperse to chase the player.',
     'FIX (BOSS): Real culprit for bosses plunging into the sun — the "preferred orbit" was hardcoded at r=350 which is inside every star. Now scales with star radius (star.radius + 500).',
@@ -5187,14 +5190,10 @@ function emitDeathFlash(inv, particles) {
   }
 }
 
-// ARH size scales inversely with CAMERA_ZOOM so enemies read roughly the same
-// on-screen regardless of whether Wide Camera is on or how far the auto-zoom
-// has pulled back. Target is ~baseSize * 2.5 in screen pixels at any moment.
-// Clamped so ARH never shrink below base or balloon past 5× (would feel wrong).
-function getARHSizeMul() {
-  const z = (typeof CAMERA_ZOOM === 'number' && CAMERA_ZOOM > 0.1) ? CAMERA_ZOOM : 0.7;
-  return clamp(2.5 / z, 1.2, 5.5);
-}
+// ARH size: a fixed world-space multiplier on baseSize. ARH then scale with the
+// camera transform like planets, the star, and the ship — zoom in makes them
+// bigger on screen, zoom out makes them smaller. No special-case math.
+function getARHSizeMul() { return 2.5; }
 function refreshARHSizes() {
   if (!game || !game.invaders) return;
   const mul = getARHSizeMul();
@@ -7697,8 +7696,6 @@ function updateGame(dt) {
 
   // Invaders
   const planet1 = game.planets[0];
-  // Keep ARH sizes in sync with the current camera zoom (zoom-responsive sizing).
-  refreshARHSizes();
   for (const inv of game.invaders) updateARH(inv, dt, planet1, game.ship, game.invaders, game.particles, game.wave);
 
   // Cluster swarm behavior: densely packed ARH form emergent "machines"
