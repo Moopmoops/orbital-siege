@@ -649,9 +649,16 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 16, patch: 2, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 17, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.17.0', date: '2026-04-20', changes: [
+    'FIX: Sign-in now persists across browser refresh — was being overwritten by a race-condition anonymous sign-in before Firebase restored the saved session',
+    'FIX: Bosses no longer drift into the sun — danger zone widened, force ramped, panic-mode lateral escape at very close range',
+    'TUNING: Wave-1 ARH read larger — base size formula bumped (gen 0 from 9 → 13)',
+    'VISUAL: Per-instance rotation rate variation — drones, brutes, hives, titans no longer rotate in lockstep with same-type neighbours',
+    'VISUAL: More texture per ARH type — cross-hatched drone surfaces, scout side panels, brute corner spike caps, stinger eye dot, hive inner cell ring, phantom orbital wisps, titan power conduits',
+  ]},
   { version: '0.16.2', date: '2026-04-20', changes: [
     'VISUAL: ARH bodies now have shaded textures (not just decals) — radial gradient with directional light + per-type surface pattern: drone diagonal grain, scout longitudinal streaks, brute speckled grunge, stinger lateral bands, hive membrane patches, phantom wavy highlights, titan plate rivets',
   ]},
@@ -5076,7 +5083,8 @@ function refreshARHSizes() {
 function createARH(x, y, typeName, generation, planet) {
   const type = ARH_TYPES[typeName] || ARH_TYPES.drone;
   const gen = Math.min(generation, 4);
-  const baseSize = 9 + gen*2 + (type.hpBase > 30 ? 5 : 0);
+  // Bumped from 9 → 13 so wave-1 (gen 0) ARH read substantially in widescreen
+  const baseSize = 13 + gen*2 + (type.hpBase > 30 ? 5 : 0);
   const size = baseSize * getARHSizeMul();
   const hp = type.hpBase + gen*8;
   const orbR = dist({x,y}, planet);
@@ -5101,6 +5109,11 @@ function createARH(x, y, typeName, generation, planet) {
     // Per-instance time offset so all visual sin/cos animations desync across
     // ARH of the same type (phantoms, titans, drones — each pulses on its own beat).
     timeOffset: Math.random() * 100,
+    // Per-instance rotation rate multiplier so spinning ARH (drone, brute, hive,
+    // titan) don't visibly rotate in lockstep. Range ~0.7-1.3.
+    rotMul: 0.7 + Math.random() * 0.6,
+    // Direction of rotation also varies — half spin clockwise, half counter
+    rotDir: Math.random() < 0.5 ? 1 : -1,
     reproduceTimer: REPRODUCE_TIME_BASE + rng(-3,4),
     reproduceProgress: 0,
     points: 10 + gen*15 + (type.hpBase > 30 ? 20 : 0),
@@ -5132,17 +5145,27 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
 
   // Boss-specific behavior
   if (inv.isBoss) {
-    // Sun-avoidance: boss gently steers away from sun
+    // Sun-avoidance: boss steers away from the sun. Solar bombs can still push
+    // bosses in (that's the kill mechanic), but ambient drift shouldn't end
+    // with the boss embarrassingly diving into the star.
     if (game.star) {
       const dToStar = dist(inv, game.star);
-      const dangerZone = game.star.radius + 180; // smaller danger zone
+      const dangerZone = game.star.radius + 360; // wider warning zone
       if (dToStar < dangerZone) {
         const proximity = Math.max(0.01, (dangerZone - dToStar) / dangerZone);
         const angle = Math.atan2(inv.y - game.star.y, inv.x - game.star.x);
-        // Moderate force — strong enough to avoid drifting in, but bombs can overcome
-        const force = 150 * proximity; // linear, not quadratic — much weaker
+        // Quadratic ramp — gets MUCH stronger as boss approaches, weak from far
+        const force = 320 * proximity * proximity + 80 * proximity;
         inv.vx += Math.cos(angle) * force * dt;
         inv.vy += Math.sin(angle) * force * dt;
+        // Panic mode: close to surface — add lateral escape thrust perpendicular
+        // to the radial. Pushes the boss tangentially, breaking the death plunge.
+        if (dToStar < game.star.radius + 140) {
+          const tangentSign = ((inv.x * inv.vy - inv.y * inv.vx) >= 0) ? 1 : -1;
+          const tangentForce = 260 * (1 - (dToStar - game.star.radius) / 140);
+          inv.vx += -Math.sin(angle) * tangentForce * tangentSign * dt;
+          inv.vy +=  Math.cos(angle) * tangentForce * tangentSign * dt;
+        }
       }
       // Gentle velocity damping when heading toward sun (only outside gravity capture zone)
       if (dToStar < game.star.radius + 120 && dToStar > game.star.radius + 50) {
@@ -5616,7 +5639,7 @@ function drawARH(ctx, inv, cam) {
   // Type-specific unique renderings
   if (inv.typeName === 'drone') {
     // Drone: spinning diamond core with flutter wings
-    const rot = t * 1.5; // fast spinning
+    const rot = t * 1.5 * (inv.rotMul || 1) * (inv.rotDir || 1); // per-instance speed/direction
 
     // Pulsing glow dot
     const glowSize = s*0.3 + Math.sin(t*3)*s*0.1;
@@ -5671,6 +5694,25 @@ function drawARH(ctx, inv, cam) {
     for (let i = -1; i <= 1; i++) {
       ctx.beginPath(); ctx.arc(i*s*0.15, s*0.25, s*0.04, 0, Math.PI*2); ctx.fill();
     }
+    // EXTRA TEXTURE: cross-hatch (perpendicular to the diagonal grain) clipped to body
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(0, -s*0.4); ctx.lineTo(s*0.3, 0); ctx.lineTo(0, s*0.4); ctx.lineTo(-s*0.3, 0);
+    ctx.closePath(); ctx.clip();
+    ctx.strokeStyle = hsla(h, 60, 60, 0.22);
+    ctx.lineWidth = 0.55;
+    for (let i = -4; i <= 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(-s*0.5, -i * s * 0.09 + s*0.4);
+      ctx.lineTo(s*0.5, -i * s * 0.09 - s*0.1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // Center hot eye
+    ctx.fillStyle = hsla(h, 95, 75, 0.85);
+    ctx.beginPath(); ctx.arc(0, 0, s*0.07, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, 0, s*0.03, 0, Math.PI*2); ctx.fill();
 
   } else if (inv.typeName === 'scout') {
     // Scout: velocity-oriented dart — override planet facing
@@ -5734,10 +5776,22 @@ function drawARH(ctx, inv, cam) {
     ctx.lineWidth = 0.8;
     ctx.beginPath(); ctx.moveTo(-s*0.15, -s*0.12); ctx.lineTo(s*0.25, -s*0.05); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-s*0.15, s*0.12); ctx.lineTo(s*0.25, s*0.05); ctx.stroke();
+    // EXTRA TEXTURE: side panel triangles + tail vent glow
+    ctx.fillStyle = hsla(h, 55, 30, 0.6);
+    ctx.beginPath();
+    ctx.moveTo(s*0.05, -s*0.18); ctx.lineTo(-s*0.1, -s*0.08); ctx.lineTo(s*0.05, -s*0.06);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(s*0.05, s*0.18); ctx.lineTo(-s*0.1, s*0.08); ctx.lineTo(s*0.05, s*0.06);
+    ctx.closePath(); ctx.fill();
+    // Tail vent glow ring around the engine
+    ctx.strokeStyle = hsla(h, 90, 70, 0.8);
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.arc(-s*0.27, 0, s*0.16, 0, Math.PI*2); ctx.stroke();
 
   } else if (inv.typeName === 'brute') {
     // Brute: chunky hexagon with armor plating
-    const rot = t * 0.3; // slow rotation
+    const rot = t * 0.3 * (inv.rotMul || 1) * (inv.rotDir || 1); // per-instance speed/direction
 
     // Filled hex body — shaded gradient with grunge speckles
     ctx.beginPath();
@@ -5818,6 +5872,23 @@ function drawARH(ctx, inv, cam) {
       ctx.lineTo(Math.cos(sa - 0.18) * s * 0.45, Math.sin(sa - 0.18) * s * 0.45);
       ctx.closePath(); ctx.fill();
     }
+    // EXTRA TEXTURE: 6 corner spike caps at the hex vertices + secondary inner bolt ring
+    for (let i = 0; i < 6; i++) {
+      const ca = (i / 6) * Math.PI * 2 + rot;
+      const cx2 = Math.cos(ca) * s * 0.5, cy2 = Math.sin(ca) * s * 0.5;
+      ctx.fillStyle = hsla(h, 55, 22, 0.85);
+      ctx.beginPath(); ctx.arc(cx2, cy2, s*0.05, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = hsla(h, 90, 70, 0.6);
+      ctx.beginPath(); ctx.arc(cx2 - s*0.012, cy2 - s*0.012, s*0.02, 0, Math.PI*2); ctx.fill();
+    }
+    // Inner ring of small bolts
+    ctx.fillStyle = hsla(h, 50, 28, 0.65);
+    for (let i = 0; i < 6; i++) {
+      const ba = (i / 6) * Math.PI * 2 + Math.PI/6 + rot * 0.6;
+      ctx.beginPath();
+      ctx.arc(Math.cos(ba) * s * 0.32, Math.sin(ba) * s * 0.32, s*0.025, 0, Math.PI*2);
+      ctx.fill();
+    }
 
   } else if (inv.typeName === 'stinger') {
     // Stinger: velocity-oriented wasp — override planet facing
@@ -5872,10 +5943,24 @@ function drawARH(ctx, inv, cam) {
       ctx.lineTo(s*0.18, i * s * 0.15);
       ctx.stroke();
     }
+    // EXTRA TEXTURE: glowing eye dot near the front + 2 antenna whiskers
+    ctx.fillStyle = hsla(0, 100, 70, 0.85);
+    ctx.beginPath(); ctx.arc(0, -s*0.18, s*0.06, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(0, -s*0.18, s*0.025, 0, Math.PI*2); ctx.fill();
+    // Antenna whiskers fanning forward
+    ctx.strokeStyle = hsla(h, 60, 65, 0.7);
+    ctx.lineWidth = 0.7;
+    for (let side = -1; side <= 1; side += 2) {
+      ctx.beginPath();
+      ctx.moveTo(side * s * 0.08, -s*0.32);
+      ctx.lineTo(side * s * 0.22, -s*0.5);
+      ctx.stroke();
+    }
 
   } else if (inv.typeName === 'hive') {
     // Hive: fat octagon with pulsing internal cells
-    const rot = t * 0.2;
+    const rot = t * 0.2 * (inv.rotMul || 1) * (inv.rotDir || 1); // per-instance speed/direction
 
     // Octagonal body — shaded with organic membrane patches
     ctx.beginPath();
@@ -5909,7 +5994,7 @@ function drawARH(ctx, inv, cam) {
 
     // 3-4 internal cells/eggs
     for (let i = 0; i < 4; i++) {
-      const cellAngle = (i/4)*Math.PI*2 + t*0.5;
+      const cellAngle = (i/4)*Math.PI*2 + t * 0.5 * (inv.rotMul || 1) * (inv.rotDir || 1);
       const cellX = Math.cos(cellAngle)*s*0.25;
       const cellY = Math.sin(cellAngle)*s*0.25;
       const cellHue = (h + i*20) % 360;
@@ -5928,6 +6013,25 @@ function drawARH(ctx, inv, cam) {
       ctx.beginPath();
       ctx.moveTo(Math.cos(ang) * s * 0.5, Math.sin(ang) * s * 0.5);
       ctx.lineTo(Math.cos(ang) * s * 0.7, Math.sin(ang) * s * 0.7);
+      ctx.stroke();
+    }
+    // EXTRA TEXTURE: inner ring of small bright sub-cells + 8 vent slits between corners
+    for (let i = 0; i < 8; i++) {
+      const sa = (i / 8) * Math.PI * 2 + rot * 1.4;
+      const sx2 = Math.cos(sa) * s * 0.18;
+      const sy2 = Math.sin(sa) * s * 0.18;
+      const subPulse = 0.6 + 0.4 * Math.sin(t * 3 + i);
+      ctx.fillStyle = hsla((h + 25) % 360, 80, 60 + subPulse * 15, 0.7);
+      ctx.beginPath(); ctx.arc(sx2, sy2, s*0.04, 0, Math.PI*2); ctx.fill();
+    }
+    // Vent slits — short dashes between corner antennae
+    ctx.strokeStyle = hsla(h, 40, 20, 0.6);
+    ctx.lineWidth = 0.7;
+    for (let i = 0; i < 8; i++) {
+      const va = (i / 8) * Math.PI * 2 + Math.PI/8 + rot * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(va) * s * 0.42, Math.sin(va) * s * 0.42);
+      ctx.lineTo(Math.cos(va) * s * 0.52, Math.sin(va) * s * 0.52);
       ctx.stroke();
     }
 
@@ -5987,11 +6091,22 @@ function drawARH(ctx, inv, cam) {
     ctx.stroke();
     ctx.fillStyle = hsla(h, 100, 90, shimmer * 0.9);
     ctx.beginPath(); ctx.arc(0, 0, s*0.05, 0, Math.PI*2); ctx.fill();
+    // EXTRA TEXTURE: 3 orbital wisps spiraling around the crescent
+    for (let i = 0; i < 3; i++) {
+      const wa = t * 1.1 + i * (Math.PI * 2 / 3);
+      const wr = s * (0.45 + Math.sin(t * 2 + i) * 0.05);
+      const wx = Math.cos(wa) * wr;
+      const wy = Math.sin(wa) * wr;
+      ctx.fillStyle = hsla(h, 100, 75, shimmer * 0.8);
+      ctx.beginPath(); ctx.arc(wx, wy, s*0.04, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = hsla(h, 100, 90, shimmer * 0.5);
+      ctx.beginPath(); ctx.arc(wx, wy, s*0.08, 0, Math.PI*2); ctx.fill();
+    }
     ctx.globalAlpha = 1;
 
   } else if (inv.typeName === 'titan') {
     // Titan: large 6-pointed star with rotating outer segments
-    const rot = t * 0.5; // slow rotation
+    const rot = t * 0.5 * (inv.rotMul || 1) * (inv.rotDir || 1); // per-instance speed/direction
 
     // Rotating outer segment ring (6 small squares)
     ctx.fillStyle = hsl(h, 60, 40);
@@ -6063,6 +6178,24 @@ function drawARH(ctx, inv, cam) {
       ctx.moveTo(Math.cos(ma) * s * 0.5, Math.sin(ma) * s * 0.5);
       ctx.lineTo(Math.cos(ma + Math.PI) * s * 0.5, Math.sin(ma + Math.PI) * s * 0.5);
       ctx.stroke();
+    }
+    // EXTRA TEXTURE: power conduit lines from core out to each ray + spinning inner ring
+    ctx.strokeStyle = hsla(h, 90, 65, 0.55 + reactorPulse * 0.25);
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 6; i++) {
+      const ra = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ra) * s * 0.13, Math.sin(ra) * s * 0.13);
+      ctx.lineTo(Math.cos(ra) * s * 0.45, Math.sin(ra) * s * 0.45);
+      ctx.stroke();
+    }
+    // Inner spinning ring of bright dots
+    for (let i = 0; i < 8; i++) {
+      const sa = (i / 8) * Math.PI * 2 + rot * 1.6;
+      ctx.fillStyle = hsla(h, 100, 80, 0.8);
+      ctx.beginPath();
+      ctx.arc(Math.cos(sa) * s * 0.27, Math.sin(sa) * s * 0.27, s*0.025, 0, Math.PI*2);
+      ctx.fill();
     }
   }
 
@@ -8711,6 +8844,11 @@ const PLAYTIME_FLUSH_INTERVAL = 30; // seconds of active play before flushing
 
 function initAuth() {
   if (!firebase.auth) return;
+  // Persist the auth session across browser refreshes (stored in IndexedDB).
+  // Without this — or with a proactive signInAnonymously() racing the persisted
+  // session restore — refreshing the page wipes the user back to anonymous.
+  firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .catch(e => console.warn('Could not set auth persistence:', e));
   firebase.auth().onAuthStateChanged(async (user) => {
     if (user) {
       currentUser = user;
@@ -8718,15 +8856,13 @@ function initAuth() {
       refreshProfileUI();
       updateResumeButton();
     } else {
-      // Signed out — immediately sign back in anonymously so stats always accrue
+      // No persisted user — sign in anonymously so stats always accrue.
+      // We do this from the listener (not proactively) to avoid clobbering a
+      // restored Google session before Firebase has finished loading it.
       try { await firebase.auth().signInAnonymously(); }
       catch (e) { console.error('Anonymous sign-in failed:', e); }
     }
   });
-  // Kick off anonymous sign-in if not already signed in
-  if (!firebase.auth().currentUser) {
-    firebase.auth().signInAnonymously().catch(e => console.error('Anonymous sign-in failed:', e));
-  }
 }
 
 async function loadOrCreateProfile(user) {
