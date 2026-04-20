@@ -649,9 +649,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 3, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 4, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.4', date: '2026-04-20', changes: [
+    'VISUAL: Red Dwarf radius bumped 220 → 430 so the star visibly outsizes gas giants (was nearly the same size as a Jupiter-class planet — wrong even for an M-dwarf)',
+    'VISUAL: Orange Dwarf bumped 320 → 500 to maintain progression',
+  ]},
   { version: '0.18.3', date: '2026-04-20', changes: [
     'UI: Regular ARH now use a warm orange-red on radar/arrows (#f75); bosses use a deeper angry red (#e22) so they stand out as the primary threat',
   ]},
@@ -2137,10 +2141,10 @@ const PLANET_RADIUS = 25; // base rocky planet size (Earth-like)
 // Real ratios: red dwarf ~0.1 Sun, blue giant ~10 Sun, red giant ~100-400 Sun
 // Game pushes hard: red dwarf barely bigger than a gas giant, red giant fills the screen
 const STAR_TYPES = [
-  { type: 'Red Dwarf', class: 'M', radius: 220, mass: 8000, corona: 3,
+  { type: 'Red Dwarf', class: 'M', radius: 430, mass: 8000, corona: 3,
     color: { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10 },
-    orbitScale: 0.6 }, // compact — star barely bigger than gas giants!
-  { type: 'Orange Dwarf', class: 'K', radius: 320, mass: 14000, corona: 3.5,
+    orbitScale: 0.75 }, // compact system but the star itself is meaningfully larger than its gas giants
+  { type: 'Orange Dwarf', class: 'K', radius: 500, mass: 14000, corona: 3.5,
     color: { rBase: 200, gBase: 100, bBase: 10, rBright: 255, gBright: 220, bBright: 80, rDark: 140, gDark: 40, bDark: 0 },
     orbitScale: 0.75 },
   { type: 'Yellow Dwarf', class: 'G', radius: 450, mass: 22000, corona: 4.5,
