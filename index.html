@@ -649,9 +649,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 2, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.2', date: '2026-04-20', changes: [
+    'UI: Enemies are now RED on radar and for off-screen arrows — matches universal convention, easier to read at a glance',
+    'UI: Score/combo popups no longer float over the battlefield — they stack as a column on the left side below the HUD so you see accumulating points without visual obstruction',
+  ]},
   { version: '0.18.1', date: '2026-04-20', changes: [
     'FIX: ARH now scale with the camera the same way planets, the star, and the ship do — fixed 2.5× world-size multiplier, no more inverse-zoom math. Zoom in → ARH look bigger; zoom out → ARH look smaller. Just like everything else.',
   ]},
@@ -6656,22 +6660,21 @@ function drawMinimap(ctx) {
     ctx.fillText(p.name[0], cx+dx, cy+dy-5); ctx.textAlign = 'left';
   }
 
-  // ARH as dots — simplified color scheme for readability:
-  //   in-range  → a single cyan tone (not per-enemy varied)
-  //   off-range → amber dot pinned to edge (not red — red is reserved for hard threats)
-  //   boss      → bright orange regardless of range
+  // ARH dots — universally "enemy = red" convention:
+  //   regular ARH → red, same color whether in-range or pinned at edge
+  //   boss        → bright orange, larger dot so it stands out from the reds
   for (const inv of game.invaders) {
     let dx = (inv.x - shipX)/scale*MINIMAP_SIZE;
     let dy = (inv.y - shipY)/scale*MINIMAP_SIZE;
     const dd = Math.hypot(dx, dy);
+    const color = inv.isBoss ? '#f80' : '#f44';
     if (dd > ms - 4) {
-      // Pin to edge of radar circle
       dx = (dx/dd)*(ms-4);
       dy = (dy/dd)*(ms-4);
-      ctx.fillStyle = inv.isBoss ? '#f80' : '#fa4';
+      ctx.fillStyle = color;
       ctx.beginPath(); ctx.arc(cx+dx, cy+dy, inv.isBoss ? 3.5 : 2.2, 0, Math.PI*2); ctx.fill();
     } else {
-      ctx.fillStyle = inv.isBoss ? '#f80' : '#6ef';
+      ctx.fillStyle = color;
       const sz = inv.isBoss ? 3 : 2;
       ctx.fillRect(cx+dx - sz/2, cy+dy - sz/2, sz, sz);
     }
@@ -7124,42 +7127,51 @@ function registerKill(x, y, basePoints, inv) {
 }
 
 function updateScorePopups(dt) {
+  // Popups live in a HUD column now — no world-space drift needed. Life only.
   for (let i = game.scorePopups.length - 1; i >= 0; i--) {
     const p = game.scorePopups[i];
     p.life -= dt;
-    p.y += p.vy * dt;
-    p.vy *= 0.97;
     if (p._punchTimer > 0) p._punchTimer -= dt;
     if (p.life <= 0) game.scorePopups.splice(i, 1);
   }
 }
 
 function drawScorePopups(ctx, cam) {
-  for (const p of game.scorePopups) {
-    const sx = p.x - cam.x + ctx.canvas.width / 2;
-    const sy = p.y - cam.y + ctx.canvas.height / 2;
+  // Stack popups vertically on the left side, below the HUD stat rows, so the
+  // player sees accumulating score without anything landing on top of the map.
+  // Newest at top of the column; older drifts down as new ones push in.
+  if (!game.scorePopups || game.scorePopups.length === 0) return;
+  const colX = 22;
+  let colY = 210; // below hud-score/wave/kills/swarm/lives/pause hint rows
+  // Render newest → oldest (array is push-ordered, so iterate reverse for newest-first)
+  const popups = game.scorePopups.slice().reverse();
+  ctx.save();
+  ctx.textAlign = 'left';
+  for (const p of popups) {
     const alpha = Math.min(1, p.life / 0.4);
-    // Size scales with kill count — starts at 12, grows to 36+ for big streaks
-    const killScale = Math.min(3.0, 1 + (p.killCount || 1) * 0.12);
-    // Punch effect — brief scale burst on each new merge
-    const punch = p._punchTimer > 0 ? 1 + p._punchTimer * 3 : 1;
-    const baseSize = 12 * killScale * punch;
-    ctx.save();
+    const killCount = p.killCount || 1;
+    const killScale = Math.min(2.2, 1 + killCount * 0.09);
+    const punch = p._punchTimer > 0 ? 1 + p._punchTimer * 2 : 1;
+    const size = 14 * killScale * punch;
     ctx.globalAlpha = alpha;
-    ctx.font = `bold ${Math.floor(baseSize)}px 'Courier New',monospace`;
-    ctx.textAlign = 'center';
+    ctx.font = `bold ${Math.floor(size)}px 'Courier New',monospace`;
     ctx.fillStyle = p.color;
     ctx.shadowColor = p.color;
-    ctx.shadowBlur = 4 + (p.killCount || 1) * 1.5;
-    ctx.fillText(p.text, sx, sy);
-    // Show kill count if > 2
-    if ((p.killCount || 1) > 2) {
-      ctx.font = `${Math.floor(baseSize * 0.5)}px 'Courier New',monospace`;
-      ctx.globalAlpha = alpha * 0.7;
-      ctx.fillText(`${p.killCount} scrapped`, sx, sy + baseSize * 0.7);
+    ctx.shadowBlur = 3 + killCount * 1.0;
+    ctx.fillText(p.text, colX, colY);
+    ctx.shadowBlur = 0;
+    // Kill count hint to the right of the popup
+    if (killCount > 2) {
+      ctx.font = `${Math.floor(size * 0.55)}px 'Courier New',monospace`;
+      ctx.globalAlpha = alpha * 0.65;
+      ctx.fillStyle = p.color;
+      ctx.fillText(`×${killCount}`, colX + size * 4.2, colY - size * 0.1);
     }
-    ctx.restore();
+    colY += size * 1.25;
+    // Stop rendering if the column is running off-screen (safety)
+    if (colY > ctx.canvas.height - 40) break;
   }
+  ctx.restore();
 }
 // --- End kill combo system ---
 
@@ -8505,7 +8517,9 @@ function drawGame() {
       const edgeX = clamp(o.sx, margin, canvas.width-margin);
       const edgeY = clamp(o.sy, margin, canvas.height-margin);
       const isScanTarget = game.ship.scanTarget === o.inv && game.ship.scanTimer > 0;
-      const col = isScanTarget ? '#0f0' : o.inv.color;
+      // Universal enemy convention: red. Boss gets orange so you can spot it
+      // amid the reds. Scan target stays green as the player's own marker.
+      const col = isScanTarget ? '#0f0' : (o.inv.isBoss ? '#f80' : '#f44');
       // Fade in over the first 200 world units past the visible edge so the arrow
       // gently appears as the enemy leaves the screen instead of popping in hard
       const edgeFade = clamp(o.outside / 200, 0, 1);
