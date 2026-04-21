@@ -27,18 +27,71 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
   background: radial-gradient(ellipse at center, #0a0a2e 0%, #000 70%);
   color: #0ff; text-align: center;
 }
-#start-screen h1 { font-size: 56px; text-shadow: 0 0 30px #0ff, 0 0 60px #08f; margin-bottom: 6px; letter-spacing: 8px; }
-#start-screen .studio { font-size: 11px; color: #68a; margin-bottom: 6px; letter-spacing: 5px; }
-#start-screen .subtitle { font-size: 15px; color: #4af; margin-bottom: 35px; letter-spacing: 3px; }
+#start-screen h1 { font-size: 54px; text-shadow: 0 0 24px rgba(0,255,255,0.55); margin-bottom: 4px; letter-spacing: 5px; font-weight: bold; }
+#start-screen .studio { font-size: 10px; color: #4a6a8c; margin-bottom: 8px; letter-spacing: 4px; }
+#start-screen .subtitle { font-size: 12px; color: #5a8; margin-bottom: 28px; letter-spacing: 3px; opacity: 0.85; }
 #start-screen .controls { font-size: 12px; color: #8cf; line-height: 2.1; margin-bottom: 25px; }
 #start-screen .controls span { color: #fff; background: #223; padding: 2px 8px; border-radius: 3px; border: 1px solid #4af; }
+/* Terminal-style dividers between sections for a mission-briefing feel */
+#start-screen .divider {
+  color: #1a3a52; font-size: 10px; letter-spacing: 3px;
+  margin: 20px 0 14px; font-family: 'Courier New', monospace;
+}
+#start-screen .divider::before { content: '─ ─ ─ ─ ─ '; }
+#start-screen .divider::after  { content: ' ─ ─ ─ ─ ─'; }
+#start-screen .section-label {
+  color: #5a8; font-size: 10px; letter-spacing: 4px; margin-bottom: 10px;
+  font-family: 'Courier New', monospace; opacity: 0.85;
+}
 #start-screen .start-btn {
   pointer-events: all; cursor: pointer; font-family: 'Courier New', monospace;
   font-size: 20px; color: #0ff; background: none; border: 2px solid #0ff;
-  padding: 12px 40px; letter-spacing: 4px; transition: all 0.3s;
+  padding: 12px 40px; letter-spacing: 4px; transition: all 0.2s;
   text-shadow: 0 0 10px #0ff; box-shadow: 0 0 20px rgba(0,255,255,0.2);
 }
 #start-screen .start-btn:hover { background: rgba(0,255,255,0.15); box-shadow: 0 0 40px rgba(0,255,255,0.4); }
+/* Secondary buttons — smaller, dimmer, no glow. For LEADERBOARD, PROFILE etc. */
+#start-screen .start-btn.secondary {
+  font-size: 13px; padding: 8px 22px; letter-spacing: 3px;
+  color: #6ab; border-color: #356;
+  text-shadow: none; box-shadow: none;
+}
+#start-screen .start-btn.secondary:hover { color: #8ce; border-color: #5ae; background: rgba(100,200,255,0.06); box-shadow: none; }
+/* Top-right corner utility icons (fullscreen, etc.) */
+#start-screen .corner-utils {
+  position: absolute; top: 18px; right: 22px; display: flex; gap: 10px;
+  z-index: 2;
+}
+#start-screen .corner-icon {
+  pointer-events: all; cursor: pointer; font-family: 'Courier New', monospace;
+  background: transparent; border: 1px solid #244;
+  color: #466; padding: 6px 10px; font-size: 11px; letter-spacing: 2px;
+  border-radius: 3px; transition: color 0.15s, border-color 0.15s;
+}
+#start-screen .corner-icon:hover { color: #8ce; border-color: #5ae; }
+/* Bottom-right version chip */
+#start-screen .version-chip {
+  position: absolute; bottom: 16px; right: 22px;
+  font-family: 'Courier New', monospace; font-size: 10px; letter-spacing: 2px;
+  color: #355; cursor: pointer; opacity: 0.7;
+  padding: 4px 8px; border: 1px solid #234; border-radius: 3px;
+}
+#start-screen .version-chip:hover { color: #8ce; border-color: #356; opacity: 1; }
+/* Boss-frequency buttons — need a clear selected vs unselected state */
+#start-screen .freq-btn {
+  padding: 8px 18px; font-size: 11px; min-width: auto; cursor: pointer;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid #333; color: #666;
+  font-family: 'Courier New', monospace; letter-spacing: 2px;
+  transition: all 0.15s;
+  position: relative;
+}
+#start-screen .freq-btn:hover { border-color: #556; color: #8ab; }
+#start-screen .freq-btn .sel-marker { opacity: 0; margin-right: 4px; transition: opacity 0.15s; color: inherit; }
+#start-screen .freq-btn.selected .sel-marker { opacity: 1; }
+#start-screen .freq-btn.selected[data-freq="normal"]   { border: 2px solid #0ff; color: #0ff; background: rgba(0,255,255,0.12); box-shadow: 0 0 16px rgba(0,255,255,0.2); }
+#start-screen .freq-btn.selected[data-freq="frequent"] { border: 2px solid #fa0; color: #fa0; background: rgba(255,160,0,0.12); box-shadow: 0 0 16px rgba(255,160,0,0.2); }
+#start-screen .freq-btn.selected[data-freq="gauntlet"] { border: 2px solid #f44; color: #f44; background: rgba(255,50,50,0.15); box-shadow: 0 0 16px rgba(255,50,50,0.25); }
 #game-over {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100;
   display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -405,11 +458,20 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 </svg>
 
 <div id="start-screen">
+  <!-- Top-right corner utilities — small icon-sized controls for system-level actions -->
+  <div class="corner-utils">
+    <button id="fullscreen-btn" class="corner-icon" onclick="toggleFullscreen()" title="Fullscreen">⛶ FULLSCREEN</button>
+  </div>
+
+  <!-- Bottom-right version chip — click to open changelog, discreet -->
+  <div id="version-display" class="version-chip" onclick="toggleChangelog()" title="Click for changelog"></div>
+
   <div class="studio">FORWARD COMPATIBLE</div>
   <h1>ORBITAL SIEGE</h1>
-  <div id="version-display" style="color:#4af;font-family:'Courier New',monospace;font-size:10px;letter-spacing:2px;margin-bottom:4px;opacity:0.7;cursor:pointer;" onclick="toggleChangelog()" title="Click for changelog"></div>
+  <div class="subtitle">DEFEND THE SYSTEM</div>
+
   <div id="changelog-panel" style="display:none;max-width:500px;margin:0 auto 10px;padding:10px 16px;background:rgba(0,20,40,0.9);border:1px solid #4af;border-radius:6px;text-align:left;font-family:'Courier New',monospace;font-size:10px;color:#8cf;max-height:200px;overflow-y:auto;"></div>
-  <div class="subtitle">DEFEND THE SYSTEM FROM THE ARH SWARM</div>
+
   <div class="controls" style="display:grid;grid-template-columns:1fr 1fr;gap:4px 40px;text-align:left;max-width:520px;margin:0 auto 25px;justify-items:start;">
     <div><span>W</span> or <span>↑</span> &mdash; Accelerate (raise orbit)</div>
     <div><span>S</span> or <span>↓</span> &mdash; Decelerate (lower orbit)</div>
@@ -422,18 +484,19 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <div><span>TAB</span> &mdash; Scan target</div>
     <div><span>P</span> &mdash; Pause / Controls</div>
   </div>
-  <div style="display:flex;justify-content:center;align-items:center;gap:20px;flex-wrap:wrap;">
+
+  <!-- Primary action (LAUNCH) gets the glow; secondary actions sit beside it muted -->
+  <div style="display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;">
     <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
-    <button class="start-btn" id="leaderboard-btn" onclick="toggleStartLeaderboard()">LEADERBOARD</button>
-    <button class="start-btn" id="profile-btn" onclick="openProfileModal()">PROFILE</button>
-    <button class="start-btn" id="fullscreen-btn" onclick="toggleFullscreen()" style="font-size:10px;padding:8px 16px;">⛶ FULLSCREEN</button>
+    <button class="start-btn secondary" id="leaderboard-btn" onclick="toggleStartLeaderboard()">LEADERBOARD</button>
+    <button class="start-btn secondary" id="profile-btn" onclick="openProfileModal()">PROFILE</button>
   </div>
-  <div id="resume-section" style="margin-top:14px;font-family:'Courier New',monospace;font-size:11px;display:none;">
-    <div style="color:#4af;letter-spacing:2px;margin-bottom:6px;">CONTINUE WHERE YOU LEFT OFF</div>
+  <div id="resume-section" style="margin-top:22px;font-family:'Courier New',monospace;font-size:11px;display:none;">
+    <div class="divider">CONTINUE</div>
     <button id="resume-wave-btn" onclick="startFromResume()" style="pointer-events:all;cursor:pointer;font-family:'Courier New',monospace;font-size:13px;color:#0ff;background:rgba(0,255,255,0.1);border:2px solid #0ff;padding:8px 24px;letter-spacing:3px;border-radius:4px;"></button>
   </div>
-  <div id="checkpoint-section" style="margin-top:15px;font-family:'Courier New',monospace;font-size:11px;">
-    <div style="color:#4af;letter-spacing:2px;margin-bottom:8px;">CHECKPOINTS</div>
+  <div id="checkpoint-section" style="font-family:'Courier New',monospace;font-size:11px;">
+    <div class="divider">CHECKPOINTS</div>
     <div id="checkpoint-list"></div>
   </div>
   <div id="leaderboard" style="margin-top: 30px;">
@@ -453,28 +516,28 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <button class="deploy-btn" onclick="deployShip()">DEPLOY</button>
   </div>
   <div id="mode-select">
-    <h2>SELECT GAME MODE</h2>
+    <div class="divider" style="margin-top:6px;">GAME MODE</div>
     <div class="mode-grid">
       <button class="mode-btn ranked" onclick="selectGameMode('ranked')">
         RANKED
-        <div class="mode-desc">5 Lives<br>Leaderboard</div>
+        <div class="mode-desc">5 lives · ranked</div>
       </button>
       <button class="mode-btn freeplay" onclick="selectGameMode('freeplay')">
         UNLIMITED
-        <div class="mode-desc">Infinite Lives<br>No Leaderboard</div>
+        <div class="mode-desc">endless · no ranking</div>
       </button>
     </div>
-    <div id="boss-freq-select" style="margin-top:20px;text-align:center;">
-      <div style="color:#fa8;font-size:12px;letter-spacing:3px;margin-bottom:8px;">BOSS FREQUENCY</div>
+    <div id="boss-freq-select" style="margin-top:16px;text-align:center;">
+      <div class="divider">BOSS FREQUENCY</div>
       <div style="display:flex;gap:10px;justify-content:center;">
-        <button class="mode-btn" id="freq-normal" onclick="setBossFrequency('normal')" style="padding:8px 14px;font-size:11px;min-width:auto;background:rgba(0,255,255,0.15);border:1px solid #0ff;color:#0ff;cursor:pointer;">
-          NORMAL<div class="mode-desc" style="font-size:9px;">Every 5 waves</div>
+        <button class="mode-btn freq-btn selected" id="freq-normal" onclick="setBossFrequency('normal')" data-freq="normal">
+          <span class="sel-marker">▸</span>NORMAL<div class="mode-desc" style="font-size:9px;">Every 5 waves</div>
         </button>
-        <button class="mode-btn" id="freq-frequent" onclick="setBossFrequency('frequent')" style="padding:8px 14px;font-size:11px;min-width:auto;background:rgba(255,160,0,0.1);border:1px solid #555;color:#aaa;cursor:pointer;">
-          FREQUENT<div class="mode-desc" style="font-size:9px;">Every 3 waves</div>
+        <button class="mode-btn freq-btn" id="freq-frequent" onclick="setBossFrequency('frequent')" data-freq="frequent">
+          <span class="sel-marker">▸</span>FREQUENT<div class="mode-desc" style="font-size:9px;">Every 3 waves</div>
         </button>
-        <button class="mode-btn" id="freq-gauntlet" onclick="setBossFrequency('gauntlet')" style="padding:8px 14px;font-size:11px;min-width:auto;background:rgba(255,50,50,0.1);border:1px solid #555;color:#aaa;cursor:pointer;">
-          GAUNTLET<div class="mode-desc" style="font-size:9px;">Every wave<br>1.5x score</div>
+        <button class="mode-btn freq-btn" id="freq-gauntlet" onclick="setBossFrequency('gauntlet')" data-freq="gauntlet">
+          <span class="sel-marker">▸</span>GAUNTLET<div class="mode-desc" style="font-size:9px;">Every wave<br>1.5x score</div>
         </button>
       </div>
     </div>
@@ -651,9 +714,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 19, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 19, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.19.1', date: '2026-04-20', changes: [
+    'UI: Start menu polish — LAUNCH is now the clear primary action; LEADERBOARD/PROFILE demoted to secondary; EXIT FULLSCREEN moved to a corner icon; terminal-style dividers between sections; selected boss-frequency option has a stronger indicator; version chip moved to bottom-right; tightened title letter-spacing; removed excess glow from secondary text.',
+  ]},
   { version: '0.19.0', date: '2026-04-20', changes: [
     'NEW: Three camera modes — TIGHT (close-in detail), DYNAMIC (speed-reactive middle), WIDE (pulled-back for long-range awareness). K key cycles through them; subtle HUD indicator shows current mode.',
     'UI: Settings panel camera toggle is a 3-state cycle to match.',
@@ -2166,30 +2232,35 @@ const STAR_TYPES = [
   // All star radii scaled 1.5× vs. originals so every star type outsizes a
   // gas giant (max gas giant radius ≈ 195 = PLANET_RADIUS 25 × gasMult 7.8).
   // Relative proportions between star classes are preserved.
-  { type: 'Red Dwarf', class: 'M', radius: 330, mass: 8000, corona: 3,
+  // `density` (0..1): how solid the star should look. Main-sequence stars are
+  // dense (no see-through). Red Giants and supergiants are famously diffuse.
+  { type: 'Red Dwarf', class: 'M', radius: 330, mass: 8000, corona: 3, density: 1.0,
     color: { rBase: 190, gBase: 50, bBase: 30, rBright: 255, gBright: 140, bBright: 90, rDark: 130, gDark: 10, bDark: 10 },
     orbitScale: 0.75 }, // compact system but the star itself outsizes gas giants (~1.7×)
-  { type: 'Orange Dwarf', class: 'K', radius: 480, mass: 14000, corona: 3.5,
+  { type: 'Orange Dwarf', class: 'K', radius: 480, mass: 14000, corona: 3.5, density: 1.0,
     color: { rBase: 200, gBase: 100, bBase: 10, rBright: 255, gBright: 220, bBright: 80, rDark: 140, gDark: 40, bDark: 0 },
     orbitScale: 0.85 },
-  { type: 'Yellow Dwarf', class: 'G', radius: 675, mass: 22000, corona: 4.5,
+  { type: 'Yellow Dwarf', class: 'G', radius: 675, mass: 22000, corona: 4.5, density: 1.0,
     color: { rBase: 220, gBase: 160, bBase: 30, rBright: 255, gBright: 255, bBright: 140, rDark: 160, gDark: 90, bDark: 5 },
     orbitScale: 1.0 }, // Sun-like — baseline
-  { type: 'White Star', class: 'F', radius: 870, mass: 30000, corona: 5,
+  { type: 'White Star', class: 'F', radius: 870, mass: 30000, corona: 5, density: 1.0,
     color: { rBase: 230, gBase: 200, bBase: 120, rBright: 255, gBright: 250, bBright: 220, rDark: 180, gDark: 130, bDark: 60 },
     orbitScale: 1.2 },
-  { type: 'Blue-White Star', class: 'A', radius: 1125, mass: 40000, corona: 5.5,
+  { type: 'Blue-White Star', class: 'A', radius: 1125, mass: 40000, corona: 5.5, density: 1.0,
     color: { rBase: 170, gBase: 200, bBase: 250, rBright: 240, gBright: 250, bBright: 255, rDark: 50, gDark: 70, bDark: 130 },
     orbitScale: 1.5 },
   // Giants — doubled from main-sequence proportional size so they actually look
   // giant. Still artistically compressed (real red giants are ~50× the Sun, here ~7×).
-  { type: 'Blue Giant', class: 'B', radius: 3000, mass: 60000, corona: 6,
+  // Blue Giants are actually quite dense for their size — not see-through.
+  { type: 'Blue Giant', class: 'B', radius: 3000, mass: 60000, corona: 6, density: 0.95,
     color: { rBase: 100, gBase: 140, bBase: 240, rBright: 200, gBright: 230, bBright: 255, rDark: 20, gDark: 30, bDark: 100 },
-    orbitScale: 2.8 }, // wider orbits so planets aren't inside the corona
-  { type: 'Red Giant', class: 'M-III', radius: 4500, mass: 35000, corona: 7,
+    orbitScale: 2.8 },
+  // Red Giants ARE famously diffuse (~10⁻⁷ g/cm³ — "red-hot vacuum"). Lower density = more see-through render.
+  { type: 'Red Giant', class: 'M-III', radius: 4500, mass: 35000, corona: 7, density: 0.35,
     color: { rBase: 180, gBase: 40, bBase: 5, rBright: 255, gBright: 180, bBright: 60, rDark: 120, gDark: 15, bDark: 0 },
-    orbitScale: 3.5 }, // dominates the frame like a real red giant
-  { type: 'Amber Giant', class: 'K-III', radius: 2700, mass: 38000, corona: 6,
+    orbitScale: 3.5 },
+  // Amber Giants — moderately diffuse, between Blue Giant and Red Giant
+  { type: 'Amber Giant', class: 'K-III', radius: 2700, mass: 38000, corona: 6, density: 0.65,
     color: { rBase: 210, gBase: 110, bBase: 15, rBright: 255, gBright: 200, bBright: 100, rDark: 150, gDark: 30, bDark: 5 },
     orbitScale: 2.4 },
 ];
@@ -3408,13 +3479,34 @@ class Star {
     ctx.fillStyle = eg;
     ctx.beginPath(); ctx.arc(sx, sy, R*2.0, 0, Math.PI*2); ctx.fill();
 
+    // Solid density base — makes dense stars (main-sequence, Blue Giant) read
+    // as opaque, while low-density giants (Red Giant) remain see-through.
+    // Drawn BEFORE the texture so the texture sits on top of the solid fill.
+    const density = (typeof STAR_TYPE.density === 'number') ? STAR_TYPE.density : 1.0;
+    if (density > 0.02) {
+      ctx.save();
+      ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.clip();
+      const baseFill = ctx.createRadialGradient(sx, sy, R * 0.1, sx, sy, R);
+      // Inner: bright dense color; Outer: fades toward edge proportional to density
+      baseFill.addColorStop(0,   `rgba(${sc.rBright},${sc.gBright},${sc.bBright},${0.85 * density})`);
+      baseFill.addColorStop(0.5, `rgba(${sc.rBase},${sc.gBase},${sc.bBase},${0.75 * density})`);
+      baseFill.addColorStop(1,   `rgba(${Math.floor(sc.rBase*0.7)},${Math.floor(sc.gBase*0.5)},${Math.floor(sc.bBase*0.5)},${0.45 * density})`);
+      ctx.fillStyle = baseFill;
+      ctx.fillRect(sx - R, sy - R, R*2, R*2);
+      ctx.restore();
+    }
+
     // Pre-rendered texture — clipped to sun body circle only (no square edges)
     ctx.save();
     ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI*2); ctx.clip();
     ctx.translate(sx, sy);
     ctx.rotate(t * 0.02); // very slow rotation
     const texScale = R / this.texRadius;
+    // Higher-density stars get the texture drawn more opaquely; diffuse giants
+    // let the backdrop show through.
+    ctx.globalAlpha = 0.25 + 0.75 * density;
     ctx.drawImage(this.texture, -this.texture.width/2 * texScale, -this.texture.height/2 * texScale, this.texture.width * texScale, this.texture.height * texScale);
+    ctx.globalAlpha = 1;
     ctx.restore();
 
     // Bright white-hot core glow — makes the sun feel intensely luminous
@@ -9639,21 +9731,14 @@ function selectGameMode(mode) {
 
 function setBossFrequency(freq) {
   bossFrequency = freq;
-  // Update button visuals
-  const btns = { normal: '#freq-normal', frequent: '#freq-frequent', gauntlet: '#freq-gauntlet' };
-  const colors = { normal: '0,255,255', frequent: '255,160,0', gauntlet: '255,50,50' };
-  for (const [key, sel] of Object.entries(btns)) {
-    const btn = document.querySelector(sel);
+  // Toggle .selected class — CSS handles color/glow/border-weight per freq.
+  // Explicit class swap (instead of inline styles) is simpler and survives the
+  // CSS :hover transitions cleanly.
+  const keys = ['normal', 'frequent', 'gauntlet'];
+  for (const k of keys) {
+    const btn = document.getElementById('freq-' + k);
     if (!btn) continue;
-    if (key === freq) {
-      btn.style.borderColor = `rgb(${colors[key]})`;
-      btn.style.color = `rgb(${colors[key]})`;
-      btn.style.background = `rgba(${colors[key]},0.15)`;
-    } else {
-      btn.style.borderColor = '#555';
-      btn.style.color = '#aaa';
-      btn.style.background = `rgba(${colors[key]},0.05)`;
-    }
+    btn.classList.toggle('selected', k === freq);
   }
 }
 
