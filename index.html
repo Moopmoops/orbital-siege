@@ -649,9 +649,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 6, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 7, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.7', date: '2026-04-20', changes: [
+    'FIX: Top speed is now a LIFETIME record across games, not per-game. "NEW TOP SPEED" only fires when you actually beat your all-time best. Persists in localStorage + synced to your profile.',
+  ]},
   { version: '0.18.6', date: '2026-04-20', changes: [
     'VISUAL: Giant stars doubled in size so they finally feel giant-y (Blue Giant 1500 → 3000, Amber Giant 1275 → 2700, Red Giant 2100 → 4500)',
     'TUNING: Ship-body collision is now more of an angle deflection than a bounce — tangential-velocity conversion 30% → 80%, so the ship naturally glances off surfaces along the tangent instead of springing straight back',
@@ -3803,12 +3806,32 @@ class Ship {
     const boost = keys['shift'] ? 2.0 : 1;
     const spd = Math.hypot(this.vx, this.vy);
     if (game && spd > (game.topSpeed || 0)) {
-      const oldBracket = Math.floor((game.topSpeed || 0) / 50);
-      const newBracket = Math.floor(spd / 50);
-      if (newBracket > oldBracket && spd > 100) {
-        game.topSpeedMsg = { speed: Math.floor(spd), timer: 2.5 };
-      }
       game.topSpeed = spd;
+      // Only celebrate when the player actually beats their LIFETIME record,
+      // not every new per-game peak. Persist on new records so the number
+      // survives refresh and syncs to the Firebase profile too.
+      const lifetime = game._prevBestSpeed || 0;
+      if (spd > lifetime && spd > 100) {
+        const oldBracket = Math.floor(lifetime / 50);
+        const newBracket = Math.floor(spd / 50);
+        if (newBracket > oldBracket) {
+          game.topSpeedMsg = { speed: Math.floor(spd), timer: 2.5 };
+        }
+        game._prevBestSpeed = spd;
+        try { localStorage.setItem('orbital-siege-best-speed', String(Math.floor(spd))); } catch (e) {}
+        // Push to profile as well (fire-and-forget — don't await)
+        if (typeof currentUser !== 'undefined' && currentUser && currentProfile && firebaseReady) {
+          const newBest = Math.floor(spd);
+          if (newBest > (currentProfile.bestSpeed || 0)) {
+            currentProfile.bestSpeed = newBest;
+            try {
+              firebase.database().ref('profiles/' + currentUser.uid)
+                .update({ bestSpeed: newBest })
+                .catch(() => {});
+            } catch (e) {}
+          }
+        }
+      }
     }
     const velAngle = Math.atan2(this.vy, this.vx); // direction of travel
     const thrustAmt = this.thrustPower * boost;
@@ -7062,6 +7085,7 @@ function initGame() {
     _prevBestScore: parseInt(localStorage.getItem('orbital-siege-best-score') || '0'),
     _prevBestKills: parseInt(localStorage.getItem('orbital-siege-best-kills') || '0'),
     _prevBestWave: parseInt(localStorage.getItem('orbital-siege-best-wave') || '0'),
+    _prevBestSpeed: parseInt(localStorage.getItem('orbital-siege-best-speed') || '0'),
     _beatScore: false, _beatKills: false, _beatWave: false,
     hintState: {
       orbitStuckTimer: 0, orbitStuckBody: null,
@@ -9268,9 +9292,14 @@ async function recordGameEnd(score, wave) {
   };
   if (score > (currentProfile.bestScore || 0)) updates.bestScore = Math.floor(score);
   if (wave > (currentProfile.bestWave || 0)) updates.bestWave = Math.floor(wave);
+  // Also persist the run's top speed if it beat the lifetime record (belt + braces;
+  // the in-game save path handles this live, this is a backstop at game-end).
+  const runTopSpeed = game && game.topSpeed ? Math.floor(game.topSpeed) : 0;
+  if (runTopSpeed > (currentProfile.bestSpeed || 0)) updates.bestSpeed = runTopSpeed;
   currentProfile.gamesPlayed = updates.gamesPlayed;
   if (updates.bestScore) currentProfile.bestScore = updates.bestScore;
   if (updates.bestWave) currentProfile.bestWave = updates.bestWave;
+  if (updates.bestSpeed) currentProfile.bestSpeed = updates.bestSpeed;
   try { await firebase.database().ref('profiles/' + currentUser.uid).update(updates); }
   catch (e) { console.error('Profile update failed:', e); }
   updateResumeButton();
