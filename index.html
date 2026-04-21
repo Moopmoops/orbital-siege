@@ -572,7 +572,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <div id="hud-kills">KILLS: 0</div>
     <div id="hud-swarm" style="color:#f88;font-size:10px;letter-spacing:1px;"></div>
     <div id="hud-lives" style="color:#0ff;">LIVES: ♦♦♦♦♦</div>
-    <div id="hud-zoom" style="color:#446;font-size:10px;letter-spacing:2px;margin-top:4px;">ZOOM: DYNAMIC <span style="color:#224;">(K)</span></div>
+    <div id="hud-zoom" style="color:#4af;font-size:11px;letter-spacing:2px;margin-top:6px;">ZOOM: <span id="hud-zoom-mode" style="color:#0ff;font-weight:bold;">DYNAMIC</span> <span style="color:#248;font-size:10px;">[K]</span></div>
     <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
   </div>
   <div class="right">
@@ -714,9 +714,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 19, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 19, patch: 2, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.19.2', date: '2026-04-20', changes: [
+    'UI: Zoom indicator is now visible — proper cyan, bigger, with the mode name highlighted and current key hint. Also a larger, slower toast when cycling with K.',
+    'TUNING: WIDE camera pulled back significantly further — larger minimum view radius, lower fit factor, stricter zoom cap. Actually feels "wide" now.',
+  ]},
   { version: '0.19.1', date: '2026-04-20', changes: [
     'UI: Start menu polish — LAUNCH is now the clear primary action; LEADERBOARD/PROFILE demoted to secondary; EXIT FULLSCREEN moved to a corner icon; terminal-style dividers between sections; selected boss-frequency option has a stronger indicator; version chip moved to bottom-right; tightened title letter-spacing; removed excess glow from secondary text.',
   ]},
@@ -2359,7 +2363,7 @@ function cycleCameraMode() {
   setCameraMode(CAMERA_MODES[(idx + 1) % CAMERA_MODES.length]);
   // Show a brief confirmation toast in-game
   if (typeof game !== 'undefined' && game) {
-    game._cameraToast = { mode: CAMERA_MODE, timer: 1.4 };
+    game._cameraToast = { mode: CAMERA_MODE, timer: 1.8 };
   }
 }
 // Back-compat for any callers still using setWideCamera
@@ -8222,8 +8226,10 @@ function updateGame(dt) {
                  zoomCap: ZOOM_MAX * 1.15 },
       dynamic: { minViewRadius: 200, baseFit: 0.66, threatNearMul: 0.60, threatFarMul: 0.42, bossMul: 0.65,
                  zoomCap: ZOOM_MAX },
-      wide:    { minViewRadius: 380, baseFit: 0.48, threatNearMul: 0.85, threatFarMul: 0.65, bossMul: 0.85,
-                 zoomCap: Math.max(0.30, 0.55 / STAR_TYPE.orbitScale) },
+      // WIDE is now meaningfully pulled back — covers the long-range projectile
+      // volleys from far-away ARH without the player losing their frame of reference.
+      wide:    { minViewRadius: 900, baseFit: 0.32, threatNearMul: 1.10, threatFarMul: 0.90, bossMul: 1.00,
+                 zoomCap: Math.max(0.20, 0.35 / STAR_TYPE.orbitScale) },
     };
     const cm = CAM_PARAMS[CAMERA_MODE] || CAM_PARAMS.dynamic;
     const minViewRadius = cm.minViewRadius;
@@ -9079,17 +9085,27 @@ function drawGame() {
     ctx.fillText(`SPD: ${Math.floor(spd)}  ALT: ${Math.floor(nearestBody.d)} (${nearestBody.name})`, 20, canvas.height - 20);
   }
 
-  // Camera-mode toast — brief confirmation after K cycle
+  // Camera-mode toast — clear confirmation after K cycle. Larger + longer so
+  // the player actually sees the mode swap.
   if (game._cameraToast && game._cameraToast.timer > 0) {
     game._cameraToast.timer -= 0.016;
     const ct = game._cameraToast.timer;
-    const alpha = Math.min(1, ct / 0.4);
+    const maxT = 1.8;
+    const fadeIn = Math.min(1, (maxT - ct) / 0.2);
+    const fadeOut = Math.min(1, ct / 0.5);
+    const alpha = Math.min(fadeIn, fadeOut);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.textAlign = 'center';
-    ctx.font = '11px Courier New';
-    ctx.fillStyle = '#8cf';
-    ctx.fillText(`CAMERA: ${game._cameraToast.mode.toUpperCase()}`, canvas.width / 2, 40);
+    ctx.font = '10px Courier New';
+    ctx.fillStyle = '#68a';
+    ctx.fillText('ZOOM', canvas.width / 2, 48);
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillStyle = '#0ff';
+    ctx.shadowColor = '#0ff';
+    ctx.shadowBlur = 10;
+    ctx.fillText(game._cameraToast.mode.toUpperCase(), canvas.width / 2, 74);
+    ctx.shadowBlur = 0;
     ctx.textAlign = 'left';
     ctx.restore();
     if (ct <= 0) game._cameraToast = null;
@@ -9153,9 +9169,9 @@ function updateHUD() {
   const rateStr = Math.abs(netRate).toFixed(1);
   document.getElementById('hud-swarm').innerHTML = `SWARM: ${swarmNow}/${MAX_SWARM} <span style="color:${trendColor}">${trendIcon} ${rateStr}/s</span>`;
 
-  // Zoom mode indicator
-  const zoomEl = document.getElementById('hud-zoom');
-  if (zoomEl) zoomEl.innerHTML = `ZOOM: ${CAMERA_MODE.toUpperCase()} <span style="color:#224;">(K)</span>`;
+  // Zoom mode indicator — updates just the mode span so the label/keyhint stay stable
+  const zoomModeEl = document.getElementById('hud-zoom-mode');
+  if (zoomModeEl) zoomModeEl.textContent = CAMERA_MODE.toUpperCase();
 
   // Update lives display
   const livesEl = document.getElementById('hud-lives');
