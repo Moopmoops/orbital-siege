@@ -649,9 +649,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 7, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 18, patch: 8, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.18.8', date: '2026-04-20', changes: [
+    'TUNING: Enemy firing range roughly doubled again — ARH engage from much farther out. Hive/Titan snipe from 1700, stinger/phantom 1500, scout 1400, brute 1300, drone 1300.',
+  ]},
   { version: '0.18.7', date: '2026-04-20', changes: [
     'FIX: Top speed is now a LIFETIME record across games, not per-game. "NEW TOP SPEED" only fires when you actually beat your all-time best. Persists in localStorage + synced to your profile.',
   ]},
@@ -5559,17 +5562,16 @@ function updateARH(inv, dt, planet, ship, invaders, particles, wave) {
       const d = dist(inv, ship);
       // Accuracy starts higher and tops out higher so early waves still feel threatening
       const accuracy = clamp((wave - 2) / 8, 0.25, 0.9);
-      // Per-type firing range — extended so ARH engage from much farther.
-      // Hive lobs long-range, stinger/titan snipe, scouts/phantoms strafe long,
-      // brutes and drones fire at middle range.
+      // Per-type firing range — pushed much farther so ARH engage from well
+      // beyond the on-screen combat bubble. Snipers (hive, titan) reach farthest.
       const shootRange = (
-        inv.typeName === 'hive' ? 850 :
-        inv.typeName === 'stinger' ? 800 :
-        inv.typeName === 'titan' ? 850 :
-        inv.typeName === 'scout' ? 720 :
-        inv.typeName === 'phantom' ? 780 :
-        inv.typeName === 'brute' ? 680 :
-        700 // drone / default
+        inv.typeName === 'hive' ? 1700 :
+        inv.typeName === 'titan' ? 1700 :
+        inv.typeName === 'stinger' ? 1500 :
+        inv.typeName === 'phantom' ? 1500 :
+        inv.typeName === 'scout' ? 1400 :
+        inv.typeName === 'brute' ? 1300 :
+        1300 // drone / default
       );
       const shootAccuracy = inv.typeName === 'stinger' ? accuracy * 1.5 : accuracy;
       if (d < shootRange && Math.random() < inv.shootChance * clamp(shootAccuracy, 0, 0.95)) {
