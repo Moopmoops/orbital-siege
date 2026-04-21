@@ -509,6 +509,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <div id="hud-kills">KILLS: 0</div>
     <div id="hud-swarm" style="color:#f88;font-size:10px;letter-spacing:1px;"></div>
     <div id="hud-lives" style="color:#0ff;">LIVES: ♦♦♦♦♦</div>
+    <div id="hud-zoom" style="color:#446;font-size:10px;letter-spacing:2px;margin-top:4px;">ZOOM: DYNAMIC <span style="color:#224;">(K)</span></div>
     <div id="hud-pause-hint" style="color:#446;font-size:10px;margin-top:6px;letter-spacing:2px;">P — PAUSE / CONTROLS</div>
   </div>
   <div class="right">
@@ -554,6 +555,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <div class="key">TAB</div><div class="action">Scan target</div>
     <div class="controls-section">SYSTEMS</div>
     <div class="key">V</div><div class="action">Swap ship (between waves)</div>
+    <div class="key">K</div><div class="action">Cycle camera mode (tight / dynamic / wide)</div>
     <div class="key">J</div><div class="action">Achievement journal</div>
     <div class="key">P</div><div class="action">Pause / Resume</div>
   </div>
@@ -564,7 +566,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <button id="palette-toggle-btn" onclick="cyclePalette()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">PALETTE: SHIP DEFAULT</button>
   </div>
   <div style="margin-top:8px;">
-    <button id="wide-camera-btn" onclick="setWideCamera(!WIDE_CAMERA)" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">⛶ WIDE CAMERA: ON</button>
+    <button id="wide-camera-btn" onclick="cycleCameraMode()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">⛶ CAMERA: DYNAMIC</button>
   </div>
   <div style="margin-top:8px;">
     <button onclick="toggleFullscreen()" style="background:transparent;border:1px solid #0ff;color:#0ff;font-family:'Courier New',monospace;font-size:11px;letter-spacing:2px;padding:6px 20px;cursor:pointer;">⛶ FULLSCREEN</button>
@@ -599,7 +601,7 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
   <div class="settings-section-label" style="margin-top:18px;">CAMERA</div>
   <div class="settings-row">
     <span class="settings-label">Wide Camera</span>
-    <button id="settings-wide-camera-btn" class="settings-toggle" onclick="setWideCamera(!WIDE_CAMERA); syncSettingsPanel();">ON</button>
+    <button id="settings-wide-camera-btn" class="settings-toggle" onclick="cycleCameraMode(); syncSettingsPanel();">DYNAMIC</button>
   </div>
   <div class="settings-footnote">More settings will appear here as new options are added.</div>
 </div>
@@ -649,9 +651,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 18, patch: 9, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 19, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.19.0', date: '2026-04-20', changes: [
+    'NEW: Three camera modes — TIGHT (close-in detail), DYNAMIC (speed-reactive middle), WIDE (pulled-back for long-range awareness). K key cycles through them; subtle HUD indicator shows current mode.',
+    'UI: Settings panel camera toggle is a 3-state cycle to match.',
+  ]},
   { version: '0.18.9', date: '2026-04-20', changes: [
     'TUNING: Enemy firing range pushed much further — Hive/Titan snipers now reach 5000, stinger/phantom 4500, scout 4200, brute/drone 3800. ARH fire at the player from nearly anywhere they can see them.',
   ]},
@@ -2243,23 +2249,51 @@ let PREDICTION_DT = 0.03;
 // Auto-camera variables
 let AUTO_PAN = 0.15;
 let AUTO_ZOOM = 1;
-// Wide Camera toggle: when true, holds a pulled-back framing; when false, more dynamic zoom
-let WIDE_CAMERA = (() => {
-  try { const v = localStorage.getItem('orbital_wide_camera'); return v === null ? true : v === '1'; }
-  catch (e) { return true; }
+
+// Camera mode: 'tight' (close-in, less pull-out on motion), 'dynamic' (speed-
+// reactive middle ground — default), 'wide' (held pulled-back for far-sight).
+// Persisted via localStorage. Migrates from the legacy boolean `orbital_wide_camera`.
+const CAMERA_MODES = ['tight', 'dynamic', 'wide'];
+let CAMERA_MODE = (() => {
+  try {
+    const v = localStorage.getItem('orbital_camera_mode');
+    if (v && CAMERA_MODES.indexOf(v) >= 0) return v;
+    const legacy = localStorage.getItem('orbital_wide_camera');
+    if (legacy === '1') return 'wide';
+    return 'dynamic';
+  } catch (e) { return 'dynamic'; }
 })();
+// Back-compat alias for any code still referencing the old flag
+let WIDE_CAMERA = CAMERA_MODE === 'wide';
+
 // Zoom limits scale with star type — bigger systems need to pull back more
 let ZOOM_MIN = Math.max(0.12, 0.30 / STAR_TYPE.orbitScale);
 let ZOOM_MAX = Math.max(0.45, 0.95 / STAR_TYPE.orbitScale);
 let ZOOM_SPEED = 1.5;
 let CAM_SMOOTH = 5;
-function setWideCamera(v) {
-  WIDE_CAMERA = !!v;
-  try { localStorage.setItem('orbital_wide_camera', WIDE_CAMERA ? '1' : '0'); } catch (e) {}
+
+function setCameraMode(mode) {
+  if (CAMERA_MODES.indexOf(mode) < 0) mode = 'dynamic';
+  CAMERA_MODE = mode;
+  WIDE_CAMERA = mode === 'wide';
+  try { localStorage.setItem('orbital_camera_mode', mode); } catch (e) {}
   const btn = document.getElementById('wide-camera-btn');
-  if (btn) btn.textContent = WIDE_CAMERA ? '⛶ WIDE CAMERA: ON' : '⛶ WIDE CAMERA: OFF';
-  // ARH scale with the camera so they stay readable when zoomed out
+  if (btn) btn.textContent = '⛶ CAMERA: ' + mode.toUpperCase();
+  const settingsBtn = document.getElementById('settings-wide-camera-btn');
+  if (settingsBtn) settingsBtn.textContent = mode.toUpperCase();
   if (typeof refreshARHSizes === 'function') refreshARHSizes();
+}
+function cycleCameraMode() {
+  const idx = CAMERA_MODES.indexOf(CAMERA_MODE);
+  setCameraMode(CAMERA_MODES[(idx + 1) % CAMERA_MODES.length]);
+  // Show a brief confirmation toast in-game
+  if (typeof game !== 'undefined' && game) {
+    game._cameraToast = { mode: CAMERA_MODE, timer: 1.4 };
+  }
+}
+// Back-compat for any callers still using setWideCamera
+function setWideCamera(v) {
+  setCameraMode(v ? 'wide' : 'dynamic');
 }
 
 // --- Helpers ---
@@ -8088,15 +8122,26 @@ function updateGame(dt) {
     // Motion factor: whichever is bigger wins. Intent leads; speed sustains.
     const motionFactor = Math.max(game._speedZoom, game._thrustIntent);
 
-    // Wide Camera: hold a pulled-back framing. Default: slightly more dynamic.
-    const minViewRadius = WIDE_CAMERA ? 380 : 200;
-    const baseFit = WIDE_CAMERA ? 0.48 : 0.66;
+    // Three camera modes. TIGHT = close-in detail, less pull-out on motion.
+    // DYNAMIC = balanced, speed-reactive middle ground. WIDE = held pulled back
+    // so you see long-range projectiles and far ARH.
+    const CAM_PARAMS = {
+      tight:   { minViewRadius: 140, baseFit: 0.82, threatNearMul: 0.45, threatFarMul: 0.30, bossMul: 0.50,
+                 zoomCap: ZOOM_MAX * 1.15 },
+      dynamic: { minViewRadius: 200, baseFit: 0.66, threatNearMul: 0.60, threatFarMul: 0.42, bossMul: 0.65,
+                 zoomCap: ZOOM_MAX },
+      wide:    { minViewRadius: 380, baseFit: 0.48, threatNearMul: 0.85, threatFarMul: 0.65, bossMul: 0.85,
+                 zoomCap: Math.max(0.30, 0.55 / STAR_TYPE.orbitScale) },
+    };
+    const cm = CAM_PARAMS[CAMERA_MODE] || CAM_PARAMS.dynamic;
+    const minViewRadius = cm.minViewRadius;
+    const baseFit = cm.baseFit;
     // fit range: +0.14 at rest (zoom in for detail) .. -0.14 at full motion (pull back)
     const fitFactor = baseFit + (1 - motionFactor * 2) * 0.14;
-    const threatNearMul = WIDE_CAMERA ? 0.85 : 0.60;
-    const threatFarMul  = WIDE_CAMERA ? 0.65 : 0.42;
-    const bossMul       = WIDE_CAMERA ? 0.85 : 0.65;
-    const zoomMaxCap    = WIDE_CAMERA ? Math.max(0.30, 0.55 / STAR_TYPE.orbitScale) : ZOOM_MAX;
+    const threatNearMul = cm.threatNearMul;
+    const threatFarMul  = cm.threatFarMul;
+    const bossMul       = cm.bossMul;
+    const zoomMaxCap    = cm.zoomCap;
 
     let maxDist = minViewRadius * STAR_TYPE.orbitScale;
     // Check distance to nearest threats — only the closest 6, and reduced influence
@@ -8942,6 +8987,22 @@ function drawGame() {
     ctx.fillText(`SPD: ${Math.floor(spd)}  ALT: ${Math.floor(nearestBody.d)} (${nearestBody.name})`, 20, canvas.height - 20);
   }
 
+  // Camera-mode toast — brief confirmation after K cycle
+  if (game._cameraToast && game._cameraToast.timer > 0) {
+    game._cameraToast.timer -= 0.016;
+    const ct = game._cameraToast.timer;
+    const alpha = Math.min(1, ct / 0.4);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = 'center';
+    ctx.font = '11px Courier New';
+    ctx.fillStyle = '#8cf';
+    ctx.fillText(`CAMERA: ${game._cameraToast.mode.toUpperCase()}`, canvas.width / 2, 40);
+    ctx.textAlign = 'left';
+    ctx.restore();
+    if (ct <= 0) game._cameraToast = null;
+  }
+
   // Top speed record indicator
   if (game.topSpeedMsg && game.topSpeedMsg.timer > 0) {
     game.topSpeedMsg.timer -= 0.016;
@@ -8999,6 +9060,10 @@ function updateHUD() {
   else { trendIcon = '▲▲'; trendColor = '#f44'; }                      // overrun
   const rateStr = Math.abs(netRate).toFixed(1);
   document.getElementById('hud-swarm').innerHTML = `SWARM: ${swarmNow}/${MAX_SWARM} <span style="color:${trendColor}">${trendIcon} ${rateStr}/s</span>`;
+
+  // Zoom mode indicator
+  const zoomEl = document.getElementById('hud-zoom');
+  if (zoomEl) zoomEl.innerHTML = `ZOOM: ${CAMERA_MODE.toUpperCase()} <span style="color:#224;">(K)</span>`;
 
   // Update lives display
   const livesEl = document.getElementById('hud-lives');
@@ -9871,9 +9936,11 @@ function syncSettingsPanel() {
   }
   const wc = document.getElementById('settings-wide-camera-btn');
   if (wc) {
-    wc.textContent = WIDE_CAMERA ? 'ON' : 'OFF';
-    wc.classList.toggle('off', !WIDE_CAMERA);
+    wc.textContent = CAMERA_MODE.toUpperCase();
+    wc.classList.toggle('off', false); // no dim state — all three are valid choices
   }
+  const topBtn = document.getElementById('wide-camera-btn');
+  if (topBtn) topBtn.textContent = '⛶ CAMERA: ' + CAMERA_MODE.toUpperCase();
 }
 
 // --- Ship Swap Overlay (V key) ---
@@ -9919,7 +9986,7 @@ window.addEventListener('keydown', e => {
     toggleShipSwap();
   }
   if (e.key.toLowerCase() === 'k' && gameRunning && !gamePaused) {
-    setWideCamera(!WIDE_CAMERA);
+    cycleCameraMode();
     syncSettingsPanel();
   }
   if (e.key.toLowerCase() === 'p' && gameRunning) {
