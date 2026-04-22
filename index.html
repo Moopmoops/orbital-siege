@@ -92,6 +92,38 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 #start-screen .freq-btn.selected[data-freq="normal"]   { border: 2px solid #0ff; color: #0ff; background: rgba(0,255,255,0.12); box-shadow: 0 0 16px rgba(0,255,255,0.2); }
 #start-screen .freq-btn.selected[data-freq="frequent"] { border: 2px solid #fa0; color: #fa0; background: rgba(255,160,0,0.12); box-shadow: 0 0 16px rgba(255,160,0,0.2); }
 #start-screen .freq-btn.selected[data-freq="gauntlet"] { border: 2px solid #f44; color: #f44; background: rgba(255,50,50,0.15); box-shadow: 0 0 16px rgba(255,50,50,0.25); }
+
+/* Launch-flow mode cards — bigger title, tighter overall, context line showing best stats */
+#start-screen .mode-btn .mode-title { font-size: 22px; font-weight: bold; letter-spacing: 4px; margin-bottom: 6px; }
+#start-screen .mode-btn .mode-desc { font-size: 11px; color: #8cf; letter-spacing: 1px; margin-bottom: 10px; }
+#start-screen .mode-btn .mode-context { font-size: 10px; color: #68a; letter-spacing: 2px; opacity: 0.8; min-height: 14px; }
+
+/* Boss frequency — now small inline pills instead of full cards */
+#start-screen .freq-pills { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+#start-screen .freq-pill {
+  cursor: pointer; font-family: 'Courier New', monospace;
+  font-size: 10px; letter-spacing: 2px;
+  padding: 6px 14px; border-radius: 20px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid #333; color: #666;
+  transition: all 0.15s;
+}
+#start-screen .freq-pill:hover { border-color: #557; color: #8ab; background: rgba(100,140,200,0.05); }
+#start-screen .freq-pill .pill-sub { font-size: 9px; opacity: 0.75; margin-left: 4px; }
+#start-screen .freq-pill.selected[data-freq="normal"]   { border: 1px solid #0ff; color: #0ff; background: rgba(0,255,255,0.12); }
+#start-screen .freq-pill.selected[data-freq="frequent"] { border: 1px solid #fa0; color: #fa0; background: rgba(255,160,0,0.12); }
+#start-screen .freq-pill.selected[data-freq="gauntlet"] { border: 1px solid #f44; color: #f44; background: rgba(255,50,50,0.15); }
+
+/* Back button for the launch-flow selection screens */
+#start-screen .back-link {
+  margin-top: 20px;
+  cursor: pointer; font-family: 'Courier New', monospace;
+  font-size: 10px; letter-spacing: 3px;
+  background: transparent; border: 1px solid #234;
+  color: #466; padding: 5px 12px;
+  border-radius: 3px; transition: all 0.15s;
+}
+#start-screen .back-link:hover { color: #8ce; border-color: #356; }
 #game-over {
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 100;
   display: none; flex-direction: column; justify-content: center; align-items: center;
@@ -486,8 +518,8 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
   </div>
 
   <!-- Primary action (LAUNCH) gets the glow; secondary actions sit beside it muted -->
-  <div style="display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;">
-    <button class="start-btn" id="launch-btn" onclick="showShipSelect()">LAUNCH</button>
+  <div class="primary-actions" style="display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;">
+    <button class="start-btn" id="launch-btn" onclick="startLaunchFlow()">LAUNCH</button>
     <button class="start-btn secondary" id="leaderboard-btn" onclick="toggleStartLeaderboard()">LEADERBOARD</button>
     <button class="start-btn secondary" id="profile-btn" onclick="openProfileModal()">PROFILE</button>
   </div>
@@ -514,33 +546,37 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
       <button class="arrow-btn" onclick="cycleShip(1)">&gt;</button>
     </div>
     <button class="deploy-btn" onclick="deployShip()">DEPLOY</button>
+    <button class="back-link" onclick="showModeSelect()">← BACK</button>
   </div>
   <div id="mode-select">
-    <div class="divider" style="margin-top:6px;">GAME MODE</div>
+    <div class="divider" style="margin-top:6px;">CHOOSE GAME MODE</div>
     <div class="mode-grid">
       <button class="mode-btn ranked" onclick="selectGameMode('ranked')">
-        RANKED
-        <div class="mode-desc">5 lives · ranked</div>
+        <div class="mode-title">RANKED</div>
+        <div class="mode-desc">5 lives · leaderboard</div>
+        <div class="mode-context" id="ranked-context">—</div>
       </button>
       <button class="mode-btn freeplay" onclick="selectGameMode('freeplay')">
-        UNLIMITED
+        <div class="mode-title">UNLIMITED</div>
         <div class="mode-desc">endless · no ranking</div>
+        <div class="mode-context">practice &amp; explore</div>
       </button>
     </div>
-    <div id="boss-freq-select" style="margin-top:16px;text-align:center;">
-      <div class="divider">BOSS FREQUENCY</div>
-      <div style="display:flex;gap:10px;justify-content:center;">
-        <button class="mode-btn freq-btn selected" id="freq-normal" onclick="setBossFrequency('normal')" data-freq="normal">
-          <span class="sel-marker">▸</span>NORMAL<div class="mode-desc" style="font-size:9px;">Every 5 waves</div>
+    <div id="boss-freq-select">
+      <div class="section-label">BOSS FREQUENCY</div>
+      <div class="freq-pills">
+        <button class="freq-pill selected" id="freq-normal" onclick="setBossFrequency('normal')" data-freq="normal">
+          NORMAL <span class="pill-sub">· every 5</span>
         </button>
-        <button class="mode-btn freq-btn" id="freq-frequent" onclick="setBossFrequency('frequent')" data-freq="frequent">
-          <span class="sel-marker">▸</span>FREQUENT<div class="mode-desc" style="font-size:9px;">Every 3 waves</div>
+        <button class="freq-pill" id="freq-frequent" onclick="setBossFrequency('frequent')" data-freq="frequent">
+          FREQUENT <span class="pill-sub">· every 3</span>
         </button>
-        <button class="mode-btn freq-btn" id="freq-gauntlet" onclick="setBossFrequency('gauntlet')" data-freq="gauntlet">
-          <span class="sel-marker">▸</span>GAUNTLET<div class="mode-desc" style="font-size:9px;">Every wave<br>1.5x score</div>
+        <button class="freq-pill" id="freq-gauntlet" onclick="setBossFrequency('gauntlet')" data-freq="gauntlet">
+          GAUNTLET <span class="pill-sub">· every wave · 1.5× score</span>
         </button>
       </div>
     </div>
+    <button class="back-link" onclick="cancelLaunchFlow()">← BACK</button>
   </div>
 </div>
 
@@ -714,9 +750,16 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 19, patch: 2, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 20, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.20.0', date: '2026-04-20', changes: [
+    'FIX: Checkpoints now extend past wave 20 — dynamic unlock list based on your best wave (+ automatic back-fill for past high scores you never got credit for)',
+    'UI: Launch flow reordered — LAUNCH → Game Mode → Ship → Deploy (was Ship → Deploy → Mode). You decide the game first, then the ship for it.',
+    'UI: Mode cards now show context (best score / best wave for Ranked). Tighter layout.',
+    'UI: Boss frequency is now inline pills instead of big cards — secondary decision reads as secondary.',
+    'UI: BACK button in selection screens so you can bail out of the launch flow without refreshing.',
+  ]},
   { version: '0.19.2', date: '2026-04-20', changes: [
     'UI: Zoom indicator is now visible — proper cyan, bigger, with the mode name highlighted and current key hint. Also a larger, slower toast when cycling with K.',
     'TUNING: WIDE camera pulled back significantly further — larger minimum view radius, lower fit factor, stricter zoom cap. Actually feels "wide" now.',
@@ -1103,7 +1146,33 @@ function stopLaserSound() {
 let soundMuted = false;
 
 // --- Feature: Wave Checkpoint System ---
-const CHECKPOINT_WAVES = [5, 10, 15, 20];
+// Static anchors always available early; extended dynamically by getCheckpointWaves()
+// based on the player's best wave so high runs unlock more waypoints.
+const CHECKPOINT_WAVES = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 70, 80, 100, 125, 150, 200];
+
+function getBestWave() {
+  // Combine localStorage and profile so signed-in players see their cross-device best
+  const lsBest = parseInt(localStorage.getItem('orbital-siege-best-wave') || '0');
+  const profBest = (typeof currentProfile !== 'undefined' && currentProfile && currentProfile.bestWave) || 0;
+  return Math.max(lsBest, profBest);
+}
+
+// Back-fills the unlocked-checkpoints record based on the player's best wave.
+// Runs on page load and after profile sync so players who reached high waves
+// before we expanded the checkpoint list (e.g. wave 30 when the cap was 20)
+// retroactively get those checkpoints.
+function backfillCheckpoints() {
+  try {
+    const checkpoints = JSON.parse(localStorage.getItem('orbital-siege-checkpoints') || '{}');
+    const best = getBestWave();
+    let added = false;
+    for (const w of CHECKPOINT_WAVES) {
+      if (w > best) break;
+      if (!checkpoints[String(w)]) { checkpoints[String(w)] = generateCheckpointCode(w); added = true; }
+    }
+    if (added) localStorage.setItem('orbital-siege-checkpoints', JSON.stringify(checkpoints));
+  } catch (e) {}
+}
 
 function generateCheckpointCode(wave) {
   return 'WAVE' + wave + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -1112,6 +1181,7 @@ function generateCheckpointCode(wave) {
 function updateCheckpointList() {
   const container = document.getElementById('checkpoint-list');
   if (!container) return;
+  backfillCheckpoints();
   const checkpoints = JSON.parse(localStorage.getItem('orbital-siege-checkpoints') || '{}');
   const waves = Object.keys(checkpoints).map(Number).sort((a,b) => a - b);
   if (waves.length === 0) {
@@ -9270,6 +9340,8 @@ function initAuth() {
       await loadOrCreateProfile(user);
       refreshProfileUI();
       updateResumeButton();
+      // Back-fill checkpoints now that we have profile.bestWave from Firebase
+      if (typeof updateCheckpointList === 'function') updateCheckpointList();
     } else {
       // No persisted user — sign in anonymously so stats always accrue.
       // We do this from the listener (not proactively) to avoid clobbering a
@@ -9722,11 +9794,34 @@ function gameLoop(time) {
 let shipSelectIndex = 0;
 const shipTypeKeys = Object.keys(SHIP_TYPES);
 
-function showShipSelect() {
-  document.getElementById('launch-btn').style.display = 'none';
-  document.getElementById('ship-select').classList.add('show');
-  // Hide controls text to make room
+// New launch flow (v0.20.0): LAUNCH → Mode → Ship → Deploy.
+// Previously: LAUNCH → Ship → Deploy → Mode (ship was picked before you even
+// knew what game you were going to play).
+function startLaunchFlow() {
+  document.querySelector('#start-screen .primary-actions').style.display = 'none';
   document.querySelector('#start-screen .controls').style.display = 'none';
+  const cs = document.getElementById('checkpoint-section'); if (cs) cs.style.display = 'none';
+  const rs = document.getElementById('resume-section'); if (rs) rs.style.display = 'none';
+  document.getElementById('mode-select').classList.add('show');
+  updateModeCardContext();
+}
+
+function cancelLaunchFlow() {
+  // Back to the initial menu — reshow the primary actions, hide selection screens
+  document.getElementById('mode-select').classList.remove('show');
+  document.getElementById('ship-select').classList.remove('show');
+  document.querySelector('#start-screen .primary-actions').style.display = 'flex';
+  document.querySelector('#start-screen .controls').style.display = '';
+  const cs = document.getElementById('checkpoint-section'); if (cs) cs.style.display = '';
+  // resume-section visibility is managed by updateResumeButton
+  if (typeof updateResumeButton === 'function') updateResumeButton();
+}
+
+function showShipSelect() {
+  // Retained as a shim so old call-sites still work; now the "show ship" step
+  // is the SECOND step in the flow (called from selectGameMode).
+  document.getElementById('mode-select').classList.remove('show');
+  document.getElementById('ship-select').classList.add('show');
   updateShipCard();
 }
 
@@ -9738,11 +9833,27 @@ function cycleShip(dir) {
 function showModeSelect() {
   document.getElementById('ship-select').classList.remove('show');
   document.getElementById('mode-select').classList.add('show');
+  updateModeCardContext();
 }
 
 function selectGameMode(mode) {
   gameMode = mode;
-  startGame();
+  // Now go pick a ship for this mode
+  showShipSelect();
+}
+
+// Updates the context line on each mode card with best-score/best-wave hints
+function updateModeCardContext() {
+  const rankedCtx = document.getElementById('ranked-context');
+  if (rankedCtx) {
+    const best = (typeof currentProfile !== 'undefined' && currentProfile) ? (currentProfile.bestScore || 0) : 0;
+    const bestW = (typeof currentProfile !== 'undefined' && currentProfile) ? (currentProfile.bestWave || 0) : 0;
+    if (best > 0 || bestW > 0) {
+      rankedCtx.textContent = `best: wave ${bestW} · ${best} pts`;
+    } else {
+      rankedCtx.textContent = 'no runs yet';
+    }
+  }
 }
 
 function setBossFrequency(freq) {
@@ -9949,8 +10060,10 @@ function updateShipCard() {
 }
 
 function deployShip() {
+  // Mode is already selected by the time we reach ship select (new v0.20.0
+  // flow), so DEPLOY actually starts the game here.
   selectedShipType = shipTypeKeys[shipSelectIndex];
-  showModeSelect();
+  startGame();
 }
 
 function startGame() {
@@ -9960,6 +10073,10 @@ function startGame() {
   document.getElementById('mode-select').classList.remove('show');
   document.getElementById('ship-select').classList.remove('show');
   document.getElementById('leaderboard').classList.remove('show');
+  // Restore the initial-menu state so returning from gameOver shows it clean
+  const pa = document.querySelector('#start-screen .primary-actions'); if (pa) pa.style.display = 'flex';
+  const ct = document.querySelector('#start-screen .controls'); if (ct) ct.style.display = '';
+  const cs = document.getElementById('checkpoint-section'); if (cs) cs.style.display = '';
   try { document.getElementById('ship-swap-overlay').classList.remove('show'); } catch(e) {}
   initGame();
   // Star-type intro banner so the player knows what system they're in
