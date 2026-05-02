@@ -322,7 +322,9 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 }
 #ship-swap-overlay .swap-item:hover { border-color: #0ff; background: rgba(0,255,255,0.1); }
 #ship-swap-overlay .swap-item.current { border-color: #0ff; color: #0ff; }
-#ship-swap-overlay .swap-item.queued { border-color: #fa0; color: #fa0; }
+#ship-swap-overlay .swap-item.queued { border: 2px solid #fa0; color: #fa0; background: rgba(255,160,0,0.18); box-shadow: 0 0 18px rgba(255,160,0,0.4); }
+#ship-swap-overlay .swap-hint { color: #4af; font-size: 11px; letter-spacing: 2px; padding: 4px 12px; margin-bottom: 8px; text-align: center; opacity: 0.9; flex-basis: 100%; }
+#ship-swap-overlay .swap-footer { color: #466; font-size: 9px; letter-spacing: 2px; padding: 8px 12px 0; text-align: center; opacity: 0.7; flex-basis: 100%; font-style: italic; }
 #mode-select {
   display: none; flex-direction: column; align-items: center; margin-top: 20px;
 }
@@ -750,9 +752,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 20, patch: 0, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 20, patch: 1, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.20.1', date: '2026-04-20', changes: [
+    'UI: Ship-swap (V key) now gives clear feedback — a toast confirms "INTERCEPTOR REFIT QUEUED · applies at end of wave", explanatory line inside the overlay, and the queued ship shows a stronger visual state. Refit notice on the HUD is more prominent.',
+  ]},
   { version: '0.20.0', date: '2026-04-20', changes: [
     'FIX: Checkpoints now extend past wave 20 — dynamic unlock list based on your best wave (+ automatic back-fill for past high scores you never got credit for)',
     'UI: Launch flow reordered — LAUNCH → Game Mode → Ship → Deploy (was Ship → Deploy → Mode). You decide the game first, then the ship for it.',
@@ -9181,6 +9186,35 @@ function drawGame() {
     if (ct <= 0) game._cameraToast = null;
   }
 
+  // Ship-swap confirmation toast — fires when V-key swap is queued/cancelled.
+  // Sits below the camera toast slot so the two don't collide visually.
+  if (game._shipSwapToast && game._shipSwapToast.timer > 0) {
+    game._shipSwapToast.timer -= 0.016;
+    const st = game._shipSwapToast.timer;
+    const maxT = 2.4;
+    const fadeIn = Math.min(1, (maxT - st) / 0.25);
+    const fadeOut = Math.min(1, st / 0.6);
+    const alpha = Math.min(fadeIn, fadeOut);
+    const col = game._shipSwapToast.color || '#fa0';
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillStyle = col;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 12;
+    ctx.fillText(game._shipSwapToast.text, canvas.width / 2, canvas.height / 2 + 40);
+    ctx.shadowBlur = 0;
+    if (game._shipSwapToast.sub) {
+      ctx.font = '11px Courier New';
+      ctx.fillStyle = '#aac';
+      ctx.fillText(game._shipSwapToast.sub, canvas.width / 2, canvas.height / 2 + 62);
+    }
+    ctx.textAlign = 'left';
+    ctx.restore();
+    if (st <= 0) game._shipSwapToast = null;
+  }
+
   // Top speed record indicator
   if (game.topSpeedMsg && game.topSpeedMsg.timer > 0) {
     game.topSpeedMsg.timer -= 0.016;
@@ -9264,7 +9298,10 @@ function updateHUD() {
             : '<span style="color:#fa0">ACTIVE</span>')
         : 'READY')
     : `LOCKED (Wave ${laserWave})`;
-  const swapInfo = game.pendingShipSwap ? ` | <span style="color:#fa0">REFIT QUEUED: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>` : '';
+  // Refit notice — bold + glow so the queued state isn't easy to miss
+  const swapInfo = game.pendingShipSwap
+    ? ` | <span style="color:#fa0;font-weight:bold;text-shadow:0 0 6px #fa0;">⏳ REFIT: ${SHIP_TYPES[game.pendingShipSwap].name.toUpperCase()}</span>`
+    : '';
   let solarInfo = '';
   if (game.ship.solarBombs > 0 || game.ship.solarCharge > 0.1) {
     const bombs = game.ship.solarBombs;
@@ -10178,22 +10215,47 @@ function toggleShipSwap() {
 
 function updateSwapOverlay() {
   const overlay = document.getElementById('ship-swap-overlay');
-  let html = '';
+  let html = '<div class="swap-hint">PICK A SHIP — refit applies at end of current wave</div>';
   for (const key of shipTypeKeys) {
     const type = SHIP_TYPES[key];
     const isCurrent = game.ship.shipType === key;
     const isQueued = game.pendingShipSwap === key;
     const cls = isCurrent ? 'current' : isQueued ? 'queued' : '';
-    html += `<div class="swap-item ${cls}" onclick="queueShipSwap('${key}')">${type.name.toUpperCase()}<br><span style="font-size:9px;color:${type.accentColor}">${isCurrent ? '(ACTIVE)' : isQueued ? '(QUEUED)' : type.desc}</span></div>`;
+    const stateLabel = isCurrent ? '✓ ACTIVE' : isQueued ? '⏳ QUEUED — refits at wave end' : type.desc;
+    html += `<div class="swap-item ${cls}" onclick="queueShipSwap('${key}')">${type.name.toUpperCase()}<br><span style="font-size:9px;color:${type.accentColor}">${stateLabel}</span></div>`;
   }
+  // Footer hint
+  html += '<div class="swap-footer">V or click to close · choice persists until applied</div>';
   overlay.innerHTML = html;
 }
 
 function queueShipSwap(key) {
-  if (!game || game.ship.shipType === key) {
-    game.pendingShipSwap = null;
+  if (!game || !game.ship) return;
+  if (game.ship.shipType === key) {
+    // Clicking the active ship clears any queued swap
+    if (game.pendingShipSwap) {
+      game.pendingShipSwap = null;
+      game._shipSwapToast = { text: 'REFIT CANCELLED', color: '#888', timer: 1.6 };
+    }
   } else {
     game.pendingShipSwap = key;
+    const type = SHIP_TYPES[key];
+    const colorBase = type.accentColor || '#0ff';
+    game._shipSwapToast = {
+      text: `${type.name.toUpperCase()} REFIT QUEUED`,
+      sub: 'applies at end of current wave',
+      color: colorBase,
+      timer: 2.4,
+    };
+    // Auto-close the overlay shortly after a successful queue so the player
+    // sees the world/HUD again and the toast confirmation.
+    setTimeout(() => {
+      if (swapOverlayVisible) {
+        swapOverlayVisible = false;
+        const ov = document.getElementById('ship-swap-overlay');
+        if (ov) ov.classList.remove('show');
+      }
+    }, 600);
   }
   updateSwapOverlay();
 }
