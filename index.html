@@ -325,6 +325,43 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 #ship-swap-overlay .swap-item.queued { border: 2px solid #fa0; color: #fa0; background: rgba(255,160,0,0.18); box-shadow: 0 0 18px rgba(255,160,0,0.4); }
 #ship-swap-overlay .swap-hint { color: #4af; font-size: 11px; letter-spacing: 2px; padding: 4px 12px; margin-bottom: 8px; text-align: center; opacity: 0.9; flex-basis: 100%; }
 #ship-swap-overlay .swap-footer { color: #466; font-size: 9px; letter-spacing: 2px; padding: 8px 12px 0; text-align: center; opacity: 0.7; flex-basis: 100%; font-style: italic; }
+
+/* Upgrade pick modal — appears between waves */
+#upgrade-modal {
+  display: none; position: fixed; inset: 0; z-index: 250;
+  background: rgba(0, 5, 15, 0.85);
+  flex-direction: column; justify-content: center; align-items: center;
+  font-family: 'Courier New', monospace; pointer-events: all;
+}
+#upgrade-modal.show { display: flex; }
+#upgrade-modal .upgrade-card-title {
+  color: #0ff; font-size: 22px; letter-spacing: 6px;
+  text-shadow: 0 0 14px rgba(0,255,255,0.5); margin-bottom: 6px; text-align: center;
+}
+#upgrade-modal .upgrade-card-sub {
+  color: #4af; font-size: 12px; letter-spacing: 4px; margin-bottom: 26px; opacity: 0.85;
+}
+#upgrade-modal .upgrade-cards {
+  display: flex; gap: 18px; justify-content: center; flex-wrap: wrap;
+  max-width: 880px;
+}
+#upgrade-modal .upgrade-card {
+  width: 220px; padding: 22px 18px; cursor: pointer;
+  background: rgba(0, 20, 40, 0.85);
+  border: 2px solid #0ff;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace; color: #8cf;
+  text-align: center; transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  box-shadow: 0 0 12px rgba(0,255,255,0.15);
+}
+#upgrade-modal .upgrade-card:hover {
+  background: rgba(0, 40, 80, 0.95);
+  box-shadow: 0 0 28px rgba(0,255,255,0.5);
+  transform: translateY(-2px);
+}
+#upgrade-modal .up-icon { font-size: 32px; margin-bottom: 10px; }
+#upgrade-modal .up-name { color: #0ff; font-size: 13px; letter-spacing: 3px; font-weight: bold; margin-bottom: 8px; }
+#upgrade-modal .up-desc { color: #8cf; font-size: 11px; letter-spacing: 1px; line-height: 1.5; min-height: 36px; }
 #mode-select {
   display: none; flex-direction: column; align-items: center; margin-top: 20px;
 }
@@ -584,6 +621,9 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 
 <div id="ship-swap-overlay" id="ship-swap"></div>
 
+<!-- Between-wave upgrade pick modal -->
+<div id="upgrade-modal"></div>
+
 <div id="game-over">
   <h1>ORBIT LOST</h1>
   <div class="stats" id="final-stats"></div>
@@ -704,7 +744,12 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
     <span class="settings-label">Wide Camera</span>
     <button id="settings-wide-camera-btn" class="settings-toggle" onclick="cycleCameraMode(); syncSettingsPanel();">DYNAMIC</button>
   </div>
-  <div class="settings-footnote">More settings will appear here as new options are added.</div>
+  <div class="settings-section-label" style="margin-top:18px;">GAMEPLAY</div>
+  <div class="settings-row">
+    <span class="settings-label">Enemy Density</span>
+    <button id="settings-density-btn" class="settings-toggle" onclick="cycleEnemyDensity()">NORMAL</button>
+  </div>
+  <div class="settings-footnote">Density change applies to next reproduction. SPARSE = fewer-but-more-active enemies.</div>
 </div>
 
 <div id="achievement-journal">
@@ -752,9 +797,13 @@ canvas.aberration-high   { filter: url(#chromatic-high); }
 // ============================================================
 // ORBITAL SIEGE — Forward Compatible
 // ============================================================
-const GAME_VERSION = { major: 0, minor: 20, patch: 1, label: 'Beta' };
+const GAME_VERSION = { major: 0, minor: 21, patch: 0, label: 'Beta' };
 const GAME_VERSION_STRING = `v${GAME_VERSION.major}.${GAME_VERSION.minor}.${GAME_VERSION.patch} ${GAME_VERSION.label}`;
 const GAME_CHANGELOG = [
+  { version: '0.21.0', date: '2026-04-20', changes: [
+    'NEW: Between-wave upgrades — every 3 waves, pick 1 of 3 random upgrade cards. Stack across the run (warheads, rapid guns, reinforced hull, capacitors, solar reserves, thrust tunes, emergency repairs).',
+    'NEW: Enemy Density setting (Settings panel) — NORMAL / LOW / SPARSE. Scales the swarm cap so you can experiment with fewer-but-more-active enemies vs the default deluge.',
+  ]},
   { version: '0.20.1', date: '2026-04-20', changes: [
     'UI: Ship-swap (V key) now gives clear feedback — a toast confirms "INTERCEPTOR REFIT QUEUED · applies at end of wave", explanatory line inside the overlay, and the queued ship shows a stronger visual state. Refit notice on the HUD is more prominent.',
   ]},
@@ -2363,6 +2412,28 @@ let ENERGY_REGEN = 32;
 const BOMB_COST = 35;
 let BOMB_RADIUS = 120;
 let MAX_SWARM = 150;
+// Density preset (settings panel cycle): NORMAL = full swarm, LOW = ~half,
+// SPARSE = ~quarter (fewer but more active enemies). Persisted via localStorage.
+const DENSITY_PRESETS = { normal: 150, low: 70, sparse: 30 };
+const DENSITY_KEYS = ['normal', 'low', 'sparse'];
+let ENEMY_DENSITY = (() => {
+  try {
+    const v = localStorage.getItem('orbital_enemy_density');
+    if (v && DENSITY_KEYS.indexOf(v) >= 0) return v;
+  } catch (e) {}
+  return 'normal';
+})();
+function applyDensity() {
+  MAX_SWARM = DENSITY_PRESETS[ENEMY_DENSITY] || DENSITY_PRESETS.normal;
+}
+applyDensity(); // initial sync
+function cycleEnemyDensity() {
+  const idx = DENSITY_KEYS.indexOf(ENEMY_DENSITY);
+  ENEMY_DENSITY = DENSITY_KEYS[(idx + 1) % DENSITY_KEYS.length];
+  try { localStorage.setItem('orbital_enemy_density', ENEMY_DENSITY); } catch (e) {}
+  applyDensity();
+  if (typeof syncSettingsPanel === 'function') syncSettingsPanel();
+}
 let REPRODUCE_TIME_BASE = 14;
 const MINIMAP_SIZE = 130;
 const MINIMAP_MARGIN = 10;
@@ -3989,9 +4060,11 @@ class Ship {
     const type = SHIP_TYPES[typeName];
     if (!type) return;
     this.shipType = typeName;
-    this.maxHp = type.hull;
-    this.hp = type.hull;
-    this.thrustPower = type.thrust;
+    // Compose with run-scoped upgrades so refits don't wipe upgrade picks.
+    const upMul = (typeof game !== 'undefined' && game && game.upgrades) ? game.upgrades : { hpMul: 1, thrustMul: 1 };
+    this.maxHp = type.hull * (upMul.hpMul || 1);
+    this.hp = this.maxHp;
+    this.thrustPower = type.thrust * (upMul.thrustMul || 1);
     this.fireRateMult = type.fireRateMult;
     this.missileMult = type.missileMult;
     this.laserMult = type.laserMult;
@@ -4185,7 +4258,8 @@ class Ship {
     // Solar bomb cooldown tick
     if (this.solarBombCooldown > 0) this.solarBombCooldown -= dt;
     // Max solar bombs increases with wave
-    this.maxSolarBombs = 1 + Math.floor((game.wave || 1) / 10); // +1 every 10 waves
+    // Base from wave progression + any SOLAR RESERVE upgrade picks
+    this.maxSolarBombs = 1 + Math.floor((game.wave || 1) / 10) + ((game.upgrades && game.upgrades.solarBonus) || 0);
     // Atmosphere heat: ramp up while near planet at speed, slow decay out
     let maxAtmo = 0, bestAtmoAngle = 0;
     if (game.planets) {
@@ -4213,7 +4287,7 @@ class Ship {
       this.atmoHeatLevel = Math.max(0, this.atmoHeatLevel - 0.3 * dt); // ~3.3s decay
     }
 
-    this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * (this.energyRegenMult || 1) * dt);
+    this.energy = Math.min(ENERGY_MAX, this.energy + ENERGY_REGEN * (this.energyRegenMult || 1) * ((game && game.upgrades && game.upgrades.energyMul) || 1) * dt);
     this.fireTimer -= dt;
     this.invulnTimer -= dt;
     this.torpedoCooldown -= dt;
@@ -4231,7 +4305,7 @@ class Ship {
   }
   fire(bullets, particles) {
     if (this.fireTimer > 0 || !this.alive) return;
-    this.fireTimer = FIRE_RATE * (this.fireRateMult || 1);
+    this.fireTimer = FIRE_RATE * (this.fireRateMult || 1) * ((game && game.upgrades && game.upgrades.fireRateMul) || 1);
     const spread = 0.03;
     const a = this.angle + (Math.random()-0.5)*spread;
     const nose = SHIP_SIZE*1.8;
@@ -4268,7 +4342,7 @@ class Ship {
     game.missiles.push({
       x: this.x + Math.cos(this.angle)*SHIP_SIZE, y: this.y + Math.sin(this.angle)*SHIP_SIZE,
       vx: this.vx + Math.cos(a)*MISSILE_SPEED*0.5, vy: this.vy + Math.sin(a)*MISSILE_SPEED*0.5,
-      angle: a, target: best, life: MISSILE_LIFE, damage: 35, trailTimer: 0
+      angle: a, target: best, life: MISSILE_LIFE, damage: 35 * ((game && game.upgrades && game.upgrades.missileMul) || 1), trailTimer: 0
     });
     playSound('missile');
     game.shake.add(2);
@@ -4302,7 +4376,7 @@ class Ship {
     this.laserTarget = nearest;
     if (nearest) {
       startLaserSound(); // Only play sound when actually hitting a target
-      nearest.hp -= LASER_DPS * (this.laserMult || 1) * dt;
+      nearest.hp -= LASER_DPS * (this.laserMult || 1) * ((game && game.upgrades && game.upgrades.laserMul) || 1) * dt;
       playEnemyHitSound(nearest.typeName);
       particles.emit(nearest.x, nearest.y, 3, '#f4f', 100, 0.15, 2);
       particles.emit(nearest.x, nearest.y, 1, '#fff', 60, 0.1, 1);
@@ -7290,6 +7364,10 @@ function initGame() {
     // Kill combo system
     combo: 0, comboTimer: 0, comboMax: 0,
     scorePopups: [], // { x, y, text, color, life, vy }
+    // Run-scoped upgrade modifiers — start at 1.0 multipliers, layered onto
+    // ship-type stats at use sites. `picked` keeps a log for HUD/profile.
+    upgrades: { picked: [], hpMul: 1, thrustMul: 1, fireRateMul: 1, missileMul: 1, laserMul: 1, energyMul: 1 },
+    pendingUpgradePick: false, // true while wave-clear modal is up
     hitStop: 0, // brief time slowdown for big moments
     // Personal best tracking (live during game)
     _prevBestScore: parseInt(localStorage.getItem('orbital-siege-best-score') || '0'),
@@ -8204,6 +8282,11 @@ function updateGame(dt) {
       game.waveTimer = 5;
       spawnWave();
       game.ship.hp = Math.min(game.ship.maxHp, game.ship.hp + 25);
+      // Upgrade pick: every UPGRADE_INTERVAL completed waves. Wave just
+      // incremented above, so wave 4 = after clearing wave 3, etc.
+      if ((game.wave - 1) > 0 && (game.wave - 1) % UPGRADE_INTERVAL === 0) {
+        showUpgradePick();
+      }
     }
   }
 
@@ -9893,6 +9976,109 @@ function updateModeCardContext() {
   }
 }
 
+// --- Upgrade system (v0.21.0) ---
+// Players pick 1 of 3 random upgrade cards every UPGRADE_INTERVAL waves.
+// Picks stack across the run via game.upgrades multipliers, applied at use sites.
+const UPGRADE_INTERVAL = 3;
+const UPGRADES = [
+  {
+    id: 'warhead', name: 'WARHEAD MK II', icon: '💥',
+    desc: '+30% torpedo damage',
+    apply: (g) => { g.upgrades.missileMul = (g.upgrades.missileMul || 1) * 1.3; }
+  },
+  {
+    id: 'rapid', name: 'RAPID GUNS', icon: '🔫',
+    desc: '+25% gun fire rate',
+    apply: (g) => { g.upgrades.fireRateMul = (g.upgrades.fireRateMul || 1) * 0.8; } // lower timer = faster
+  },
+  {
+    id: 'hull', name: 'REINFORCED HULL', icon: '🛡',
+    desc: '+25% max HP · full repair',
+    apply: (g) => {
+      g.upgrades.hpMul = (g.upgrades.hpMul || 1) * 1.25;
+      // Recompose maxHp from the ship-type's base × the new multiplier
+      const baseHp = SHIP_TYPES[g.ship.shipType] ? SHIP_TYPES[g.ship.shipType].hull : g.ship.maxHp;
+      g.ship.maxHp = baseHp * g.upgrades.hpMul;
+      g.ship.hp = g.ship.maxHp;
+    }
+  },
+  {
+    id: 'capacitor', name: 'CAPACITOR ARRAY', icon: '🔋',
+    desc: '+30% energy regen',
+    apply: (g) => { g.upgrades.energyMul = (g.upgrades.energyMul || 1) * 1.3; }
+  },
+  {
+    id: 'solar', name: 'SOLAR RESERVE', icon: '☀',
+    desc: '+1 max solar bomb · +1 stored',
+    apply: (g) => { g.upgrades.solarBonus = (g.upgrades.solarBonus || 0) + 1; g.ship.solarBombs += 1; }
+  },
+  {
+    id: 'thrust', name: 'ENGINE TUNE', icon: '🚀',
+    desc: '+15% thrust power',
+    apply: (g) => {
+      g.upgrades.thrustMul = (g.upgrades.thrustMul || 1) * 1.15;
+      const baseThr = SHIP_TYPES[g.ship.shipType] ? SHIP_TYPES[g.ship.shipType].thrust : g.ship.thrustPower;
+      g.ship.thrustPower = baseThr * g.upgrades.thrustMul;
+    }
+  },
+  {
+    id: 'repair', name: 'EMERGENCY REPAIR', icon: '🔧',
+    desc: 'Full HP · clear all enemy bullets',
+    apply: (g) => { g.ship.hp = g.ship.maxHp; g.enemyBullets.length = 0; }
+  },
+  {
+    id: 'laser', name: 'COHERENCE BOOST', icon: '⚡',
+    desc: '+30% laser damage',
+    apply: (g) => { g.upgrades.laserMul = (g.upgrades.laserMul || 1) * 1.3; }
+  },
+];
+
+function rollUpgradePicks(n) {
+  // Shuffle a copy, take first n
+  const pool = UPGRADES.slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, n);
+}
+
+function showUpgradePick() {
+  if (!game) return;
+  const overlay = document.getElementById('upgrade-modal');
+  if (!overlay) return;
+  game.pendingUpgradePick = true;
+  const picks = rollUpgradePicks(3);
+  let html = `<div class="upgrade-card-title">FIELD UPGRADE — wave ${game.wave} clear</div>
+              <div class="upgrade-card-sub">pick one</div>
+              <div class="upgrade-cards">`;
+  for (const u of picks) {
+    html += `<button class="upgrade-card" onclick="pickUpgrade('${u.id}')">
+      <div class="up-icon">${u.icon}</div>
+      <div class="up-name">${u.name}</div>
+      <div class="up-desc">${u.desc}</div>
+    </button>`;
+  }
+  html += '</div>';
+  overlay.innerHTML = html;
+  overlay.classList.add('show');
+}
+
+function pickUpgrade(id) {
+  if (!game) return;
+  const u = UPGRADES.find(x => x.id === id);
+  if (u) {
+    u.apply(game);
+    game.upgrades.picked = game.upgrades.picked || [];
+    game.upgrades.picked.push(id);
+    // Confirmation toast
+    game._shipSwapToast = { text: u.name + ' INSTALLED', sub: u.desc, color: '#0ff', timer: 2.0 };
+  }
+  const overlay = document.getElementById('upgrade-modal');
+  if (overlay) overlay.classList.remove('show');
+  game.pendingUpgradePick = false;
+}
+
 function setBossFrequency(freq) {
   bossFrequency = freq;
   // Toggle .selected class — CSS handles color/glow/border-weight per freq.
@@ -10196,6 +10382,11 @@ function syncSettingsPanel() {
   }
   const topBtn = document.getElementById('wide-camera-btn');
   if (topBtn) topBtn.textContent = '⛶ CAMERA: ' + CAMERA_MODE.toUpperCase();
+  const dn = document.getElementById('settings-density-btn');
+  if (dn) {
+    dn.textContent = ENEMY_DENSITY.toUpperCase();
+    dn.classList.toggle('off', false);
+  }
 }
 
 // --- Ship Swap Overlay (V key) ---
